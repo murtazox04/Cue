@@ -5,11 +5,11 @@ from __future__ import annotations
 import fnmatch
 import logging
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,11 +38,18 @@ class EventIn(BaseModel):
         description="The recipient's external id, or a profile to create/update inline."
     )
     data: dict[str, Any] = Field(default_factory=dict, examples=[{"order_id": "A-1001"}])
-    occurred_at: datetime | None = None
+    occurred_at: AwareDatetime | None = None
     idempotency_key: str | None = Field(
         default=None,
         max_length=255,
         description="Deduplicates retries from the same source. Strongly recommended.",
+    )
+    source: str | None = Field(
+        default=None,
+        max_length=100,
+        pattern=r"^[\w.\-:/]+$",
+        description="Producing system, scoping idempotency keys. Defaults to the API key name.",
+        examples=["billing"],
     )
 
     @property
@@ -225,3 +232,12 @@ async def get(session: AsyncSession, event_id: UUID) -> Event:
     if event is None:
         raise NotFoundError("event", event_id)
     return event
+
+
+async def process_dead(ctx: queue.JobContext, error: str) -> None:
+    """Retries exhausted: record why, so the event no longer looks pending."""
+    async with ctx.runtime.transaction() as session:
+        event = await session.get(Event, UUID(ctx.payload["event_id"]))
+        if event is not None and event.status is EventStatus.PENDING:
+            event.status = EventStatus.FAILED
+            event.error = error[:4000]

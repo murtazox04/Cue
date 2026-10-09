@@ -8,6 +8,8 @@ class MessageStatus(StrEnum):
 
     QUEUED = "queued"
     """Accepted and waiting for its send time."""
+    SENDING = "sending"
+    """Claimed by a worker and being handed to a provider; can no longer be cancelled."""
     SENT = "sent"
     """Handed to a provider successfully."""
     DELIVERED = "delivered"
@@ -21,12 +23,13 @@ class MessageStatus(StrEnum):
 
     @property
     def is_final(self) -> bool:
-        return self is not MessageStatus.QUEUED
+        return self not in (MessageStatus.QUEUED, MessageStatus.SENDING)
 
 
 #: Statuses that count towards frequency caps and cooldowns.
 COUNTED_STATUSES = (
     MessageStatus.QUEUED,
+    MessageStatus.SENDING,
     MessageStatus.SENT,
     MessageStatus.DELIVERED,
 )
@@ -52,6 +55,7 @@ class BroadcastStatus(StrEnum):
     PAUSED = "paused"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
+    FAILED = "failed"
 
 
 class SuppressionReason(StrEnum):

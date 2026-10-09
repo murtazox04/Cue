@@ -50,7 +50,7 @@ async def get_broadcast(broadcast_id: UUID, _: Admin, session: SessionDep) -> Br
 
 @router.delete("/{broadcast_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a draft")
 async def delete_broadcast(broadcast_id: UUID, _: Admin, session: SessionDep) -> None:
-    broadcast = await broadcast_service.get(session, broadcast_id)
+    broadcast = await broadcast_service.get(session, broadcast_id, lock=True)
     if broadcast.status is not BroadcastStatus.DRAFT:
         raise InvalidStateError("only drafts can be deleted; cancel it instead")
     await session.delete(broadcast)
@@ -60,7 +60,7 @@ async def delete_broadcast(broadcast_id: UUID, _: Admin, session: SessionDep) ->
 async def start_broadcast(
     broadcast_id: UUID, body: StartIn, _: Admin, session: SessionDep, runtime: RuntimeDep
 ) -> BroadcastOut:
-    broadcast = await broadcast_service.get(session, broadcast_id)
+    broadcast = await broadcast_service.get(session, broadcast_id, lock=True)
     return BroadcastOut.model_validate(
         await broadcast_service.start(session, runtime, broadcast, body.at)
     )
@@ -68,7 +68,7 @@ async def start_broadcast(
 
 @router.post("/{broadcast_id}/pause", summary="Pause after the current batch")
 async def pause_broadcast(broadcast_id: UUID, _: Admin, session: SessionDep) -> BroadcastOut:
-    broadcast = await broadcast_service.get(session, broadcast_id)
+    broadcast = await broadcast_service.get(session, broadcast_id, lock=True)
     return BroadcastOut.model_validate(await broadcast_service.pause(broadcast))
 
 
@@ -76,11 +76,11 @@ async def pause_broadcast(broadcast_id: UUID, _: Admin, session: SessionDep) -> 
 async def resume_broadcast(
     broadcast_id: UUID, _: Admin, session: SessionDep, runtime: RuntimeDep
 ) -> BroadcastOut:
-    broadcast = await broadcast_service.get(session, broadcast_id)
+    broadcast = await broadcast_service.get(session, broadcast_id, lock=True)
     return BroadcastOut.model_validate(await broadcast_service.resume(session, runtime, broadcast))
 
 
 @router.post("/{broadcast_id}/cancel", summary="Cancel and withdraw unsent messages")
 async def cancel_broadcast(broadcast_id: UUID, _: Admin, session: SessionDep) -> BroadcastOut:
-    broadcast = await broadcast_service.get(session, broadcast_id)
+    broadcast = await broadcast_service.get(session, broadcast_id, lock=True)
     return BroadcastOut.model_validate(await broadcast_service.cancel(session, broadcast))

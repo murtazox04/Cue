@@ -53,6 +53,11 @@ TAGS = [
 ]
 
 
+def _report_worker_exit(task: asyncio.Task[None]) -> None:
+    if not task.cancelled() and task.exception() is not None:
+        logger.critical("embedded worker crashed", exc_info=task.exception())
+
+
 def create_app(settings: Settings | None = None, runtime: Runtime | None = None) -> FastAPI:
     """Build the application. Pass ``runtime`` to share resources (tests, embedding)."""
     settings = runtime.settings if runtime else (settings or get_settings())
@@ -66,6 +71,7 @@ def create_app(settings: Settings | None = None, runtime: Runtime | None = None)
         worker_task: asyncio.Task[None] | None = None
         if settings.worker.embedded:
             worker_task = asyncio.create_task(create_worker(current).run(stop), name="worker")
+            worker_task.add_done_callback(_report_worker_exit)
         logger.info(
             "cue %s ready",
             __version__,

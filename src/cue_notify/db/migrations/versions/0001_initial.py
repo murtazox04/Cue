@@ -2,7 +2,6 @@
 
 Revision ID: 0001
 Revises:
-Create Date: 2026-10-09 06:02:14.854718
 """
 
 from collections.abc import Sequence
@@ -41,6 +40,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_api_keys")),
+        sa.UniqueConstraint("name", name=op.f("uq_api_keys_name")),
         sa.UniqueConstraint("prefix", name=op.f("uq_api_keys_prefix")),
     )
     op.create_table(
@@ -70,7 +70,7 @@ def upgrade() -> None:
         sa.Column("attempts", sa.Integer(), nullable=False),
         sa.Column("max_attempts", sa.Integer(), nullable=False),
         sa.Column("locked_until", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("locked_by", sa.String(length=100), nullable=True),
+        sa.Column("locked_by", sa.String(length=255), nullable=True),
         sa.Column("last_error", sa.Text(), nullable=True),
         sa.Column("dead", sa.Boolean(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
@@ -163,6 +163,7 @@ def upgrade() -> None:
                 "paused",
                 "completed",
                 "cancelled",
+                "failed",
                 name="broadcaststatus",
                 native_enum=False,
                 length=16,
@@ -174,6 +175,7 @@ def upgrade() -> None:
         sa.Column(
             "stats", sa.JSON().with_variant(postgresql.JSONB(), "postgresql"), nullable=False
         ),
+        sa.Column("error", sa.Text(), nullable=True),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
@@ -294,6 +296,7 @@ def upgrade() -> None:
             "status",
             sa.Enum(
                 "queued",
+                "sending",
                 "sent",
                 "delivered",
                 "failed",

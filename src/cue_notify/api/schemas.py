@@ -6,7 +6,14 @@ from datetime import datetime
 from typing import Any, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from cue_notify.core import logic
 from cue_notify.core.content import LocalizedTemplate
@@ -286,7 +293,7 @@ class SendIn(BaseModel):
     category: str = "transactional"
     channels: list[str] = Field(min_length=1)
     data: dict[str, Any] = Field(default_factory=dict)
-    send_at: datetime | None = None
+    send_at: AwareDatetime | None = None
     idempotency_key: str | None = Field(default=None, max_length=200)
 
 
@@ -329,7 +336,7 @@ class BroadcastIn(BaseModel):
 
 
 class StartIn(BaseModel):
-    at: datetime | None = Field(default=None, description="Start time; now when omitted.")
+    at: AwareDatetime | None = Field(default=None, description="Start time; now when omitted.")
 
 
 class BroadcastOut(Model):
@@ -342,6 +349,7 @@ class BroadcastOut(Model):
     variables: dict[str, Any]
     status: BroadcastStatus
     stats: dict[str, int]
+    error: str | None = Field(description="Why the broadcast failed, if it did.")
     scheduled_at: datetime | None
     started_at: datetime | None
     completed_at: datetime | None
@@ -354,7 +362,7 @@ class BroadcastOut(Model):
 class ApiKeyIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     scopes: list[Scope] = Field(min_length=1)
-    expires_at: datetime | None = None
+    expires_at: AwareDatetime | None = None
 
 
 class ApiKeyOut(Model):

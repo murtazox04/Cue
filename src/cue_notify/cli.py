@@ -260,7 +260,7 @@ def prune(
     older_than: Annotated[int, typer.Option(help="Retention in days.")] = 90,
 ) -> None:
     """Delete events and final messages older than the retention period."""
-    from cue_notify.core.enums import MessageStatus
+    from cue_notify.core.enums import EventStatus, MessageStatus
     from cue_notify.db.models import Event, Message
 
     async def main(runtime: Runtime) -> tuple[int, int]:
@@ -268,10 +268,13 @@ def prune(
         async with runtime.transaction() as session:
             messages = await session.execute(
                 delete(Message).where(
-                    Message.created_at < cutoff, Message.status != MessageStatus.QUEUED
+                    Message.created_at < cutoff,
+                    Message.status.not_in((MessageStatus.QUEUED, MessageStatus.SENDING)),
                 )
             )
-            events = await session.execute(delete(Event).where(Event.received_at < cutoff))
+            events = await session.execute(
+                delete(Event).where(Event.received_at < cutoff, Event.status != EventStatus.PENDING)
+            )
         return int(getattr(messages, "rowcount", 0)), int(getattr(events, "rowcount", 0))
 
     messages, events = _with_runtime(main)

@@ -19,7 +19,7 @@ import logging
 from dataclasses import dataclass, field
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from cue_notify import queue
 from cue_notify.ai import GenerationError, PersonalizationRequest
@@ -131,6 +131,9 @@ async def _personalize(runtime: Runtime, message: Message, recipient: Recipient)
     except GenerationError as exc:
         logger.warning("AI personalisation failed: %s", exc, extra={"message_id": str(message.id)})
         return
+    except Exception:  # AI is an enhancement; it must never block delivery
+        logger.exception("AI personalisation raised", extra={"message_id": str(message.id)})
+        return
     content = dict(message.content)
     content[DEFAULT_VARIANT] = result.apply(baseline).model_dump(exclude_none=True)
     async with runtime.transaction() as session:
@@ -157,9 +160,12 @@ async def deliver(ctx: queue.JobContext) -> None:
     message_id = UUID(ctx.payload["message_id"])
 
     async with runtime.transaction() as session:
-        message = await session.get(Message, message_id)
-        if message is None or message.status is not MessageStatus.QUEUED:
-            return  # cancelled, already sent by a previous attempt, or deleted
+        # Claim the message. Once it is "sending" it can no longer be cancelled, so a
+        # cancel can never race with a send and leave a delivered message "cancelled".
+        # A message left "sending" by a crashed attempt is picked up again.
+        message = await session.get(Message, message_id, with_for_update=True)
+        if message is None or message.status not in (MessageStatus.QUEUED, MessageStatus.SENDING):
+            return  # cancelled, already finished by a previous attempt, or deleted
         recipient = await session.get(Recipient, message.recipient_id)
         category = await session.get(Category, message.category_key)
         if recipient is None:
@@ -168,11 +174,12 @@ async def deliver(ctx: queue.JobContext) -> None:
         if (
             category is not None
             and category.allow_unsubscribe
-            and (category.key in prefs.unsubscribed_categories)
+            and category.key in prefs.unsubscribed_categories
         ):
             message.status = MessageStatus.SUPPRESSED
             message.status_reason = SuppressionReason.UNSUBSCRIBED
             return
+        message.status = MessageStatus.SENDING
         message.attempts += 1
         targets = {
             channel: [
@@ -200,7 +207,9 @@ async def deliver(ctx: queue.JobContext) -> None:
             delivered = attempt
             break
         if attempt.retryable is not None and not ctx.is_last_attempt:
+            # Waiting for a retry: hand the message back so it can still be cancelled.
             await _disable_addresses(runtime, message.recipient_id, invalid)
+            await _release(runtime, message_id)
             delay = attempt.retryable.retry_after
             if delay is not None:
                 raise queue.RetryLater(delay, f"{channel}: {attempt.retryable}")
@@ -210,7 +219,7 @@ async def deliver(ctx: queue.JobContext) -> None:
     await _disable_addresses(runtime, message.recipient_id, invalid)
     async with runtime.transaction() as session:
         stored = await session.get(Message, message_id, with_for_update=True)
-        if stored is None or stored.status is not MessageStatus.QUEUED:
+        if stored is None or stored.status is not MessageStatus.SENDING:
             return
         if delivered is not None:
             stored.status = MessageStatus.SENT
@@ -221,16 +230,37 @@ async def deliver(ctx: queue.JobContext) -> None:
             )
             stored.status_reason = None
         else:
+            reason = "; ".join(errors) or SuppressionReason.NO_REACHABLE_CHANNEL
             stored.status = MessageStatus.FAILED
-            stored.status_reason = ("; ".join(errors) or SuppressionReason.NO_REACHABLE_CHANNEL)[
-                :500
-            ]
+            stored.status_reason = reason[:500]
         runtime.metrics.message_finished(stored.status, stored.channel, stored.category_key)
     logger.info(
         "message %s",
         "sent" if delivered else "failed",
         extra={"message_id": str(message_id), "channel": delivered.channel if delivered else None},
     )
+
+
+async def _release(runtime: Runtime, message_id: UUID) -> None:
+    async with runtime.transaction() as session:
+        await session.execute(
+            update(Message)
+            .where(Message.id == message_id, Message.status == MessageStatus.SENDING)
+            .values(status=MessageStatus.QUEUED)
+        )
+
+
+async def deliver_dead(ctx: queue.JobContext, error: str) -> None:
+    """Retries exhausted: record the failure so the message stops counting as in flight."""
+    async with ctx.runtime.transaction() as session:
+        await session.execute(
+            update(Message)
+            .where(
+                Message.id == UUID(ctx.payload["message_id"]),
+                Message.status.in_((MessageStatus.QUEUED, MessageStatus.SENDING)),
+            )
+            .values(status=MessageStatus.FAILED, status_reason=f"gave up: {error}"[:500])
+        )
 
 
 async def _disable_addresses(

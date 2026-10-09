@@ -4,7 +4,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Response, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from cue_notify.api.deps import (
     EventsWriter,
@@ -13,6 +13,7 @@ from cue_notify.api.deps import (
     PageDep,
     RuntimeDep,
     SessionDep,
+    check_inline_profile,
     paginate,
 )
 from cue_notify.api.schemas import MessageOut, Page, SendIn
@@ -48,6 +49,7 @@ async def send_message(
     The message still passes through preferences, caps and quiet hours of its category.
     Check `status`: it may be `suppressed` with a `status_reason`.
     """
+    check_inline_profile(key, body.recipient)
     if isinstance(body.recipient, recipient_service.RecipientIn):
         recipient = await recipient_service.upsert(session, body.recipient)
     else:
@@ -98,13 +100,19 @@ async def get_message(message_id: UUID, _: MessagesReader, session: SessionDep) 
 
 @router.post("/{message_id}/cancel", summary="Cancel a queued message")
 async def cancel_message(message_id: UUID, _: MessagesWriter, session: SessionDep) -> MessageOut:
+    # Conditional update: a worker that already claimed the message wins the race.
+    cancelled = await session.scalar(
+        update(Message)
+        .where(Message.id == message_id, Message.status == MessageStatus.QUEUED)
+        .values(status=MessageStatus.CANCELLED, status_reason="cancelled via API")
+        .returning(Message.id)
+    )
     message = await _get(session, message_id)
-    if message.status is not MessageStatus.QUEUED:
+    if cancelled is None:
         raise InvalidStateError(
             f"message is {message.status}; only queued messages can be cancelled"
         )
-    message.status = MessageStatus.CANCELLED
-    message.status_reason = "cancelled via API"
+    await session.refresh(message)
     return MessageOut.model_validate(message)
 
 

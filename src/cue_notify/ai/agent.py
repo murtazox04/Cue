@@ -13,7 +13,7 @@ import os
 os.environ.setdefault("PYDANTIC_AI_NO_BANNER", "1")  # keep service logs clean
 
 from pydantic_ai import Agent, ModelRetry, ModelSettings, RunContext
-from pydantic_ai.exceptions import AgentRunError, UserError
+from pydantic_ai.exceptions import UserError
 from pydantic_ai.models import Model, infer_model
 from pydantic_ai.models.fallback import FallbackModel
 
@@ -112,7 +112,7 @@ class PydanticAIGenerator:
             result = await self._agent.run(
                 build_prompt(request), deps=request, model_settings=self._model_settings
             )
-        except (AgentRunError, UserError, TimeoutError, OSError) as exc:
+        except Exception as exc:  # provider SDKs raise many types; callers need one
             raise GenerationError(f"{type(exc).__name__}: {exc}") from exc
         usage = result.usage
         return PersonalizationResult(

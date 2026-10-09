@@ -33,7 +33,7 @@ KEY = 128  # length of human-chosen keys (templates, rules)
 class ApiKey(IdMixin, TimestampMixin, Base):
     __tablename__ = "api_keys"
 
-    name: Mapped[str] = mapped_column(String(100))
+    name: Mapped[str] = mapped_column(String(100), unique=True)
     prefix: Mapped[str] = mapped_column(String(32), unique=True)
     secret_hash: Mapped[str] = mapped_column(String(64))
     scopes: Mapped[list[str]]
@@ -216,6 +216,7 @@ class Broadcast(IdMixin, TimestampMixin, Base):
     scheduled_at: Mapped[datetime | None]
     cursor: Mapped[str | None] = mapped_column(String(64))
     stats: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    error: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime | None]
     completed_at: Mapped[datetime | None]
 
@@ -233,7 +234,7 @@ class Job(IdMixin, Base):
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     max_attempts: Mapped[int] = mapped_column(Integer)
     locked_until: Mapped[datetime | None]
-    locked_by: Mapped[str | None] = mapped_column(String(100))
+    locked_by: Mapped[str | None] = mapped_column(String(255))
     last_error: Mapped[str | None] = mapped_column(Text)
     dead: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime]

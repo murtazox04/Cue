@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import BaseModel, Field, TypeAdapter, field_validator
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,6 +48,15 @@ class FilteredRecipients(BaseModel):
     type: Literal["filter"] = "filter"
     condition: dict[str, Any]
 
+    @field_validator("condition")
+    @classmethod
+    def _valid_logic(cls, value: dict[str, Any]) -> dict[str, Any]:
+        try:
+            logic.validate(value)
+        except logic.LogicError as exc:
+            raise ValueError(str(exc)) from exc
+        return value
+
 
 type Audience = Annotated[
     AllRecipients | RecipientList | FilteredRecipients, Field(discriminator="type")
@@ -57,22 +66,27 @@ AudienceAdapter: TypeAdapter[AllRecipients | RecipientList | FilteredRecipients]
 )
 
 
-async def get(session: AsyncSession, broadcast_id: UUID) -> Broadcast:
-    broadcast = await session.get(Broadcast, broadcast_id)
+async def get(session: AsyncSession, broadcast_id: UUID, *, lock: bool = False) -> Broadcast:
+    """Load a broadcast. State changes pass ``lock=True`` so they wait for a running batch."""
+    broadcast = await session.get(Broadcast, broadcast_id, with_for_update=lock)
     if broadcast is None:
         raise NotFoundError("broadcast", broadcast_id)
     return broadcast
 
 
 async def _schedule_batch(session: AsyncSession, runtime: Runtime, broadcast: Broadcast) -> None:
+    key = f"{BATCH_JOB}:{broadcast.id}:{broadcast.cursor or 'start'}"
+    run_at = broadcast.scheduled_at if broadcast.status is BroadcastStatus.SCHEDULED else None
+    run_at = run_at or utcnow()
     await queue.enqueue(
         session,
         BATCH_JOB,
         {"broadcast_id": str(broadcast.id)},
-        run_at=broadcast.scheduled_at if broadcast.status is BroadcastStatus.SCHEDULED else None,
-        key=f"{BATCH_JOB}:{broadcast.id}:{broadcast.cursor or 'start'}",
+        run_at=run_at,
+        key=key,
         max_attempts=runtime.settings.worker.max_attempts,
     )
+    await queue.reschedule(session, key, run_at)  # starting again moves an existing schedule
 
 
 async def start(
@@ -141,14 +155,19 @@ async def _next_recipients(
     page = list((await session.scalars(stmt)).all())
     following = str(page[-1].id) if len(page) == BATCH_SIZE else None
     if isinstance(audience, FilteredRecipients):
-        page = [
-            recipient
-            for recipient in page
-            if logic.matches(
-                audience.condition, {"recipient": recipient_service.profile(recipient)}
-            )
-        ]
+        page = [recipient for recipient in page if _in_audience(audience, recipient)]
     return page, following
+
+
+def _in_audience(audience: FilteredRecipients, recipient: Recipient) -> bool:
+    context = {"recipient": recipient_service.profile(recipient)}
+    try:
+        return logic.matches(audience.condition, context)
+    except logic.LogicError as exc:  # one odd profile must not stall the broadcast
+        logger.warning(
+            "audience filter failed: %s", exc, extra={"recipient": recipient.external_id}
+        )
+        return False
 
 
 async def run_batch(ctx: queue.JobContext) -> None:
@@ -201,3 +220,15 @@ async def run_batch(ctx: queue.JobContext) -> None:
             logger.info("broadcast completed", extra={"broadcast_id": str(broadcast.id), **stats})
         else:
             await _schedule_batch(session, runtime, broadcast)
+
+
+async def run_batch_dead(ctx: queue.JobContext, error: str) -> None:
+    """A batch exhausted its retries: mark the broadcast failed so it is visibly stuck."""
+    async with ctx.runtime.transaction() as session:
+        broadcast = await session.get(Broadcast, UUID(ctx.payload["broadcast_id"]))
+        if broadcast is not None and broadcast.status in (
+            BroadcastStatus.SCHEDULED,
+            BroadcastStatus.RUNNING,
+        ):
+            broadcast.status = BroadcastStatus.FAILED
+            broadcast.error = error[:2000]
