@@ -11,11 +11,17 @@ An event is a fact about a recipient: `order.shipped`, `payment.failed`,
 | `recipient` | yes | An external id (`"user-42"`) or a profile to create/update inline. |
 | `data` | no | Any JSON object. Available to rule conditions and templates. |
 | `occurred_at` | no | When it happened (defaults to receipt time). |
-| `idempotency_key` | recommended | Retries with the same key are ignored. Scoped per API key name. |
+| `idempotency_key` | recommended | Retries with the same key are ignored. |
+| `source` | no | The producing system (`billing`, `crm`…). Idempotency keys are unique per source. Defaults to the API key's name. |
 
 Ingestion is fast and durable: the event and its processing job are written in one
 transaction, then evaluated asynchronously by the worker. The recipient is created
-automatically if it does not exist yet.
+automatically if it does not exist yet. An inline profile may set `locale`, `timezone`
+and `attributes`; adding `addresses` inline additionally requires the
+`recipients:write` scope, because addresses decide where messages are delivered.
+
+If an event cannot be processed even after retries, it is marked `failed` with the
+reason in `error`.
 
 `GET /v1/events/{id}` returns the event with its `outcome` — one entry per rule that was
 considered:

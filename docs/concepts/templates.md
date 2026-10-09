@@ -59,6 +59,10 @@ plus `number(decimals=0, separator=" ", point=".")` for thousands separators:
   `{{ data.name | default("there") }}` for optional values.
 - Syntax is checked when the template is saved.
 - `html` is auto-escaped; other fields are plain text.
+- **Resource limits** stop runaway templates: `range()` is capped at 1 000 items,
+  powers at an exponent of 64, sequence repetition at 10 000 items, `center`/`indent`
+  widths at 200 and each rendered field at 20 000 characters. Python string formatting
+  (`%`, `.format`, the `format` filter) is disabled — use `~` to concatenate.
 
 ## Locale selection
 

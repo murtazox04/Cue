@@ -118,8 +118,9 @@ curl "localhost:8000/v1/messages?recipient=customer-42" -H "Authorization: Beare
 ```
 
 The event's `outcome` lists every rule that was considered and why it did or did not
-fire. Each message shows its `status` (`queued`, `sent`, `delivered`, `failed`,
-`suppressed`, `cancelled`) and a `status_reason`.
+fire. Each message shows its `status` (`queued`, `sending`, `sent`, `delivered`,
+`failed`, `suppressed`, `cancelled`) and a `status_reason`. Only `queued` messages can be
+cancelled; once a worker claims one it is `sending`.
 
 To test a rule change without sending anything:
 

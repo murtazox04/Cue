@@ -40,4 +40,6 @@ broadcast and recipient. Consequently:
   including ones waiting for quiet hours to end, even after the broadcast completed.
 
 `GET /v1/broadcasts/{id}` reports progress in `stats` (`targeted`, `queued`,
-`suppressed`, `failed`…). Messages are listed with `GET /v1/messages?broadcast_id=…`.
+`suppressed`, `failed`…). Starting a scheduled broadcast again moves its start time.
+If a batch keeps failing until its retries run out, the broadcast becomes `failed` with
+the reason in `error`. Messages are listed with `GET /v1/messages?broadcast_id=…`.

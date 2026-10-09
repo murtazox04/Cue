@@ -26,6 +26,9 @@ is a general-purpose, self-hosted notification orchestrator.
   guardrails, allow-listed context and a daily token budget.
 - Delivery and engagement tracking, including a token-based endpoint for client apps.
 - Scoped API keys, RFC 9457 problem responses, cursor pagination, Prometheus metrics.
+- Hardening: SSRF-safe per-recipient webhooks, resource-bounded template sandbox and
+  rule evaluator, race-free cancellation, job lease heartbeats, and failure states for
+  events, messages and broadcasts whose jobs exhaust their retries.
 - A transactional, database-backed job queue (no Redis required).
 - `cue` CLI: `serve`, `worker`, `db`, `keys`, `jobs`, `prune`, `check`.
 

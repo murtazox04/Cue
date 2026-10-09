@@ -25,7 +25,9 @@ POST /v1/track/{cue_tracking_token}
 {"type": "opened"}
 ```
 
-A token only allows recording engagement for its own message.
+A token only allows recording engagement for its own message. Because anyone holding
+it can call the endpoint, client-supplied times are clamped between the send time and
+now, and the first report of each kind (including the conversion value) wins.
 
 ## Provider receipts
 

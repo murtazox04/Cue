@@ -89,7 +89,15 @@ Address: the chat id. Option: `bot_token`, `disable_notification`, `link_preview
 ### `webhook` — HTTP
 
 Posts JSON to `url`, or — when `url` is not set — to the address itself (useful for
-per-user Slack, Discord or Teams incoming webhooks). With `secret` set, requests carry:
+per-user Slack, Discord or Teams incoming webhooks).
+
+Per-recipient URLs are untrusted input, so by default they must use `https`, must
+resolve only to public IP addresses (no `localhost`, private ranges or cloud metadata
+endpoints), and the connection is pinned to the address that was checked. Response bodies
+from such URLs are never stored. `allow_http` and `allow_private_networks` relax this for
+internal deployments; a fixed `url` is operator configuration and is trusted.
+
+With `secret` set, requests carry:
 
 ```text
 Cue-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">
