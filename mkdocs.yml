@@ -45,6 +45,7 @@ nav:
   - Guides:
       - Deployment: guides/deployment.md
       - Custom channels: guides/custom-channels.md
+      - AI agents (MCP): guides/ai-agents.md
   - Reference:
       - Configuration: reference/configuration.md
       - HTTP API: reference/api.md

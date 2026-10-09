@@ -109,6 +109,37 @@ def worker(
     asyncio.run(main())
 
 
+@app.command("mcp")
+def mcp_server(
+    url: Annotated[
+        str, typer.Option(envvar="CUE_URL", help="Base URL of the Cue API.")
+    ] = "http://127.0.0.1:8000",
+    api_key: Annotated[
+        str, typer.Option(envvar="CUE_API_KEY", help="API key the agent acts with.")
+    ] = "",
+    transport: Annotated[
+        str, typer.Option(help="stdio (desktop agents) or streamable-http.")
+    ] = "stdio",
+    host: Annotated[str, typer.Option(help="Bind address for streamable-http.")] = "127.0.0.1",
+    port: Annotated[int, typer.Option(help="Port for streamable-http.")] = 8765,
+) -> None:
+    """Run a Model Context Protocol server so AI agents can send notifications."""
+    if not api_key:
+        raise typer.BadParameter("an API key is required (--api-key or CUE_API_KEY)")
+    try:
+        from cue_notify import mcp_server
+    except ImportError as exc:
+        raise typer.BadParameter(
+            "install the MCP extra: pip install 'cue-notify[mcp]'"
+        ) from exc
+    if transport == "stdio":
+        mcp_server.run(url, api_key)
+    elif transport == "streamable-http":
+        mcp_server.run(url, api_key, "streamable-http", host=host, port=port)
+    else:
+        raise typer.BadParameter("transport must be stdio or streamable-http")
+
+
 @app.command("check")
 def check_config() -> None:
     """Validate configuration and connectivity, then print a summary."""

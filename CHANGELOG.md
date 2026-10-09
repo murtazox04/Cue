@@ -30,7 +30,9 @@ is a general-purpose, self-hosted notification orchestrator.
   rule evaluator, race-free cancellation, job lease heartbeats, and failure states for
   events, messages and broadcasts whose jobs exhaust their retries.
 - A transactional, database-backed job queue (no Redis required).
-- `cue` CLI: `serve`, `worker`, `db`, `keys`, `jobs`, `prune`, `check`.
+- `cue` CLI: `serve`, `worker`, `db`, `keys`, `jobs`, `prune`, `check`, `mcp`.
+- A Model Context Protocol server so AI agents can send notifications and inspect
+  delivery with scoped API keys.
 
 ### Removed
 - The v1 Piccolo/Dramatiq/APScheduler stack, product-specific triggers and the

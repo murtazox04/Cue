@@ -21,6 +21,7 @@ keywords = [
   "messaging",
   "fastapi",
   "llm",
+  "mcp",
 ]
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -57,7 +58,9 @@ fcm = ["pyjwt[crypto]>=2.10"]
 ai = ["pydantic-ai-slim[openai,anthropic,google,groq,mistral]>=2.0"]
 # Prometheus metrics endpoint.
 metrics = ["prometheus-client>=0.21"]
-all = ["cue-notify[postgres,fcm,ai,metrics]"]
+# Model Context Protocol server for AI agents (`cuectl mcp`).
+mcp = ["mcp>=2.0"]
+all = ["cue-notify[postgres,fcm,ai,metrics,mcp]"]
 
 [project.scripts]
 cuectl = "cue_notify.cli:main"

@@ -3,6 +3,8 @@
 ```text
 cuectl serve [--host 0.0.0.0] [--port 8000] [--workers 1] [--reload] [--migrate]
 cuectl worker [--concurrency N] [--once]
+cuectl mcp [--url URL] [--api-key KEY] [--transport stdio|streamable-http]
+                                   MCP server for AI agents (see guides/ai-agents)
 cuectl check                      validate configuration and database connectivity
 cuectl db upgrade [REVISION]      apply migrations (default: head)
 cuectl db downgrade REVISION

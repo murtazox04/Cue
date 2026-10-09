@@ -6,7 +6,7 @@
 
 ARG PYTHON_VERSION=3.13
 # Optional features to install. Drop "ai" for a ~40% smaller image.
-ARG EXTRAS="postgres fcm metrics ai"
+ARG EXTRAS="postgres fcm metrics ai mcp"
 
 FROM python:${PYTHON_VERSION}-slim AS build
 ARG EXTRAS

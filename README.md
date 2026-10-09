@@ -45,6 +45,8 @@ curl -X POST https://cue.example.com/v1/events \
 - **AI personalisation (optional)** — any [Pydantic AI](https://ai.pydantic.dev) provider
   (OpenAI, Anthropic, Google, Groq, Mistral, Ollama…), with guardrails that keep
   numbers and links verbatim, allow-listed context only, and a daily token budget.
+- **Built for AI agents** — an MCP server (`cuectl mcp`) lets Claude, Cursor or your own
+  agents notify people and inspect delivery, within the scopes you grant.
 - **Observable** — per-rule event outcomes, message status reasons, engagement tracking,
   Prometheus metrics, JSON logs.
 - **Easy to run** — one service plus PostgreSQL (or SQLite). No Redis, no broker, no cron:

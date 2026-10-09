@@ -39,6 +39,8 @@ Cue moves that logic into one place:
 - **AI that cannot lie about money.** Optional personalisation through any major model
   provider, constrained to rephrasing: numbers and links must survive verbatim, and only
   attributes you allow-list are ever sent to the model.
+- **Agent-ready.** An [MCP server](guides/ai-agents.md) lets AI agents send
+  notifications and inspect delivery with scoped credentials.
 - **Simple to run.** One Python service and PostgreSQL (or SQLite). No Redis, no message
   broker, no cron — the job queue lives in your database.
 
