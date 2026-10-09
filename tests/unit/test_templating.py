@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import pytest
 from pydantic import ValidationError
 
@@ -57,3 +59,35 @@ def test_channel_overrides_inherit_unset_fields() -> None:
     assert variants["sms"].title == "Hi 7"
     assert variants["sms"].url == "https://x.test/7"
     assert variants["sms"].data == {"screen": "home"}
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "{{ (9**99999999) > 1 }}",
+        "{{ 'a' * 300000000 }}",
+        "{{ [0] * 300000000 }}",
+        "{% for i in range(100000) %}x{% endfor %}",
+        "{% for i in range(999) %}{% for j in range(999) %}xxxxx{% endfor %}{% endfor %}",
+        "{{ '%1000000000d' % 1 }}",
+        "{{ '{:>999999999}'.format(1) }}",
+        "{{ 'x'.ljust(1000000000) }}",
+        "{{ 'x' | center(1000000000) }}",
+        "{{ 'x' | indent(1000000000) }}",
+        "{{ '%s' | format(1) }}",
+    ],
+)
+def test_resource_exhaustion_is_blocked_quickly(source: str) -> None:
+    started = time.perf_counter()
+    with pytest.raises((templating.RenderError, ValidationError)):
+        LocalizedTemplate(body=source).render({})
+    assert time.perf_counter() - started < 1
+
+
+def test_bounded_operations_still_work() -> None:
+    rendered = templating.render(
+        "{{ 2 ** 10 }} {{ 'ab' * 2 }} {{ 7 % 3 }} {{ 'x' | center(5) }}|"
+        "{% for i in range(3) %}{{ i }}{% endfor %}",
+        {},
+    )
+    assert rendered == "1024 abab 1   x  |012"

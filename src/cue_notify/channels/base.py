@@ -87,14 +87,19 @@ class Channel[ConfigT: ChannelConfig](ABC):
         return f"<{type(self).__name__} {self.name!r}>"
 
 
-def raise_for_http(response: httpx.Response, *, invalid_address: bool = False) -> None:
+def raise_for_http(
+    response: httpx.Response, *, invalid_address: bool = False, include_body: bool = True
+) -> None:
     """Map an HTTP response to the delivery error taxonomy.
 
     ``invalid_address`` marks the caller's knowledge that this 4xx means the address is dead.
+    ``include_body=False`` keeps untrusted response bodies out of stored error messages.
     """
     if response.is_success:
         return
-    detail = f"HTTP {response.status_code}: {response.text[:300]}"
+    detail = f"HTTP {response.status_code}"
+    if include_body:
+        detail += f": {response.text[:300]}"
     if response.status_code == 429 or response.status_code >= 500:
         retry_after = _retry_after(response)
         raise DeliveryError(detail, retryable=True, retry_after=retry_after)

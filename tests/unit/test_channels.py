@@ -63,26 +63,76 @@ async def test_webhook_signs_payload() -> None:
     assert json.loads(request.content)["content"]["body"] == "Body"
 
 
-async def test_webhook_uses_address_as_url_and_classifies_errors() -> None:
+async def test_webhook_per_recipient_url_is_pinned_and_errors_classified(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     statuses = iter([503, 410, 400])
+    seen: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert str(request.url) == "https://slack.test/hook"
-        return httpx.Response(next(statuses))
+        seen.append(request)
+        return httpx.Response(next(statuses), text="internal secrets")
 
-    channel_config = WebhookConfig()
+    async def resolve(_: WebhookChannel, host: str, port: int) -> list[str]:
+        assert (host, port) == ("hooks.test", 443)
+        return ["93.184.216.34"]
+
+    monkeypatch.setattr(WebhookChannel, "resolve", resolve)
     async with _client(handler) as http:
-        channel = WebhookChannel("hook", channel_config, http)
+        channel = WebhookChannel("hook", WebhookConfig(), http)
         with pytest.raises(DeliveryError) as transient:
-            await channel.send(_delivery("https://slack.test/hook"))
+            await channel.send(_delivery("https://hooks.test/in"))
         assert transient.value.retryable
+        assert "secrets" not in str(transient.value)  # untrusted bodies are not kept
         with pytest.raises(InvalidAddressError):
-            await channel.send(_delivery("https://slack.test/hook"))
+            await channel.send(_delivery("https://hooks.test/in"))
         with pytest.raises(DeliveryError) as permanent:
-            await channel.send(_delivery("https://slack.test/hook"))
+            await channel.send(_delivery("https://hooks.test/in"))
         assert not permanent.value.retryable
-        with pytest.raises(DeliveryError, match="not a URL"):
-            await channel.send(_delivery("not-a-url"))
+
+    request = seen[0]
+    assert request.url.host == "93.184.216.34"  # connected to the address that was checked
+    assert request.headers["host"] == "hooks.test"
+    assert request.extensions["sni_hostname"] == "hooks.test"
+
+
+@pytest.mark.parametrize(
+    ("address", "resolved"),
+    [
+        ("https://169.254.169.254/latest/meta-data", None),
+        ("https://[::1]/admin", None),
+        ("https://internal.test/", ["10.0.0.7"]),
+        ("https://mixed.test/", ["93.184.216.34", "127.0.0.1"]),
+        ("http://plain.test/", ["93.184.216.34"]),
+        ("ftp://files.test/", None),
+        ("not a url", None),
+    ],
+)
+async def test_webhook_rejects_unsafe_destinations(
+    monkeypatch: pytest.MonkeyPatch, address: str, resolved: list[str] | None
+) -> None:
+    async def resolve(_: WebhookChannel, host: str, port: int) -> list[str]:
+        return resolved or []
+
+    monkeypatch.setattr(WebhookChannel, "resolve", resolve)
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        raise AssertionError("must not connect")
+
+    async with _client(handler) as http:
+        channel = WebhookChannel("hook", WebhookConfig(), http)
+        with pytest.raises(InvalidAddressError):
+            await channel.send(_delivery(address))
+
+
+async def test_webhook_private_networks_can_be_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def resolve(_: WebhookChannel, host: str, port: int) -> list[str]:
+        return ["10.0.0.7"]
+
+    monkeypatch.setattr(WebhookChannel, "resolve", resolve)
+    async with _client(lambda _: httpx.Response(204)) as http:
+        config = WebhookConfig(allow_private_networks=True, allow_http=True)
+        await WebhookChannel("hook", config, http).send(_delivery("http://intranet.test/hook"))
 
 
 # --------------------------------------------------------------------------- twilio

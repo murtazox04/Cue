@@ -20,6 +20,10 @@ type Rule = Any
 type Data = Any
 
 MAX_DEPTH = 64
+MAX_ITEMS = 10_000
+"""Largest list any operator may produce (guards ``merge``/``map`` inside ``reduce``)."""
+MAX_TEXT = 100_000
+"""Longest string any operator may produce."""
 
 
 class LogicError(ValueError):
@@ -424,11 +428,17 @@ def _evaluate(rule: Rule, data: Data, depth: int) -> Any:
         raise LogicError(f"unknown operator {name!r}")
     args = cast("list[Any]", raw_args) if isinstance(raw_args, list) else [raw_args]
     try:
-        return operator(args, data, _evaluate, depth + 1)
+        result = operator(args, data, _evaluate, depth + 1)
     except LogicError:
         raise
-    except (TypeError, IndexError) as exc:
+    except (TypeError, IndexError, ValueError, ArithmeticError) as exc:
+        # Untrusted event data must never crash the evaluator: inf, nan, huge numbers…
         raise LogicError(f"invalid arguments for {name!r}: {exc}") from exc
+    if isinstance(result, list) and len(cast("list[Any]", result)) > MAX_ITEMS:
+        raise LogicError(f"{name!r} produced more than {MAX_ITEMS} items")
+    if isinstance(result, str) and len(result) > MAX_TEXT:
+        raise LogicError(f"{name!r} produced more than {MAX_TEXT} characters")
+    return result
 
 
 def evaluate(rule: Rule, data: Data) -> Any:

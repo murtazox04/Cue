@@ -103,3 +103,20 @@ def test_excessive_nesting_is_rejected() -> None:
 def test_wrong_arity_is_a_logic_error() -> None:
     with pytest.raises(logic.LogicError, match="invalid arguments"):
         logic.evaluate({"==": [1]}, {})
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        {"+": [1e308, 1e308]},
+        {"%": ["inf", 2]},
+        {"substr": ["abc", "nan"]},
+        {"substr": ["abc", "inf"]},
+        {"missing_some": ["inf", ["a"]]},
+        {"reduce": [[1] * 20, {"merge": [{"var": "accumulator"}, {"var": "accumulator"}]}, [1]]},
+        {"reduce": [[1] * 20, {"cat": [{"var": "accumulator"}, {"var": "accumulator"}]}, "ab"]},
+    ],
+)
+def test_hostile_inputs_raise_logic_errors(rule: Any) -> None:
+    with pytest.raises(logic.LogicError):
+        logic.evaluate(rule, {})

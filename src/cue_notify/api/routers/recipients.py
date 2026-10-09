@@ -53,7 +53,7 @@ async def delete_recipient(external_id: str, _: RecipientsWriter, session: Sessi
 async def add_address(
     external_id: str, body: AddressIn, _: RecipientsWriter, session: SessionDep
 ) -> RecipientOut:
-    recipient = await recipient_service.ensure(session, external_id)
+    recipient = await recipient_service.lock(session, external_id)
     await recipient_service.add_address(session, recipient, body)
     return RecipientOut.model_validate(recipient)
 

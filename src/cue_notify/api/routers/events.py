@@ -6,7 +6,15 @@ from uuid import UUID
 from fastapi import APIRouter, Query, Response, status
 from sqlalchemy import select
 
-from cue_notify.api.deps import EventsWriter, MessagesReader, PageDep, RuntimeDep, SessionDep, paginate
+from cue_notify.api.deps import (
+    EventsWriter,
+    MessagesReader,
+    PageDep,
+    RuntimeDep,
+    SessionDep,
+    check_inline_profile,
+    paginate,
+)
 from cue_notify.api.schemas import EventAccepted, EventOut, Page
 from cue_notify.db.models import Event
 from cue_notify.services import events as event_service
@@ -30,10 +38,14 @@ async def ingest_event(
 ) -> EventAccepted:
     """Record something that happened to a recipient. Matching rules run asynchronously.
 
-    Send an `idempotency_key` so retries never produce duplicate notifications. The
-    event's `source` is the name of the API key that sent it.
+    Send an `idempotency_key` so retries never produce duplicate notifications;
+    keys are unique per `source` (default: the API key's name). Adding addresses
+    inline requires the `recipients:write` scope.
     """
-    event, created = await event_service.ingest(session, runtime, body, source=key.name)
+    check_inline_profile(key, body.recipient)
+    event, created = await event_service.ingest(
+        session, runtime, body, source=body.source or key.name
+    )
     if created:
         runtime.metrics.event_ingested(event.name)
     else:

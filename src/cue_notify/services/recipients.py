@@ -69,8 +69,25 @@ async def ensure(session: AsyncSession, external_id: str) -> Recipient:
     return await get(session, external_id)
 
 
+async def lock(session: AsyncSession, external_id: str) -> Recipient:
+    """Ensure the recipient exists and lock its row for the rest of the transaction.
+
+    Profile updates read, merge and write attributes and addresses; the lock (and the
+    fresh reload it forces) keeps concurrent updates from losing each other's changes.
+    """
+    await ensure(session, external_id)
+    recipient = await session.scalar(
+        select(Recipient)
+        .where(Recipient.external_id == external_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    assert recipient is not None
+    return recipient
+
+
 async def upsert(session: AsyncSession, data: RecipientIn) -> Recipient:
-    recipient = await ensure(session, data.external_id)
+    recipient = await lock(session, data.external_id)
     if data.locale is not None:
         recipient.locale = data.locale
     if data.timezone is not None:

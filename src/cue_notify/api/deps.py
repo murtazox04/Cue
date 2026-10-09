@@ -63,6 +63,22 @@ def require(scope: Scope) -> Callable[..., Awaitable[ApiKey]]:
     return dependency
 
 
+def check_inline_profile(key: ApiKey, recipient: object) -> None:
+    """Inline profiles on events and sends may update a recipient, but adding addresses
+    decides where messages go — that needs ``recipients:write``."""
+    from cue_notify.services.recipients import RecipientIn
+
+    if (
+        isinstance(recipient, RecipientIn)
+        and recipient.addresses
+        and not api_keys.allows(key, Scope.RECIPIENTS_WRITE)
+    ):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "adding addresses inline requires the recipients:write scope",
+        )
+
+
 # Authenticated API key holding the named scope.
 EventsWriter = Annotated[ApiKey, Depends(require(Scope.EVENTS_WRITE))]
 MessagesWriter = Annotated[ApiKey, Depends(require(Scope.MESSAGES_WRITE))]
