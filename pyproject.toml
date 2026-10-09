@@ -1,0 +1,162 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cue-notify"
+dynamic = ["version"]
+description = "Self-hosted notification orchestration: events in, the right message out — on the right channel, at the right time."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Murtazo Xurramov" }]
+requires-python = ">=3.12"
+keywords = [
+  "notifications",
+  "push",
+  "sms",
+  "email",
+  "fcm",
+  "twilio",
+  "messaging",
+  "fastapi",
+  "llm",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Framework :: FastAPI",
+  "Framework :: AsyncIO",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Communications",
+  "Typing :: Typed",
+]
+dependencies = [
+  "fastapi>=0.120",
+  "uvicorn[standard]>=0.34",
+  "pydantic>=2.11",
+  "pydantic-settings>=2.10",
+  "sqlalchemy[asyncio]>=2.0.40",
+  "alembic>=1.16",
+  "aiosqlite>=0.21",
+  "httpx>=0.28",
+  "jinja2>=3.1.6",
+  "typer>=0.16",
+]
+
+[project.optional-dependencies]
+# PostgreSQL driver — recommended for production.
+postgres = ["asyncpg>=0.30"]
+# Firebase Cloud Messaging (service-account OAuth signing).
+fcm = ["pyjwt[crypto]>=2.10"]
+# AI copy personalisation through any Pydantic AI provider.
+ai = ["pydantic-ai-slim[openai,anthropic,google,groq,mistral]>=2.0"]
+# Prometheus metrics endpoint.
+metrics = ["prometheus-client>=0.21"]
+all = ["cue-notify[postgres,fcm,ai,metrics]"]
+
+[project.scripts]
+cuectl = "cue_notify.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/murtazox04/Cue"
+Documentation = "https://murtazox04.github.io/Cue"
+Repository = "https://github.com/murtazox04/Cue"
+Issues = "https://github.com/murtazox04/Cue/issues"
+Changelog = "https://github.com/murtazox04/Cue/blob/main/CHANGELOG.md"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.4",
+  "pytest-asyncio>=1.0",
+  "pytest-cov>=6.0",
+  "ruff>=0.12",
+  "pyright>=1.1.400",
+  "pre-commit>=4.2",
+]
+docs = ["mkdocs>=1.6,<2", "mkdocs-material>=9.6"]
+
+[tool.hatch.version]
+path = "src/cue_notify/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cue_notify"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/cue_notify", "tests", "README.md", "LICENSE", "CHANGELOG.md"]
+
+# --------------------------------------------------------------------------- ruff
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+  "E", "W",   # pycodestyle
+  "F",        # pyflakes
+  "I",        # isort
+  "B",        # bugbear
+  "UP",       # pyupgrade
+  "SIM",      # simplify
+  "C4",       # comprehensions
+  "RUF",      # ruff-specific
+  "ASYNC",    # async pitfalls
+  "S",        # bandit (security)
+  "PT",       # pytest style
+  "PTH",      # pathlib
+  "TC",       # type-checking imports
+  "DTZ",      # timezone-aware datetimes
+  "LOG", "G", # logging
+  "N",        # naming
+  "ERA",      # commented-out code
+]
+ignore = [
+  "S101",   # assert is fine in tests and for type narrowing
+  "TC001", "TC002", "TC003", # FastAPI/Pydantic resolve annotations at runtime
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "S311", "PT018", "DTZ001"]
+"src/cue_notify/db/migrations/**" = ["N999"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header", "fastapi.Security"]
+
+# --------------------------------------------------------------------------- pyright
+
+[tool.pyright]
+include = ["src"]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
+reportUnknownArgumentType = false
+reportUnknownVariableType = false
+
+# --------------------------------------------------------------------------- pytest
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+filterwarnings = ["error::DeprecationWarning:cue.*"]
+markers = ["postgres: requires a PostgreSQL database (CUE_TEST_DATABASE_URL)"]
+
+[tool.coverage.run]
+source = ["cue"]
+branch = true
+# SQLAlchemy's asyncio layer runs ORM code inside greenlets.
+concurrency = ["greenlet", "thread"]
+omit = ["src/cue_notify/db/migrations/env.py"]
+
+[tool.coverage.report]
+skip_covered = true
+show_missing = true
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError", "\\.\\.\\."]
