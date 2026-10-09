@@ -1,0 +1,59 @@
+# Local stack: PostgreSQL, migrations, API and worker.
+#   docker compose up --build
+#   docker compose exec api cuectl keys create admin
+name: cue
+
+x-cue: &cue
+  build: .
+  image: ghcr.io/murtazox04/cue:local
+  environment:
+    CUE_DATABASE__URL: postgresql+asyncpg://cue:cue@postgres:5432/cue
+    CUE_LOG_FORMAT: console
+    # A channel that logs instead of sending — swap for fcm/twilio/smtp/telegram.
+    CUE_CHANNELS__PUSH__PROVIDER: console
+    CUE_CHANNELS__SMS__PROVIDER: console
+  env_file:
+    - path: .env
+      required: false
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: cue
+      POSTGRES_PASSWORD: cue
+      POSTGRES_DB: cue
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cue -d cue"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    <<: *cue
+    command: ["db", "upgrade"]
+    restart: "no"
+
+  api:
+    <<: *cue
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *cue
+    command: ["worker"]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres:
