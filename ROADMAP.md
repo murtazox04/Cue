@@ -21,7 +21,7 @@ for a change in priorities.
 - [ ] Python and TypeScript SDKs: event helpers and webhook signature verification
 - [ ] Deploy kits: Helm chart, Railway and Render templates
 - [ ] Django and FastAPI integration packages
-- [ ] Published benchmark: events decided per second on a single PostgreSQL
+- [x] Benchmark tool and performance guide
 
 ## 0.2: Compliance (Dec 2026–Jan 2027)
 

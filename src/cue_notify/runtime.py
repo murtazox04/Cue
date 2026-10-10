@@ -40,7 +40,9 @@ class Runtime:
 
         ``channels`` and ``generator`` override configuration (tests, embedding).
         """
-        engine = create_engine(settings.database)
+        # Each running job holds a connection; a smaller pool would open and close
+        # connections constantly under load.
+        engine = create_engine(settings.database, default_pool_size=settings.worker.concurrency + 4)
         client = http or httpx.AsyncClient(
             timeout=httpx.Timeout(15.0, connect=5.0),
             headers={"User-Agent": f"cue/{__version__}"},

@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- A throughput benchmark (`benchmarks/throughput.py`) and a performance guide.
+
+### Fixed
+- The database pool now defaults to the worker's concurrency plus 4 connections. With
+  the old fixed default of 10, a busy worker opened and closed connections constantly;
+  end-to-end throughput roughly doubled with four workers.
+
 ### Security
 - Agent keys can no longer review messages (also not another agent's), hold the
   `admin` scope, change people's preferences or rotate preference tokens.

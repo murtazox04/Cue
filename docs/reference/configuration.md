@@ -24,7 +24,7 @@ Run `cuectl check` to validate a configuration.
 | Key | Default | |
 |---|---|---|
 | `url` | `sqlite+aiosqlite:///./cue.db` | Use `postgresql+asyncpg://user:pass@host/db` in production. |
-| `pool_size` / `max_overflow` | `10` / `10` | Per process (PostgreSQL). |
+| `pool_size` / `max_overflow` | worker concurrency + 4 / `10` | Per process (PostgreSQL). |
 | `echo` | `false` | Log SQL. |
 
 ## `api`

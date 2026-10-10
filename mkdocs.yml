@@ -48,6 +48,7 @@ nav:
       - AI personalisation: concepts/ai.md
   - Guides:
       - Deployment: guides/deployment.md
+      - Performance: guides/performance.md
       - Custom channels: guides/custom-channels.md
       - AI agents (MCP): guides/ai-agents.md
   - Reference:

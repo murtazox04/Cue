@@ -17,7 +17,7 @@ from cue_notify.settings import DatabaseSettings
 type SessionFactory = async_sessionmaker[AsyncSession]
 
 
-def create_engine(settings: DatabaseSettings) -> AsyncEngine:
+def create_engine(settings: DatabaseSettings, *, default_pool_size: int = 10) -> AsyncEngine:
     if settings.is_sqlite:
         engine = create_async_engine(settings.url, echo=settings.echo)
 
@@ -42,7 +42,7 @@ def create_engine(settings: DatabaseSettings) -> AsyncEngine:
     return create_async_engine(
         settings.url,
         echo=settings.echo,
-        pool_size=settings.pool_size,
+        pool_size=settings.pool_size or default_pool_size,
         max_overflow=settings.max_overflow,
         pool_pre_ping=True,
     )

@@ -39,7 +39,14 @@ class DatabaseSettings(BaseModel):
         default="sqlite+aiosqlite:///./cue.db",
         description="SQLAlchemy async URL. Use postgresql+asyncpg://… in production.",
     )
-    pool_size: int = Field(default=10, ge=1)
+    pool_size: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Connections kept open per process. Default: the worker's concurrency plus 4, so "
+            "busy workers never churn connections."
+        ),
+    )
     max_overflow: int = Field(default=10, ge=0)
     echo: bool = False
 
