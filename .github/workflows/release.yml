@@ -86,10 +86,16 @@ jobs:
           test -s notes.md
       - env:
           GH_TOKEN: ${{ github.token }}
-        # The release may already exist when it was drafted on GitHub to create the tag.
+        # The release may already exist when it was drafted on GitHub to create the tag:
+        # keep what was written there and add the changelog below it.
         run: |
           if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
-            gh release edit "$GITHUB_REF_NAME" --title "Cue $GITHUB_REF_NAME" --notes-file notes.md
+            intro=$(gh release view "$GITHUB_REF_NAME" --json body -q .body)
+            if [ -n "$intro" ]; then
+              { printf '%s\n\n## Changelog\n' "$intro"; cat notes.md; } > full.md
+              mv full.md notes.md
+            fi
+            gh release edit "$GITHUB_REF_NAME" --notes-file notes.md
           else
             gh release create "$GITHUB_REF_NAME" --title "Cue $GITHUB_REF_NAME" --notes-file notes.md
           fi
