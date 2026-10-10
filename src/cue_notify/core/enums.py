@@ -114,6 +114,7 @@ class SuppressionReason(StrEnum):
     TEMPLATE_ERROR = "template_error"
     EXPIRED = "expired"
     AGENT_BUDGET = "agent_budget"
+    FATIGUE = "fatigue"
 
 
 class Scope(StrEnum):

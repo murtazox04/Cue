@@ -19,7 +19,7 @@ from cue_notify import queue
 from cue_notify.core import logic, policy
 from cue_notify.core.content import DEFAULT_VARIANT, LocalizedTemplate
 from cue_notify.core.enums import COUNTED_STATUSES, Importance, MessageStatus, SuppressionReason
-from cue_notify.core.policy import FrequencyCap
+from cue_notify.core.policy import Fatigue, FrequencyCap
 from cue_notify.core.templating import RenderError
 from cue_notify.core.time import utcnow
 from cue_notify.db.models import Agent, Category, Event, Message, Recipient, Rule, Template
@@ -135,6 +135,34 @@ async def _count_recent(
     return int(await session.scalar(stmt) or 0)
 
 
+async def _fatigued(
+    session: AsyncSession,
+    recipient: Recipient,
+    category: Category,
+    fatigue: Fatigue,
+    send_at: datetime,
+) -> bool:
+    """Whether the person ignored the last ``fatigue.after`` messages of this category and
+    the latest of them is still within the pause."""
+    recent = (
+        await session.execute(
+            select(Message.send_at, Message.opened_at, Message.clicked_at, Message.converted_at)
+            .where(
+                Message.recipient_id == recipient.id,
+                Message.category_key == category.key,
+                Message.status.in_((MessageStatus.SENT, MessageStatus.DELIVERED)),
+            )
+            .order_by(Message.send_at.desc())
+            .limit(fatigue.after)
+        )
+    ).all()
+    if len(recent) < fatigue.after:
+        return False
+    if any(opened or clicked or converted for _, opened, clicked, converted in recent):
+        return False
+    return send_at - recent[0].send_at < fatigue.pause
+
+
 async def _agent_budget_exceeded(
     session: AsyncSession, agent: Agent, recipient: Recipient, send_at: datetime
 ) -> str | None:
@@ -221,6 +249,11 @@ async def decide(session: AsyncSession, runtime: Runtime, intent: Intent) -> Dec
                 f"{SuppressionReason.FREQUENCY_CAP}: {cap.limit} per {cap.period}",
                 send_at=send_at,
             )
+
+    if category.fatigue is not None and importance.rank <= Importance.NORMAL.rank:
+        fatigue = Fatigue.model_validate(category.fatigue)
+        if await _fatigued(session, recipient, category, fatigue, send_at):
+            return Decision(MessageStatus.SUPPRESSED, SuppressionReason.FATIGUE, send_at=send_at)
 
     if intent.agent is not None:
         exceeded = await _agent_budget_exceeded(session, intent.agent, recipient, send_at)

@@ -129,6 +129,7 @@ class Category(TimestampMixin, Base):
     frequency_caps: Mapped[list[dict[str, Any]]] = mapped_column(default=list)
     respect_quiet_hours: Mapped[bool] = mapped_column(Boolean, default=True)
     allow_unsubscribe: Mapped[bool] = mapped_column(Boolean, default=True)
+    fatigue: Mapped[dict[str, Any] | None]
 
 
 class Template(IdMixin, TimestampMixin, Base):

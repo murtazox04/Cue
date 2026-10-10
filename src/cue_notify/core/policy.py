@@ -11,7 +11,7 @@ from collections.abc import Iterable, Sequence
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 
 class QuietHours(BaseModel):
@@ -33,6 +33,31 @@ class FrequencyCap(BaseModel):
 
     period: timedelta = Field(description="Rolling window, e.g. 'P1D' or 86400.")
     limit: int = Field(ge=0)
+
+
+class Fatigue(BaseModel):
+    """Back off from people who stopped paying attention.
+
+    After ``after`` messages in a row that the person did not open, click or act on, Cue
+    pauses this category's ``low`` and ``normal`` messages to them for ``pause``. Then one
+    message gets through; any engagement ends the pause. ``high`` and ``critical``
+    messages are never paused.
+
+    Needs engagement reporting (``opened``/``clicked``), otherwise every message looks
+    ignored.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    after: int = Field(ge=2, le=50, description="Unengaged messages in a row.")
+    pause: timedelta = Field(description="How long to hold back, e.g. 'P7D'.")
+
+    @field_validator("pause")
+    @classmethod
+    def _sensible_pause(cls, value: timedelta) -> timedelta:
+        if not timedelta(hours=1) <= value <= timedelta(days=90):
+            raise ValueError("pause must be between 1 hour and 90 days")
+        return value
 
 
 def zone(name: str | None, default: str) -> ZoneInfo:

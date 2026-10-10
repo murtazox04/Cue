@@ -28,7 +28,7 @@ from cue_notify.core.enums import (
     PreferenceSource,
     Scope,
 )
-from cue_notify.core.policy import FrequencyCap, RecipientPreferences
+from cue_notify.core.policy import Fatigue, FrequencyCap, RecipientPreferences
 from cue_notify.services.broadcasts import Audience
 from cue_notify.services.recipients import AddressIn, RecipientIn
 
@@ -126,6 +126,11 @@ class CategoryFields(BaseModel):
     )
     respect_quiet_hours: bool = True
     allow_unsubscribe: bool = True
+    fatigue: Fatigue | None = Field(
+        default=None,
+        description="Pause low and normal messages to people who ignore this category.",
+        examples=[{"after": 5, "pause": "P7D"}],
+    )
 
 
 class CategoryIn(CategoryFields):
@@ -137,6 +142,7 @@ class CategoryUpdate(BaseModel):
     frequency_caps: list[FrequencyCap] | None = None
     respect_quiet_hours: bool | None = None
     allow_unsubscribe: bool | None = None
+    fatigue: Fatigue | None = Field(default=None, description="Set to null to turn off.")
 
 
 class CategoryOut(Model, CategoryFields):

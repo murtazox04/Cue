@@ -55,7 +55,8 @@ Your delivery endpoint then receives a signed, fully rendered message:
 
 - **Whether** — rules with JSON Logic conditions, priorities, wildcards, deterministic
   rollouts and a dry-run endpoint; unsubscribes, frequency caps, cooldowns and
-  deduplication applied to every message.
+  deduplication applied to every message; fatigue that backs off from people who stopped
+  paying attention.
 - **What** — localised, sandboxed Jinja2 templates with per-route variants (a short SMS,
   a rich e-mail), versioning and previews; optional AI rewording through any
   [Pydantic AI](https://ai.pydantic.dev) model, with guardrails that keep numbers and

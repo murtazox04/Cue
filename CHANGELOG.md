@@ -34,6 +34,8 @@ First public release of Cue, a self-hosted notification decision engine.
   `pending_approval` until approved or rejected (`/v1/messages/{id}/approve`,
   `/reject`, MCP `review_message`), with the reviewer recorded. API keys can be bound
   to an agent (`--agent`).
+- Fatigue: a category can pause low and normal messages to people who ignored its
+  last N messages, probe again after the pause, and resume on any engagement.
 - Categories carrying delivery policy: rolling frequency caps, quiet hours and
   unsubscribe rules. `transactional` and `marketing` are created by default.
 - Localised Jinja2 templates (sandboxed, strict) with per-channel overrides, versioning
