@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cue_notify import queue
 from cue_notify.core import policy
 from cue_notify.core.content import DEFAULT_VARIANT, LocalizedTemplate
-from cue_notify.core.enums import COUNTED_STATUSES, MessageStatus, SuppressionReason
+from cue_notify.core.enums import COUNTED_STATUSES, Importance, MessageStatus, SuppressionReason
 from cue_notify.core.policy import FrequencyCap
 from cue_notify.core.templating import RenderError
 from cue_notify.core.time import utcnow
@@ -49,6 +49,8 @@ class Intent:
     """Ask the AI layer to reword even if the template has no ``ai_instructions``."""
     ai_context: dict[str, Any] | None = None
     """Extra, explicitly allowed data the AI may see (e.g. grouped digest items)."""
+    importance: Importance = Importance.NORMAL
+    expires_at: datetime | None = None
 
 
 @dataclass(slots=True)
@@ -62,6 +64,21 @@ class Decision:
     existing: Message | None = None
 
 
+def expiry(rule: Rule) -> datetime | None:
+    """When a message from ``rule`` composed now stops being worth delivering."""
+    if rule.expires_after_seconds is None:
+        return None
+    return utcnow() + timedelta(seconds=rule.expires_after_seconds)
+
+
+def effective_importance(intent: Intent) -> Importance:
+    """``critical`` is honoured only in categories people cannot unsubscribe from, so a
+    marketing sender cannot use it to break through quiet hours and caps."""
+    if intent.importance is Importance.CRITICAL and intent.category.allow_unsubscribe:
+        return Importance.HIGH
+    return intent.importance
+
+
 def template_context(intent: Intent, settings: Settings) -> dict[str, Any]:
     event = intent.event
     return {
@@ -73,6 +90,7 @@ def template_context(intent: Intent, settings: Settings) -> dict[str, Any]:
             else None
         ),
         "category": intent.category.key,
+        "importance": effective_importance(intent).value,
         "links": preferences.template_links(settings, intent.recipient, intent.category),
     }
 
@@ -114,8 +132,10 @@ async def decide(session: AsyncSession, runtime: Runtime, intent: Intent) -> Dec
     if not channels:
         return Decision(MessageStatus.SUPPRESSED, SuppressionReason.NO_REACHABLE_CHANNEL)
 
+    importance = effective_importance(intent)
+    breaks_through = importance is Importance.CRITICAL
     send_at = intent.send_at or (utcnow() + intent.delay)
-    if category.respect_quiet_hours:
+    if category.respect_quiet_hours and not breaks_through:
         window = prefs.quiet_hours if prefs.quiet_hours is not None else defaults.quiet_hours
         tz = policy.zone(recipient.timezone, defaults.default_timezone)
         send_at = policy.defer_past_quiet_hours(send_at, tz, window)
@@ -130,7 +150,10 @@ async def decide(session: AsyncSession, runtime: Runtime, intent: Intent) -> Dec
         if recent:
             return Decision(MessageStatus.SUPPRESSED, SuppressionReason.COOLDOWN, send_at=send_at)
 
-    for raw_cap in category.frequency_caps:
+    if intent.expires_at is not None and send_at >= intent.expires_at:
+        return Decision(MessageStatus.SUPPRESSED, SuppressionReason.EXPIRED, send_at=send_at)
+
+    for raw_cap in [] if breaks_through else category.frequency_caps:
         cap = FrequencyCap.model_validate(raw_cap)
         recent = await _count_recent(
             session,
@@ -164,7 +187,11 @@ async def decide(session: AsyncSession, runtime: Runtime, intent: Intent) -> Dec
         if name == DEFAULT_VARIANT or name in channels
     }
     return Decision(
-        MessageStatus.QUEUED, send_at=send_at, channels=channels, locale=locale, variants=variants
+        MessageStatus.QUEUED,
+        send_at=send_at,
+        channels=channels,
+        locale=locale,
+        variants=variants,
     )
 
 
@@ -197,7 +224,9 @@ async def compose(session: AsyncSession, runtime: Runtime, intent: Intent) -> tu
         status=decision.status,
         status_reason=decision.reason,
         dedup_key=intent.dedup_key,
+        importance=effective_importance(intent),
         send_at=decision.send_at or utcnow(),
+        expires_at=intent.expires_at,
     )
     session.add(message)
     await session.flush()

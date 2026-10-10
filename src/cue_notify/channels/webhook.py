@@ -109,6 +109,8 @@ class WebhookChannel(Channel[WebhookConfig]):
             "channel": self.name,
             "address": delivery.address,
             "locale": delivery.locale,
+            "importance": delivery.importance.value,
+            "expires_at": delivery.expires_at.isoformat() if delivery.expires_at else None,
             "content": delivery.content.model_dump(exclude_none=True),
             "metadata": delivery.metadata,
             "links": delivery.links,

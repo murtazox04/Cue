@@ -63,7 +63,8 @@ Your delivery endpoint then receives a signed, fully rendered message:
 - **How often** — digests that turn a burst of events into one message per window
   ("Ann, Bo and 10 others commented"), optionally summarised by AI, plus thread ids so
   phones and mail clients stack related messages.
-- **When** — delays, quiet hours in each recipient's time zone, scheduled broadcasts.
+- **When** — delays, quiet hours in each recipient's time zone, scheduled broadcasts,
+  expiry for messages that go stale, and importance levels phones understand.
 - **Who decides** — the person: a hosted preference page (or a JSON API for your own),
   RFC 8058 one-click unsubscribe for Gmail and Yahoo, and a consent ledger of every
   change.

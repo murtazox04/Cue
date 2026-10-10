@@ -177,6 +177,8 @@ async def flush(ctx: queue.JobContext) -> None:
                 cooldown=cooldown,
                 dedup_key=f"digest:{digest.id}",
                 personalize=policy.summarize,
+                importance=rule.importance,
+                expires_at=composer.expiry(rule),
                 ai_context=_ai_context(policy, digest),
             ),
         )

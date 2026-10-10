@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from html import escape
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import httpx
 from pydantic import Field, SecretStr
@@ -17,6 +17,7 @@ from cue_notify.channels.base import (
     Receipt,
     transport_error,
 )
+from cue_notify.core.enums import Importance
 
 API = "https://api.telegram.org"
 
@@ -43,13 +44,17 @@ class TelegramChannel(Channel[TelegramConfig]):
     async def send(self, delivery: Delivery) -> Receipt:
         content = delivery.content
         token = self.config.bot_token.get_secret_value()
-        payload = {
+        payload: dict[str, Any] = {
             "chat_id": delivery.address,
             "text": format_message(content.title, content.body, content.url),
             "parse_mode": "HTML",
-            "disable_notification": self.config.disable_notification,
+            "disable_notification": self.config.disable_notification
+            or delivery.importance is Importance.LOW,
             "link_preview_options": {"is_disabled": not self.config.link_preview},
         }
+        buttons = [{"text": a.label, "url": a.url} for a in content.actions if a.url]
+        if buttons:
+            payload["reply_markup"] = {"inline_keyboard": [[button] for button in buttons]}
         try:
             response = await self.http.post(
                 f"{self.config.api_url}/bot{token}/sendMessage", json=payload

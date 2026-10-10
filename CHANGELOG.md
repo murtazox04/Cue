@@ -23,6 +23,12 @@ First public release of Cue, a self-hosted notification decision engine.
   one-click unsubscribe with `List-Unsubscribe` headers from the SMTP connector and
   `links` in webhook payloads, template `links`, token rotation, and a consent ledger
   (`/v1/recipients/{id}/preferences/history`). Configure with `api.public_url`.
+- Importance (`low`, `normal`, `high`, `critical`) mapped to iOS interruption levels,
+  Android priority, silent Telegram messages and e-mail headers; `critical` breaks
+  through quiet hours and caps only in categories people cannot leave.
+- Expiry: `expires_at` on sends and `expires_after_seconds` on rules; stale messages are
+  dropped and push TTLs shortened to match.
+- Template actions (buttons) for push, Telegram, e-mail and webhooks.
 - Categories carrying delivery policy: rolling frequency caps, quiet hours and
   unsubscribe rules. `transactional` and `marketing` are created by default.
 - Localised Jinja2 templates (sandboxed, strict) with per-channel overrides, versioning

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable
+from datetime import timedelta
 from typing import Any, Literal
 
 import httpx
@@ -21,6 +22,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
 from cue_notify import __version__
+from cue_notify.core.time import utcnow
 
 INSTRUCTIONS = """\
 Cue decides and prepares notifications for people identified by an external id and
@@ -97,10 +99,15 @@ def create_server(client: httpx.AsyncClient) -> MCPServer:
         channels: list[str],
         data: dict[str, Any] | None = None,
         category: str = "transactional",
+        importance: Literal["low", "normal", "high", "critical"] = "normal",
+        expires_in_minutes: int | None = None,
         idempotency_key: str | None = None,
     ) -> Any:
         """Send a template directly to one recipient over the given channels (fallback order).
 
+        Choose `importance` honestly: `low` never interrupts, `high` is time-sensitive and
+        `critical` (security or safety only) may break through quiet hours. Set
+        `expires_in_minutes` when the message is useless later (codes, arrivals).
         Returns the message, whose `status` may be `queued` or `suppressed`.
         """
         body: dict[str, Any] = {
@@ -109,7 +116,10 @@ def create_server(client: httpx.AsyncClient) -> MCPServer:
             "channels": channels,
             "data": data or {},
             "category": category,
+            "importance": importance,
         }
+        if expires_in_minutes is not None:
+            body["expires_at"] = (utcnow() + timedelta(minutes=expires_in_minutes)).isoformat()
         if idempotency_key:
             body["idempotency_key"] = idempotency_key
         return _result(await client.post("/v1/messages", json=body))

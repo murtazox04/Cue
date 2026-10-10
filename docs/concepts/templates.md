@@ -36,6 +36,7 @@ A template holds the content of a message in one or more locales.
 | `thread` | Groups related messages on the device: APNs `thread-id`, FCM `data.thread`, an e-mail `References` header, forwarded by webhooks. See [digests](digests.md). |
 | `html` | E-mail HTML part (auto-escaped). |
 | `data` | Push data payload / webhook payload. Values are templates too. |
+| `actions` | Up to four buttons (`id`, `label`, `url`); see [importance and expiry](importance.md#actions). |
 | `channels` | Per-channel overrides. Unset fields inherit from the locale's base content. |
 
 ## Variables
@@ -46,6 +47,7 @@ A template holds the content of a message in one or more locales.
 | `recipient` | `external_id`, `locale`, `timezone`, `attributes`. |
 | `event` | `name`, `source`, `occurred_at` — `null` for direct sends and broadcasts. |
 | `category` | The message category key. |
+| `importance` | `low`, `normal`, `high` or `critical`. |
 | `links` | `preferences` and `unsubscribe` URLs and the preference `token` — see [preference centre](preferences.md). |
 
 Filters: everything [Jinja2 provides](https://jinja.palletsprojects.com/en/stable/templates/#list-of-builtin-filters)

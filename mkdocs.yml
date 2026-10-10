@@ -38,6 +38,7 @@ nav:
       - Events and rules: concepts/events-and-rules.md
       - Templates: concepts/templates.md
       - Delivery policy: concepts/policy.md
+      - Importance and expiry: concepts/importance.md
       - Digests: concepts/digests.md
       - Preference centre: concepts/preferences.md
       - Channels: concepts/channels.md

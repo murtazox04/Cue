@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -19,7 +20,8 @@ from cue_notify.channels.smtp import SmtpChannel, SmtpConfig
 from cue_notify.channels.telegram import TelegramChannel, TelegramConfig, format_message
 from cue_notify.channels.twilio import TwilioChannel, TwilioConfig
 from cue_notify.channels.webhook import SIGNATURE_HEADER, WebhookChannel, WebhookConfig
-from cue_notify.core.content import Content
+from cue_notify.core.content import Action, Content
+from cue_notify.core.enums import Importance
 from cue_notify.settings import ChannelSpec
 
 type Handler = Any
@@ -243,7 +245,11 @@ async def test_fcm_authenticates_builds_message_and_classifies(service_account: 
             "body": "Body",
             "image": "https://i.test/a.png",
         }
-        assert message["data"] == {"cue_message_id": "m1", "url": "app://home"}
+        assert message["data"] == {
+            "cue_message_id": "m1",
+            "url": "app://home",
+            "importance": "normal",
+        }
         assert message["android"]["priority"] == "HIGH"
         return httpx.Response(200, json={"name": "projects/demo/messages/1"})
 
@@ -343,3 +349,107 @@ async def test_registry_builds_configured_channels_and_reports_errors() -> None:
             ChannelRegistry.from_settings({"x": ChannelSpec(provider="carrier-pigeon")}, http)
         with pytest.raises(ChannelConfigError, match="bot_token"):
             ChannelRegistry.from_settings({"tg": ChannelSpec(provider="telegram")}, http)
+
+
+# --------------------------------------------------------------------------- structured messages
+
+
+def _rich(
+    address: str = "addr", importance: Importance = Importance.NORMAL, **extra: Any
+) -> Delivery:
+    return Delivery(
+        message_id=uuid4(),
+        address=address,
+        content=Content(
+            title="Hi",
+            body="Body",
+            actions=[
+                Action(id="open", label="Open", url="https://x.test/o"),
+                Action(id="no", label="No"),
+            ],
+        ),
+        importance=importance,
+        **extra,
+    )
+
+
+async def test_fcm_maps_importance_expiry_and_actions(service_account: str) -> None:
+    config = FcmConfig(
+        credentials_json=service_account, android_priority="normal", ttl_seconds=3600
+    )
+    async with _client(lambda _: httpx.Response(200)) as http:
+        channel = FcmChannel("push", config, http)
+        levels = {
+            importance: channel.build(_rich(importance=importance))["message"]
+            for importance in Importance
+        }
+        soon = channel.build(_rich(expires_at=datetime.now(UTC) + timedelta(minutes=10)))["message"]
+    aps = {i: m["apns"]["payload"]["aps"] for i, m in levels.items()}
+    assert {i: a["interruption-level"] for i, a in aps.items()} == {
+        Importance.LOW: "passive",
+        Importance.NORMAL: "active",
+        Importance.HIGH: "time-sensitive",
+        Importance.CRITICAL: "time-sensitive",
+    }
+    assert "sound" not in aps[Importance.LOW]
+    assert {i: m["android"]["priority"] for i, m in levels.items()} == {
+        Importance.LOW: "NORMAL",
+        Importance.NORMAL: "NORMAL",
+        Importance.HIGH: "HIGH",
+        Importance.CRITICAL: "HIGH",
+    }
+    assert json.loads(levels[Importance.NORMAL]["data"]["actions"]) == [
+        {"id": "open", "label": "Open", "url": "https://x.test/o"},
+        {"id": "no", "label": "No"},
+    ]
+    assert levels[Importance.NORMAL]["android"]["ttl"] == "3600s"
+    assert 590 <= int(soon["android"]["ttl"].removesuffix("s")) <= 600  # shortened to expiry
+    assert "apns-expiration" in soon["apns"]["headers"]
+
+
+async def test_telegram_low_importance_is_silent_and_actions_become_buttons() -> None:
+    payloads: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payloads.append(json.loads(request.content))
+        return httpx.Response(200, json={"ok": True, "result": {"message_id": 1}})
+
+    config = TelegramConfig.model_validate({"bot_token": "t"})
+    async with _client(handler) as http:
+        channel = TelegramChannel("tg", config, http)
+        await channel.send(_rich("1", Importance.LOW))
+        await channel.send(_rich("1", Importance.HIGH))
+    low, high = payloads
+    assert low["disable_notification"] is True
+    assert high["disable_notification"] is False
+    assert high["reply_markup"] == {
+        "inline_keyboard": [[{"text": "Open", "url": "https://x.test/o"}]]
+    }
+
+
+def test_smtp_marks_importance_and_lists_action_links() -> None:
+    config = SmtpConfig(host="smtp.test", from_address="noreply@x.test")
+    channel = SmtpChannel("email", config, httpx.AsyncClient())
+    high = channel.build(_rich("ann@x.test", Importance.HIGH))
+    assert high["Importance"] == "high"
+    assert "Open: https://x.test/o" in high.get_content()
+    assert channel.build(_rich("ann@x.test"))["Importance"] is None
+
+
+async def test_webhook_payload_carries_importance_and_expiry() -> None:
+    bodies: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        bodies.append(json.loads(request.content))
+        return httpx.Response(200)
+
+    expires = datetime(2030, 1, 1, tzinfo=UTC)
+    config = WebhookConfig.model_validate({"url": "https://hooks.test/in"})
+    async with _client(handler) as http:
+        await WebhookChannel("hook", config, http).send(
+            _rich(importance=Importance.HIGH, expires_at=expires)
+        )
+    [body] = bodies
+    assert body["importance"] == "high"
+    assert body["expires_at"] == "2030-01-01T00:00:00+00:00"
+    assert body["content"]["actions"][0]["id"] == "open"

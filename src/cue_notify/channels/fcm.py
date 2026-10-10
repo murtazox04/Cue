@@ -26,8 +26,18 @@ from cue_notify.channels.base import (
     flatten_data,
     transport_error,
 )
+from cue_notify.core.enums import Importance
+from cue_notify.core.time import utcnow
 
 SCOPE = "https://www.googleapis.com/auth/firebase.messaging"
+# iOS 15+ interruption levels. "critical" needs an Apple entitlement and a critical sound,
+# so Cue's critical maps to time-sensitive, which still breaks through Focus modes.
+INTERRUPTION_LEVELS = {
+    Importance.LOW: "passive",
+    Importance.NORMAL: "active",
+    Importance.HIGH: "time-sensitive",
+    Importance.CRITICAL: "time-sensitive",
+}
 SEND_URL = "https://fcm.googleapis.com/v1/projects/{project}/messages:send"
 
 
@@ -141,9 +151,15 @@ class FcmChannel(Channel[FcmConfig]):
             data.setdefault("url", content.url)
         if content.thread:
             data.setdefault("thread", content.thread)  # Android apps group by this key
-        android: dict[str, Any] = {"priority": self.config.android_priority.upper()}
-        if self.config.ttl_seconds is not None:
-            android["ttl"] = f"{self.config.ttl_seconds}s"
+        if content.actions:
+            data.setdefault(
+                "actions", json.dumps([a.model_dump(exclude_none=True) for a in content.actions])
+            )
+        data.setdefault("importance", delivery.importance.value)
+        android: dict[str, Any] = {"priority": self._android_priority(delivery.importance)}
+        ttl = self._ttl(delivery)
+        if ttl is not None:
+            android["ttl"] = f"{ttl}s"
         if self.config.sound:
             android["notification"] = {"sound": self.config.sound}
         message: dict[str, Any] = {
@@ -152,14 +168,32 @@ class FcmChannel(Channel[FcmConfig]):
             "data": data,
             "android": android,
         }
-        aps: dict[str, Any] = {}
-        if self.config.sound:
+        aps: dict[str, Any] = {"interruption-level": INTERRUPTION_LEVELS[delivery.importance]}
+        if self.config.sound and delivery.importance is not Importance.LOW:
             aps["sound"] = self.config.sound
         if content.thread:
             aps["thread-id"] = content.thread  # iOS stacks notifications by thread
-        if aps:
-            message["apns"] = {"payload": {"aps": aps}}
+        apns: dict[str, Any] = {"payload": {"aps": aps}}
+        if delivery.expires_at is not None:
+            apns["headers"] = {"apns-expiration": str(int(delivery.expires_at.timestamp()))}
+        message["apns"] = apns
         return {"message": message}
+
+    def _android_priority(self, importance: Importance) -> str:
+        if importance in (Importance.HIGH, Importance.CRITICAL):
+            return "HIGH"
+        if importance is Importance.LOW:
+            return "NORMAL"
+        return self.config.android_priority.upper()
+
+    def _ttl(self, delivery: Delivery) -> int | None:
+        """Seconds the push service should keep trying: the configured TTL, shortened to
+        the message's expiry so a stale message is never shown."""
+        ttl = self.config.ttl_seconds
+        if delivery.expires_at is not None:
+            remaining = max(int((delivery.expires_at - utcnow()).total_seconds()), 0)
+            ttl = remaining if ttl is None else min(ttl, remaining)
+        return ttl
 
     async def _post(self, url: str, payload: dict[str, Any]) -> httpx.Response:
         headers = {"Authorization": f"Bearer {await self._token.get()}"}

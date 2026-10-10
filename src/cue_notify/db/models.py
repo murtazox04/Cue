@@ -28,6 +28,7 @@ from cue_notify.core.enums import (
     BroadcastStatus,
     DigestStatus,
     EventStatus,
+    Importance,
     MessageStatus,
     PreferenceSource,
 )
@@ -140,6 +141,8 @@ class Rule(IdMixin, TimestampMixin, Base):
     cooldown_seconds: Mapped[int | None] = mapped_column(Integer)
     rollout_percent: Mapped[float] = mapped_column(Float, default=100.0)
     digest: Mapped[dict[str, Any] | None]
+    importance: Mapped[Importance] = mapped_column(enum_type(Importance), default=Importance.NORMAL)
+    expires_after_seconds: Mapped[int | None] = mapped_column(Integer)
 
 
 class Event(IdMixin, Base):
@@ -184,6 +187,7 @@ class Message(IdMixin, TimestampMixin, Base):
     channel: Mapped[str | None] = mapped_column(String(64))
     locale: Mapped[str | None] = mapped_column(String(35))
     content: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    importance: Mapped[Importance] = mapped_column(enum_type(Importance), default=Importance.NORMAL)
     personalize: Mapped[bool] = mapped_column(Boolean, default=False)
     ai_context: Mapped[dict[str, Any] | None]
     generated_by: Mapped[str] = mapped_column(String(128), default="template")
@@ -197,6 +201,8 @@ class Message(IdMixin, TimestampMixin, Base):
     tracking_token: Mapped[str] = mapped_column(String(64), unique=True, default=token)
 
     send_at: Mapped[datetime]
+    expires_at: Mapped[datetime | None]
+    """Not worth delivering after this (a one-time code, "your driver is here")."""
     sent_at: Mapped[datetime | None]
     delivered_at: Mapped[datetime | None]
     opened_at: Mapped[datetime | None]

@@ -63,6 +63,8 @@ A rule connects an event to a template:
 | `stop_processing` | When this rule matches, lower-priority rules are skipped (default `true`). Set `false` to let several rules fire for one event. |
 | `delay_seconds` | Wait before sending (e.g. "remind me in an hour"). |
 | `cooldown_seconds` | At most one message from this rule per recipient per window. |
+| `importance` | `low`, `normal` (default), `high` or `critical` — see [importance and expiry](importance.md). |
+| `expires_after_seconds` | Drop the message if it cannot be delivered within this time. |
 | `digest` | Group matching events into one message per window instead of one per event — see [digests](digests.md). |
 | `rollout_percent` | Deterministic percentage rollout; the same recipient always gets the same answer, and raising the percentage only adds people. |
 | `enabled` | Disable without deleting. |

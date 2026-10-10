@@ -61,6 +61,8 @@ async def send_message(
         channels=catalog.channels(runtime, body.channels),
         data=body.data,
         send_at=ensure_utc(body.send_at) if body.send_at else None,
+        importance=body.importance,
+        expires_at=ensure_utc(body.expires_at) if body.expires_at else None,
         dedup_key=f"api:{key.id}:{body.idempotency_key}" if body.idempotency_key else None,
     )
     message, created = await composer.compose(session, runtime, intent)

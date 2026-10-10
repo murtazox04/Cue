@@ -22,6 +22,7 @@ from cue_notify.core.enums import (
     BroadcastStatus,
     DigestStatus,
     EventStatus,
+    Importance,
     MessageStatus,
     PreferenceSource,
     Scope,
@@ -244,6 +245,16 @@ class RuleFields(BaseModel):
         default=None, ge=1, description="Minimum gap between this rule's messages to a recipient."
     )
     rollout_percent: float = Field(default=100.0, ge=0, le=100)
+    importance: Importance = Field(
+        default=Importance.NORMAL,
+        description="How much these messages deserve attention; see the docs on importance.",
+    )
+    expires_after_seconds: int | None = Field(
+        default=None,
+        ge=1,
+        le=31_536_000,
+        description="Drop the message if it cannot be delivered within this time.",
+    )
     digest: DigestPolicy | None = Field(
         default=None,
         description="Group matching events into one message per window instead of one each.",
@@ -274,6 +285,8 @@ class RuleUpdate(BaseModel):
     delay_seconds: int | None = Field(default=None, ge=0, le=31_536_000)
     cooldown_seconds: int | None = Field(default=None, ge=1)
     rollout_percent: float | None = Field(default=None, ge=0, le=100)
+    importance: Importance | None = None
+    expires_after_seconds: int | None = Field(default=None, ge=1, le=31_536_000)
     digest: DigestPolicy | None = Field(default=None, description="Set to null to turn off.")
 
     @field_validator("condition")
@@ -297,6 +310,8 @@ class RuleOut(Model):
     delay_seconds: int
     cooldown_seconds: int | None
     rollout_percent: float
+    importance: Importance
+    expires_after_seconds: int | None
     digest: DigestPolicy | None
     created_at: datetime
     updated_at: datetime
@@ -342,6 +357,10 @@ class SendIn(BaseModel):
     channels: list[str] = Field(min_length=1)
     data: dict[str, Any] = Field(default_factory=dict)
     send_at: AwareDatetime | None = None
+    importance: Importance = Importance.NORMAL
+    expires_at: AwareDatetime | None = Field(
+        default=None, description="Drop the message if it is not delivered by then."
+    )
     idempotency_key: str | None = Field(default=None, max_length=200)
 
 
@@ -356,6 +375,7 @@ class MessageOut(Model):
     channel: str | None
     locale: str | None
     content: dict[str, dict[str, Any]]
+    importance: Importance
     generated_by: str
     event_id: UUID | None
     rule_id: UUID | None
@@ -363,6 +383,7 @@ class MessageOut(Model):
     attempts: int
     provider_message_id: str | None
     send_at: datetime
+    expires_at: datetime | None
     sent_at: datetime | None
     delivered_at: datetime | None
     opened_at: datetime | None

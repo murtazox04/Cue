@@ -12,6 +12,25 @@ from cue_notify.core import templating
 DEFAULT_VARIANT = "default"
 
 
+MAX_ACTIONS = 4
+
+
+class Action(BaseModel):
+    """A button or quick action shown with the message (where the channel supports it)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.:-]+$")
+    label: str = Field(min_length=1, max_length=64)
+    url: str | None = Field(default=None, max_length=2048, description="Opened when chosen.")
+
+
+class ActionTemplate(BaseModel):
+    id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.:-]+$")
+    label: str = Field(min_length=1)
+    url: str | None = None
+
+
 class Content(BaseModel):
     """Rendered, channel-agnostic message content.
 
@@ -34,6 +53,7 @@ class Content(BaseModel):
     data: dict[str, str] = Field(
         default_factory=dict, description="Key/value payload delivered alongside (push data)."
     )
+    actions: list[Action] = Field(default_factory=list, max_length=MAX_ACTIONS)
 
 
 class ContentTemplate(BaseModel):
@@ -46,6 +66,11 @@ class ContentTemplate(BaseModel):
     thread: str | None = None
     html: str | None = None
     data: dict[str, str] = Field(default_factory=dict)
+    actions: list[ActionTemplate] = Field(
+        default_factory=list,
+        max_length=MAX_ACTIONS,
+        description="Buttons: `label` and `url` are templates.",
+    )
 
     @model_validator(mode="after")
     def _compiles(self) -> Self:
@@ -61,6 +86,10 @@ class ContentTemplate(BaseModel):
         fields += [("image_url", self.image_url), ("thread", self.thread), ("html", self.html)]
         sources = [(name, value) for name, value in fields if value]
         sources += [(f"data.{key}", value) for key, value in self.data.items()]
+        for action in self.actions:
+            sources.append((f"actions.{action.id}.label", action.label))
+            if action.url:
+                sources.append((f"actions.{action.id}.url", action.url))
         return sources
 
     def render(self, context: Mapping[str, Any]) -> Content:
@@ -75,6 +104,14 @@ class ContentTemplate(BaseModel):
             thread=text(self.thread),
             html=templating.render(self.html, context, html=True) if self.html else None,
             data={key: templating.render(value, context) for key, value in self.data.items()},
+            actions=[
+                Action(
+                    id=action.id,
+                    label=templating.render(action.label, context),
+                    url=text(action.url),
+                )
+                for action in self.actions
+            ],
         )
 
 
@@ -105,6 +142,7 @@ class ContentOverride(BaseModel):
     thread: str | None = None
     html: str | None = None
     data: dict[str, str] | None = None
+    actions: list[ActionTemplate] | None = None
 
 
 LocalizedTemplate.model_rebuild()

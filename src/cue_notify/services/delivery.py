@@ -67,7 +67,14 @@ async def _send_to_addresses(
     }
     deliveries = [
         Delivery(
-            message.id, address, content, locale=message.locale, metadata=metadata, links=links
+            message.id,
+            address,
+            content,
+            locale=message.locale,
+            metadata=metadata,
+            importance=message.importance,
+            expires_at=message.expires_at,
+            links=links,
         )
         for address in addresses
     ]
@@ -199,6 +206,10 @@ async def deliver(ctx: queue.JobContext) -> None:
         ):
             message.status = MessageStatus.SUPPRESSED
             message.status_reason = SuppressionReason.UNSUBSCRIBED
+            return
+        if message.expires_at is not None and message.expires_at <= utcnow():
+            message.status = MessageStatus.SUPPRESSED
+            message.status_reason = SuppressionReason.EXPIRED
             return
         message.status = MessageStatus.SENDING
         message.attempts += 1

@@ -193,6 +193,8 @@ async def evaluate(
             delay=timedelta(seconds=rule.delay_seconds),
             cooldown=timedelta(seconds=rule.cooldown_seconds) if rule.cooldown_seconds else None,
             dedup_key=f"event:{event.id}:{rule.id}",
+            importance=rule.importance,
+            expires_at=composer.expiry(rule),
         )
         if dry_run:
             decision = await composer.decide(session, runtime, intent)

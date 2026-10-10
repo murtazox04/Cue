@@ -35,6 +35,23 @@ COUNTED_STATUSES = (
 )
 
 
+class Importance(StrEnum):
+    """How much a message deserves the person's attention right now.
+
+    Devices map it to their own levels (iOS interruption levels, Android priority) and
+    Cue's policy uses it: only ``critical`` may break through quiet hours and frequency
+    caps, and only in categories people cannot unsubscribe from.
+    """
+
+    LOW = "low"
+    """Informational: deliver quietly, never interrupt."""
+    NORMAL = "normal"
+    HIGH = "high"
+    """Time-sensitive: worth interrupting for, within the person's quiet hours."""
+    CRITICAL = "critical"
+    """Security or safety: may break through quiet hours and caps."""
+
+
 class EngagementType(StrEnum):
     DELIVERED = "delivered"
     OPENED = "opened"
@@ -85,6 +102,7 @@ class SuppressionReason(StrEnum):
     COOLDOWN = "cooldown"
     FREQUENCY_CAP = "frequency_cap"
     TEMPLATE_ERROR = "template_error"
+    EXPIRED = "expired"
 
 
 class Scope(StrEnum):

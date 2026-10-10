@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, ClassVar
 from uuid import UUID
 
@@ -29,6 +30,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict
 
 from cue_notify.core.content import Content
+from cue_notify.core.enums import Importance
 
 
 class ChannelConfig(BaseModel):
@@ -47,6 +49,10 @@ class Delivery:
     locale: str | None = None
     metadata: dict[str, str] = field(default_factory=dict)
     """Cue identifiers (message id, tracking token) for client-side engagement tracking."""
+    importance: Importance = Importance.NORMAL
+    """Map it to the provider's own priority or interruption level."""
+    expires_at: datetime | None = None
+    """Providers that can drop stale messages (push TTL) should be told."""
     links: dict[str, str] = field(default_factory=dict)
     """``preferences`` and, for categories people may leave, ``unsubscribe`` (an RFC 8058
     one-click URL). Present only when ``api.public_url`` is configured."""

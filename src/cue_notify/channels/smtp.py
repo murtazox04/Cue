@@ -20,6 +20,7 @@ from cue_notify.channels.base import (
     InvalidAddressError,
     Receipt,
 )
+from cue_notify.core.enums import Importance
 
 
 class SmtpConfig(ChannelConfig):
@@ -56,8 +57,15 @@ class SmtpChannel(Channel[SmtpConfig]):
             # RFC 2369 + RFC 8058: the one-click unsubscribe Gmail and Yahoo require.
             email["List-Unsubscribe"] = f"<{unsubscribe}>"
             email["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
-        text = f"{content.body}\n\n{content.url}" if content.url else content.body
-        email.set_content(text)
+        if delivery.importance in (Importance.HIGH, Importance.CRITICAL):
+            email["Importance"] = "high"
+        elif delivery.importance is Importance.LOW:
+            email["Importance"] = "low"
+        parts = [content.body]
+        if content.url:
+            parts.append(content.url)
+        parts += [f"{a.label}: {a.url}" for a in content.actions if a.url]
+        email.set_content("\n\n".join(parts))
         if content.html:
             email.add_alternative(content.html, subtype="html")
         return email
