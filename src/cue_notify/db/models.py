@@ -186,6 +186,8 @@ class Event(IdMixin, Base):
     )
     data: Mapped[dict[str, Any]] = mapped_column(default=dict)
     occurred_at: Mapped[datetime]
+    agent_key: Mapped[str | None] = mapped_column(String(64))
+    """The agent whose key reported the event; its policy applies to what rules send."""
     received_at: Mapped[datetime]
     status: Mapped[EventStatus] = mapped_column(enum_type(EventStatus), default=EventStatus.PENDING)
     outcome: Mapped[list[dict[str, Any]] | None]

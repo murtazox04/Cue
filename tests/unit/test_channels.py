@@ -453,3 +453,11 @@ async def test_webhook_payload_carries_importance_and_expiry() -> None:
     assert body["importance"] == "high"
     assert body["expires_at"] == "2030-01-01T00:00:00+00:00"
     assert body["content"]["actions"][0]["id"] == "open"
+
+
+def test_smtp_subject_line_breaks_are_collapsed() -> None:
+    config = SmtpConfig(host="smtp.test", from_address="noreply@x.test")
+    channel = SmtpChannel("email", config, httpx.AsyncClient())
+    email = channel.build(_delivery("ann@x.test", title="Hi\r\nBcc: victim@x.test"))
+    assert email["Subject"] == "Hi Bcc: victim@x.test"
+    assert email["Bcc"] is None

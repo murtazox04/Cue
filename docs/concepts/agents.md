@@ -16,8 +16,14 @@ limits, applied on top of everything else Cue already checks:
 
 Recipient preferences, category policy (caps, quiet hours, unsubscribes), importance
 rules and expiry all still apply. An agent can only ever be *more* restricted than your
-own backend: its keys can never hold the `admin` scope (which would let it loosen its own
-limits), change anyone's preferences or rotate preference tokens.
+own backend. Its keys can never:
+
+- hold the `admin` scope, which would let it loosen its own limits;
+- change, reset or delete anyone's preferences, rotate preference tokens or see them (they
+  are redacted from recipients and message content it reads);
+- send inline recipient profiles, which could change the time zone or attributes policy
+  decides on; agents refer to people by external id;
+- cancel, review or report engagement on messages that are not its own.
 
 ## Set one up
 
@@ -42,8 +48,10 @@ Everything sent with that key is attributed to the agent (`"agent": "support-bot
 the message) and filtered by `GET /v1/messages?agent=support-bot`. Hand the key to the
 agent, for example through the [MCP server](../guides/ai-agents.md).
 
-Agent policy applies to direct sends (`POST /v1/messages`, the MCP `send_message` tool).
-Events an agent reports go through your rules, which you already control.
+Agent policy applies to direct sends (`POST /v1/messages`, the MCP `send_message` tool)
+and to events the agent reports: those only fire rules in categories the agent may use
+(other rules report `agent_not_allowed`), and the messages they produce count against its
+budget and go through its approval policy.
 
 ## Approval
 

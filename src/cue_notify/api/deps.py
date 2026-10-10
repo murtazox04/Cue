@@ -68,6 +68,12 @@ def check_inline_profile(key: ApiKey, recipient: object) -> None:
     decides where messages go — that needs ``recipients:write``."""
     from cue_notify.services.recipients import RecipientIn
 
+    if isinstance(recipient, RecipientIn) and key.agent_key is not None:
+        # A profile changes how everyone's messages to this person are decided (time zone,
+        # attributes used by approval conditions); agents may not rewrite it.
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "agent keys refer to recipients by external id only"
+        )
     if (
         isinstance(recipient, RecipientIn)
         and recipient.addresses

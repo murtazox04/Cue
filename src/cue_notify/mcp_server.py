@@ -15,6 +15,8 @@ import inspect
 from collections.abc import Callable
 from datetime import timedelta
 from typing import Any, Literal
+from urllib.parse import quote
+from uuid import UUID
 
 import httpx
 from mcp.server.mcpserver import MCPServer
@@ -59,6 +61,15 @@ def _result(response: httpx.Response) -> Any:
     except ValueError:
         detail = response.text[:300]
     raise ToolError(f"Cue returned {response.status_code}: {detail}")
+
+
+def _id(value: str) -> str:
+    """A path segment from a model-supplied id. Ids are UUIDs; anything else (such as
+    ``../recipients/…``) is refused rather than resolved into another endpoint."""
+    try:
+        return str(UUID(value))
+    except ValueError as exc:
+        raise ToolError(f"{value!r} is not a valid id") from exc
 
 
 def _tool(server: MCPServer, annotations: ToolAnnotations) -> Callable[[F], F]:
@@ -133,7 +144,7 @@ def create_server(client: httpx.AsyncClient) -> MCPServer:
     @_tool(server, READ_ONLY)
     async def get_message(message_id: str) -> Any:  # pyright: ignore[reportUnusedFunction]
         """Delivery status, channel, content and engagement of one message."""
-        return _result(await client.get(f"/v1/messages/{message_id}"))
+        return _result(await client.get(f"/v1/messages/{_id(message_id)}"))
 
     @_tool(server, READ_ONLY)
     async def list_messages(  # pyright: ignore[reportUnusedFunction]
@@ -168,15 +179,15 @@ def create_server(client: httpx.AsyncClient) -> MCPServer:
         releases it for delivery; rejecting cancels it. Only keys that are not bound to an
         agent may review, so call this on behalf of a person who decided."""
         if approve:
-            return _result(await client.post(f"/v1/messages/{message_id}/approve"))
+            return _result(await client.post(f"/v1/messages/{_id(message_id)}/approve"))
         return _result(
-            await client.post(f"/v1/messages/{message_id}/reject", json={"reason": reason})
+            await client.post(f"/v1/messages/{_id(message_id)}/reject", json={"reason": reason})
         )
 
     @_tool(server, READ_ONLY)
     async def get_event(event_id: str) -> Any:  # pyright: ignore[reportUnusedFunction]
         """An event and, per rule, whether it matched and what happened."""
-        return _result(await client.get(f"/v1/events/{event_id}"))
+        return _result(await client.get(f"/v1/events/{_id(event_id)}"))
 
     @_tool(server, READ_ONLY)
     async def explain(  # pyright: ignore[reportUnusedFunction]
@@ -195,7 +206,9 @@ def create_server(client: httpx.AsyncClient) -> MCPServer:
     ) -> Any:
         """Render a template with sample data for every channel. Requires an admin key."""
         body = {"data": data or {}, "locale": locale}
-        return _result(await client.post(f"/v1/templates/{template}/preview", json=body))
+        return _result(
+            await client.post(f"/v1/templates/{quote(template, safe='')}/preview", json=body)
+        )
 
     @_tool(server, READ_ONLY)
     async def list_templates() -> Any:  # pyright: ignore[reportUnusedFunction]

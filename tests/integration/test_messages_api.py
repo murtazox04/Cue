@@ -171,3 +171,11 @@ async def test_recipient_erasure(client: httpx.AsyncClient, runtime: Runtime) ->
     assert (await client.delete("/v1/recipients/user-1")).status_code == 204
     assert (await client.get("/v1/recipients/user-1")).status_code == 404
     assert (await client.get("/v1/messages")).json()["items"] == []
+
+
+async def test_oversized_data_is_rejected(client: httpx.AsyncClient) -> None:
+    response = await client.post(
+        "/v1/events", json={"name": "x", "recipient": "user-1", "data": {"blob": "x" * 20_000}}
+    )
+    assert response.status_code == 422
+    assert "limit" in response.text

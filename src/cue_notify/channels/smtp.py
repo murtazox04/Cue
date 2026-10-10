@@ -43,7 +43,8 @@ class SmtpChannel(Channel[SmtpConfig]):
         content = delivery.content
         config = self.config
         email = EmailMessage()
-        email["Subject"] = content.title or ""
+        # Rendered titles may contain line breaks from event data; headers cannot.
+        email["Subject"] = " ".join((content.title or "").split())
         email["From"] = formataddr((config.from_name or "", config.from_address))
         email["To"] = delivery.address
         email["Message-ID"] = make_msgid(idstring=str(delivery.message_id))
@@ -86,7 +87,10 @@ class SmtpChannel(Channel[SmtpConfig]):
             client.send_message(email)
 
     async def send(self, delivery: Delivery) -> Receipt:
-        email = self.build(delivery)
+        try:
+            email = self.build(delivery)
+        except ValueError as exc:  # e.g. an unusable address or header; retrying won't help
+            raise DeliveryError(f"cannot build e-mail: {exc}") from exc
         try:
             await asyncio.to_thread(self._send_blocking, email)
         except smtplib.SMTPRecipientsRefused as exc:

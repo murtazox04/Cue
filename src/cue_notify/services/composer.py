@@ -216,7 +216,10 @@ async def decide(session: AsyncSession, runtime: Runtime, intent: Intent) -> Dec
 
     importance = effective_importance(intent)
     breaks_through = importance is Importance.CRITICAL
-    send_at = intent.send_at or (utcnow() + intent.delay)
+    now = utcnow()
+    # A time in the past means "now": counting caps from a backdated time would let a
+    # sender spread messages over windows that have already closed.
+    send_at = max(intent.send_at, now) if intent.send_at else now + intent.delay
     if category.respect_quiet_hours and not breaks_through:
         window = prefs.quiet_hours if prefs.quiet_hours is not None else defaults.quiet_hours
         tz = policy.zone(recipient.timezone, defaults.default_timezone)

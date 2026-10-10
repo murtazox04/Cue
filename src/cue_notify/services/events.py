@@ -6,10 +6,10 @@ import fnmatch
 import logging
 from dataclasses import asdict, dataclass
 from datetime import timedelta
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, Field
+from pydantic import AfterValidator, AwareDatetime, BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,9 +17,10 @@ from cue_notify import queue
 from cue_notify.core import logic, policy
 from cue_notify.core.enums import EventStatus, MessageStatus
 from cue_notify.core.ids import uuid7
+from cue_notify.core.limits import bounded_data
 from cue_notify.core.time import ensure_utc, utcnow
 from cue_notify.db.dml import insert_ignore
-from cue_notify.db.models import Category, Event, Recipient, Rule, Template
+from cue_notify.db.models import Agent, Category, Event, Recipient, Rule, Template
 from cue_notify.runtime import Runtime
 from cue_notify.services import composer, digests
 from cue_notify.services import recipients as recipient_service
@@ -37,7 +38,9 @@ class EventIn(BaseModel):
     recipient: str | recipient_service.RecipientIn = Field(
         description="The recipient's external id, or a profile to create/update inline."
     )
-    data: dict[str, Any] = Field(default_factory=dict, examples=[{"order_id": "A-1001"}])
+    data: Annotated[dict[str, Any], AfterValidator(bounded_data)] = Field(
+        default_factory=dict, examples=[{"order_id": "A-1001"}]
+    )
     occurred_at: AwareDatetime | None = None
     idempotency_key: str | None = Field(
         default=None,
@@ -58,7 +61,12 @@ class EventIn(BaseModel):
 
 
 async def ingest(
-    session: AsyncSession, runtime: Runtime, data: EventIn, *, source: str
+    session: AsyncSession,
+    runtime: Runtime,
+    data: EventIn,
+    *,
+    source: str,
+    agent_key: str | None = None,
 ) -> tuple[Event, bool]:
     """Store an event and schedule its processing. Returns ``(event, created)``."""
     if isinstance(data.recipient, recipient_service.RecipientIn):
@@ -77,6 +85,7 @@ async def ingest(
         "occurred_at": ensure_utc(data.occurred_at) if data.occurred_at else now,
         "received_at": now,
         "status": EventStatus.PENDING,
+        "agent_key": agent_key,
     }
     if data.idempotency_key:
         created = await insert_ignore(
@@ -129,6 +138,12 @@ def evaluation_context(event: Event, recipient: Recipient) -> dict[str, Any]:
     }
 
 
+def _agent_may_use(agent: Agent, category: Category) -> bool:
+    """Events an agent reports can only fire rules in categories it may use, and nothing
+    once the agent is disabled. Its budget and approval policy then apply as for sends."""
+    return agent.enabled and (agent.categories is None or category.key in agent.categories)
+
+
 async def candidate_rules(session: AsyncSession, event_name: str) -> list[Rule]:
     """Enabled rules whose ``event`` pattern matches, highest priority first.
 
@@ -153,6 +168,7 @@ async def evaluate(
 ) -> list[RuleOutcome]:
     context = evaluation_context(event, recipient)
     outcomes: list[RuleOutcome] = []
+    agent = await session.get(Agent, event.agent_key) if event.agent_key else None
     for rule in await candidate_rules(session, event.name):
         if not policy.in_rollout(rule.key, recipient.external_id, rule.rollout_percent):
             outcomes.append(RuleOutcome(rule.key, matched=False, reason="outside_rollout"))
@@ -170,6 +186,9 @@ async def evaluate(
         category = await session.get(Category, rule.category_key)
         if template is None or category is None:  # guarded by FKs; defensive for dry runs
             outcomes.append(RuleOutcome(rule.key, matched=True, reason="misconfigured"))
+            continue
+        if agent is not None and not _agent_may_use(agent, category):
+            outcomes.append(RuleOutcome(rule.key, matched=True, reason="agent_not_allowed"))
             continue
         if rule.digest is not None:
             if dry_run:
@@ -195,6 +214,7 @@ async def evaluate(
             dedup_key=f"event:{event.id}:{rule.id}",
             importance=rule.importance,
             expires_at=composer.expiry(rule),
+            agent=agent,
         )
         if dry_run:
             decision = await composer.decide(session, runtime, intent)

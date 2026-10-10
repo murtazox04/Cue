@@ -67,3 +67,14 @@ async def test_api_errors_become_tool_errors(client: httpx.AsyncClient) -> None:
         await server.call_tool(
             "send_message", {"recipient": "u", "template": "missing", "channels": ["push"]}
         )
+
+
+async def test_ids_cannot_reach_other_endpoints(client: httpx.AsyncClient) -> None:
+    server = create_server(client)
+    with pytest.raises(ToolError, match="not a valid id"):
+        await server.call_tool("get_message", {"message_id": "../recipients/user-1"})
+    with pytest.raises(ToolError, match="not a valid id"):
+        await server.call_tool(
+            "review_message",
+            {"message_id": "../recipients/user-1/preference-token", "approve": True},
+        )

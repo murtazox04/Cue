@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any, Self
+from typing import Annotated, Any, Self
 from uuid import UUID
 
 from pydantic import (
+    AfterValidator,
     AliasChoices,
     AwareDatetime,
     BaseModel,
@@ -28,6 +29,7 @@ from cue_notify.core.enums import (
     PreferenceSource,
     Scope,
 )
+from cue_notify.core.limits import bounded_data
 from cue_notify.core.policy import Fatigue, FrequencyCap, RecipientPreferences
 from cue_notify.services.broadcasts import Audience
 from cue_notify.services.recipients import AddressIn, RecipientIn
@@ -65,10 +67,10 @@ class RecipientOut(Model):
     timezone: str | None
     attributes: dict[str, Any]
     preferences: RecipientPreferences
-    preference_token: str = Field(
+    preference_token: str | None = Field(
         description=(
             "Lets the person manage their own preferences (`/v1/preferences/{token}`, the "
-            "hosted page). Treat it like a password-reset link."
+            "hosted page). Treat it like a password-reset link. Hidden from agent keys."
         )
     )
     addresses: list[AddressOut]
@@ -362,8 +364,10 @@ class SendIn(BaseModel):
     template: str
     category: str = "transactional"
     channels: list[str] = Field(min_length=1)
-    data: dict[str, Any] = Field(default_factory=dict)
-    send_at: AwareDatetime | None = None
+    data: Annotated[dict[str, Any], AfterValidator(bounded_data)] = Field(default_factory=dict)
+    send_at: AwareDatetime | None = Field(
+        default=None, description="Deliver no earlier than this; times in the past mean now."
+    )
     importance: Importance = Importance.NORMAL
     expires_at: AwareDatetime | None = Field(
         default=None, description="Drop the message if it is not delivered by then."

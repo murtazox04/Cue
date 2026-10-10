@@ -13,34 +13,42 @@ from cue_notify.api.schemas import (
 )
 from cue_notify.core.enums import PreferenceSource
 from cue_notify.core.policy import RecipientPreferences
-from cue_notify.db.models import PreferenceChange, Recipient
+from cue_notify.db.models import ApiKey, PreferenceChange, Recipient
 from cue_notify.services import agents, preferences
 from cue_notify.services import recipients as recipient_service
 
 router = APIRouter(prefix="/recipients", tags=["recipients"])
 
 
+def _out(recipient: Recipient, key: ApiKey) -> RecipientOut:
+    """Agent keys never see the preference token: it would let them change preferences."""
+    out = RecipientOut.model_validate(recipient)
+    return out.model_copy(update={"preference_token": None}) if key.agent_key else out
+
+
 @router.put("/{external_id}", summary="Create or update a recipient")
 async def upsert_recipient(
-    external_id: str, body: RecipientUpsert, _: RecipientsWriter, session: SessionDep
+    external_id: str, body: RecipientUpsert, key: RecipientsWriter, session: SessionDep
 ) -> RecipientOut:
     recipient = await recipient_service.upsert(
         session, recipient_service.RecipientIn(external_id=external_id, **body.model_dump())
     )
-    return RecipientOut.model_validate(recipient)
+    return _out(recipient, key)
 
 
 @router.get("", summary="List recipients")
 async def list_recipients(
-    _: RecipientsReader, session: SessionDep, page: PageDep
+    key: RecipientsReader, session: SessionDep, page: PageDep
 ) -> Page[RecipientOut]:
     items, cursor = await paginate(session, select(Recipient), Recipient.id, page)
-    return Page(items=[RecipientOut.model_validate(item) for item in items], next_cursor=cursor)
+    return Page(items=[_out(item, key) for item in items], next_cursor=cursor)
 
 
 @router.get("/{external_id}", summary="Get a recipient")
-async def get_recipient(external_id: str, _: RecipientsReader, session: SessionDep) -> RecipientOut:
-    return RecipientOut.model_validate(await recipient_service.get(session, external_id))
+async def get_recipient(
+    external_id: str, key: RecipientsReader, session: SessionDep
+) -> RecipientOut:
+    return _out(await recipient_service.get(session, external_id), key)
 
 
 @router.delete(
@@ -48,7 +56,8 @@ async def get_recipient(external_id: str, _: RecipientsReader, session: SessionD
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Erase a recipient and their message history",
 )
-async def delete_recipient(external_id: str, _: RecipientsWriter, session: SessionDep) -> None:
+async def delete_recipient(external_id: str, key: RecipientsWriter, session: SessionDep) -> None:
+    agents.check_not_agent(key, "delete recipients")  # it would erase their preferences
     """Permanently deletes the profile, addresses and messages (right to erasure)."""
     await session.delete(await recipient_service.get(session, external_id))
 
@@ -59,11 +68,11 @@ async def delete_recipient(external_id: str, _: RecipientsWriter, session: Sessi
     summary="Add an address (device token, phone, e-mail…)",
 )
 async def add_address(
-    external_id: str, body: AddressIn, _: RecipientsWriter, session: SessionDep
+    external_id: str, body: AddressIn, key: RecipientsWriter, session: SessionDep
 ) -> RecipientOut:
     recipient = await recipient_service.lock(session, external_id)
     await recipient_service.add_address(session, recipient, body)
-    return RecipientOut.model_validate(recipient)
+    return _out(recipient, key)
 
 
 @router.delete(

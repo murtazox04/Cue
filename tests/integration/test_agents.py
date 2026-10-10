@@ -13,7 +13,7 @@ from sqlalchemy import update
 from cue_notify.api.app import create_app
 from cue_notify.db.models import Message
 from cue_notify.runtime import Runtime
-from tests.helpers import FakeChannel, create_recipient, create_template, drain
+from tests.helpers import FakeChannel, create_recipient, create_rule, create_template, drain
 
 
 async def _agent(client: httpx.AsyncClient, **fields: Any) -> dict[str, Any]:
@@ -236,3 +236,126 @@ async def test_agents_cannot_review_or_touch_preferences(
         assert resubscribe.status_code == 403
         rotate = await peer.post("/v1/recipients/user-1/preference-token")
         assert rotate.status_code == 403
+
+
+# --------------------------------------------------------------------------- audit findings
+
+
+def _as(runtime: Runtime, raw: str) -> httpx.AsyncClient:
+    app = create_app(runtime=runtime)
+    app.state.runtime = runtime
+    return httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://cue.test",
+        headers={"Authorization": f"Bearer {raw}"},
+    )
+
+
+async def _agent_client(
+    client: httpx.AsyncClient, runtime: Runtime, scopes: list[str], **fields: Any
+) -> httpx.AsyncClient:
+    await create_template(client)
+    await create_recipient(client)
+    await _agent(client, **fields)
+    response = await _key(client, "support-bot", scopes)
+    assert response.status_code == 201, response.text
+    return _as(runtime, response.json()["key"])
+
+
+async def test_backdated_sends_still_count_against_the_budget(
+    client: httpx.AsyncClient, runtime: Runtime
+) -> None:
+    async with await _agent_client(
+        client, runtime, ["messages:write"], frequency_caps=[{"period": "P1D", "limit": 2}]
+    ) as agent:
+        sent = []
+        for days in (100, 99, 98):
+            at = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+            sent.append((await _send(agent, send_at=at)).json())
+    assert [m["status"] for m in sent] == ["queued", "queued", "suppressed"]
+
+
+async def test_agents_never_see_preference_tokens(
+    client: httpx.AsyncClient, runtime: Runtime
+) -> None:
+    await create_template(
+        client,
+        key="promo",
+        locales={"en": {"body": "Manage: {{ links.token }}"}},
+    )
+    async with await _agent_client(
+        client, runtime, ["messages:write", "messages:read", "recipients:read", "recipients:write"]
+    ) as agent:
+        profile = (await agent.get("/v1/recipients/user-1")).json()
+        assert profile["preference_token"] is None
+        listed = (await agent.get("/v1/recipients")).json()["items"]
+        assert listed[0]["preference_token"] is None
+        token = (await client.get("/v1/recipients/user-1")).json()["preference_token"]
+
+        sent = (await _send(agent, template="promo", category="transactional")).json()
+        assert sent["content"]["default"]["body"] == "Manage: [redacted]"
+        fetched = (await agent.get(f"/v1/messages/{sent['id']}")).json()
+        assert token not in str(fetched)
+        # Your backend still sees the real content.
+        mine = (await client.get(f"/v1/messages/{sent['id']}")).json()
+        assert mine["content"]["default"]["body"] == f"Manage: {token}"
+
+        assert (await agent.delete("/v1/recipients/user-1")).status_code == 403
+
+
+async def test_events_from_agents_follow_agent_policy(
+    client: httpx.AsyncClient, runtime: Runtime
+) -> None:
+    async with await _agent_client(
+        client,
+        runtime,
+        ["events:write"],
+        categories=["transactional"],
+        frequency_caps=[{"period": "P1D", "limit": 1}],
+    ) as agent:
+        await create_rule(client, key="allowed", channels=["push"], stop_processing=False)
+        await create_rule(client, key="promo", category="marketing", channels=["push"])
+        ids = []
+        for n in range(2):
+            response = await agent.post(
+                "/v1/events",
+                json={
+                    "name": "order.shipped",
+                    "recipient": "user-1",
+                    "data": {"order_id": f"A-{n}"},
+                },
+            )
+            assert response.status_code == 202, response.text
+            ids.append(response.json()["id"])
+        inline = await agent.post(
+            "/v1/events",
+            json={
+                "name": "order.shipped",
+                "recipient": {"external_id": "user-1", "attributes": {"tier": "vip"}},
+            },
+        )
+        assert inline.status_code == 403
+    await drain(runtime)
+    first = (await client.get(f"/v1/events/{ids[0]}")).json()["outcome"]
+    second = (await client.get(f"/v1/events/{ids[1]}")).json()["outcome"]
+    assert {o["rule"]: o.get("reason") for o in first} == {
+        "allowed": None,
+        "promo": "agent_not_allowed",
+    }
+    assert second[0]["reason"].startswith("agent_budget")
+
+
+async def test_agents_cannot_cancel_or_mark_other_messages(
+    client: httpx.AsyncClient, runtime: Runtime
+) -> None:
+    async with await _agent_client(client, runtime, ["messages:write", "events:write"]) as agent:
+        mine = (await _send(client)).json()
+        own = (await _send(agent)).json()
+        assert (await agent.post(f"/v1/messages/{mine['id']}/cancel")).status_code == 403
+        assert (await agent.post(f"/v1/messages/{own['id']}/cancel")).status_code == 200
+        engagement = await agent.post(
+            f"/v1/messages/{mine['id']}/engagement", json={"type": "opened"}
+        )
+        assert engagement.status_code == 403
+        inline = await _send(agent, recipient={"external_id": "user-1", "timezone": "Asia/Tokyo"})
+        assert inline.status_code == 403

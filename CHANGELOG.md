@@ -11,6 +11,17 @@ All notable changes to this project are documented here. The format follows
   `admin` scope, change people's preferences or rotate preference tokens.
 - The hosted preference form is read with a size limit, and the unsubscribe
   confirmation page only names categories that exist.
+- Agent keys cannot see preference tokens (redacted from recipients and message
+  content), delete recipients, send inline profiles, cancel or report engagement on
+  other senders' messages; events they report follow the agent's categories, budget and
+  approval.
+- A `send_at` in the past counts as now, so backdated sends cannot slip past frequency
+  caps or agent budgets.
+- Event and message `data` is limited to 16 KB.
+- The MCP server refuses ids that are not UUIDs instead of resolving them into other API
+  paths.
+- Line breaks in e-mail subjects are collapsed, and messages that cannot be built as
+  e-mail fail over instead of retrying.
 
 ## [0.1.0] — 2026-10-10
 

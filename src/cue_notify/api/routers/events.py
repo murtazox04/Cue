@@ -17,6 +17,7 @@ from cue_notify.api.deps import (
 )
 from cue_notify.api.schemas import EventAccepted, EventOut, Page
 from cue_notify.db.models import Event
+from cue_notify.services import agents
 from cue_notify.services import events as event_service
 from cue_notify.services import recipients as recipient_service
 
@@ -43,8 +44,13 @@ async def ingest_event(
     inline requires the `recipients:write` scope.
     """
     check_inline_profile(key, body.recipient)
+    agent = await agents.for_key(session, key)
     event, created = await event_service.ingest(
-        session, runtime, body, source=body.source or key.name
+        session,
+        runtime,
+        body,
+        source=body.source or key.name,
+        agent_key=agent.key if agent else None,
     )
     if created:
         runtime.metrics.event_ingested(event.name)
