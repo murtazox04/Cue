@@ -62,6 +62,8 @@ class Agent(TimestampMixin, Base):
     approval: Mapped[dict[str, Any] | bool | None] = mapped_column(JSONType)
     """JSON Logic (or ``true``); when it holds, a person must approve the message first."""
     approval_ttl_seconds: Mapped[int] = mapped_column(Integer, default=86_400)
+    reviewers: Mapped[list[str]] = mapped_column(default=list)
+    """External ids of recipients told about messages waiting for review."""
 
 
 class ApiKey(IdMixin, TimestampMixin, Base):

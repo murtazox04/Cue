@@ -15,14 +15,18 @@ or change people's preferences.
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cue_notify import queue
+from cue_notify.core.content import DEFAULT_VARIANT
 from cue_notify.core.enums import MessageStatus, SuppressionReason
 from cue_notify.core.time import utcnow
-from cue_notify.db.models import Agent, ApiKey, Message
+from cue_notify.db.models import Agent, ApiKey, Message, Recipient
 from cue_notify.runtime import Runtime
-from cue_notify.services import composer
+from cue_notify.services import composer, events
 from cue_notify.services.errors import (
     ConflictError,
     ForbiddenError,
@@ -96,6 +100,51 @@ async def approve(
     message.send_at = max(message.send_at, now)
     await composer.enqueue_delivery(session, runtime, message)
     return message
+
+
+APPROVAL_EVENT = "cue.approval_requested"
+PREVIEW_CHARS = 500
+
+
+async def request_review(ctx: queue.JobContext) -> None:
+    """Job handler: report a ``cue.approval_requested`` event for each reviewer.
+
+    Your rules decide how reviewers hear about it, through the same templates, channels
+    and preferences as everything else.
+    """
+    runtime = ctx.runtime
+    async with runtime.transaction() as session:
+        message = await session.get(Message, UUID(ctx.payload["message_id"]))
+        if message is None or message.status is not MessageStatus.PENDING_APPROVAL:
+            return
+        agent = await session.get(Agent, message.agent_key) if message.agent_key else None
+        recipient = await session.get(Recipient, message.recipient_id)
+        if agent is None or recipient is None:
+            return
+        content = message.content.get(DEFAULT_VARIANT, {})
+        data = {
+            "message_id": str(message.id),
+            "agent": agent.key,
+            "agent_name": agent.name,
+            "recipient": recipient.external_id,
+            "category": message.category_key,
+            "importance": message.importance.value,
+            "title": content.get("title"),
+            "body": str(content.get("body", ""))[:PREVIEW_CHARS],
+            "expires_at": message.expires_at.isoformat() if message.expires_at else None,
+        }
+        for reviewer in agent.reviewers:
+            await events.ingest(
+                session,
+                runtime,
+                events.EventIn(
+                    name=APPROVAL_EVENT,
+                    recipient=reviewer,
+                    data=data,
+                    idempotency_key=f"{message.id}:{reviewer}",
+                ),
+                source="cue",
+            )
 
 
 async def reject(

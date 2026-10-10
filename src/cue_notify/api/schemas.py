@@ -439,6 +439,14 @@ class AgentFields(BaseModel):
     approval_ttl_seconds: int = Field(
         default=86_400, ge=60, le=604_800, description="Unreviewed messages expire after this."
     )
+    reviewers: list[str] = Field(
+        default_factory=list,
+        max_length=20,
+        description=(
+            "Recipients (external ids) to tell when a message waits for review: Cue reports a "
+            "`cue.approval_requested` event for each, which your rules turn into a message."
+        ),
+    )
 
     @field_validator("approval")
     @classmethod
@@ -459,6 +467,7 @@ class AgentUpdate(BaseModel):
     frequency_caps: list[FrequencyCap] | None = None
     approval: dict[str, Any] | bool | None = None
     approval_ttl_seconds: int | None = Field(default=None, ge=60, le=604_800)
+    reviewers: list[str] | None = Field(default=None, max_length=20)
 
     @field_validator("approval")
     @classmethod

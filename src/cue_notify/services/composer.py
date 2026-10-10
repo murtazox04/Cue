@@ -29,6 +29,7 @@ from cue_notify.services import recipients as recipient_service
 from cue_notify.settings import Settings
 
 DELIVER_JOB = "deliver"
+REVIEW_JOB = "request_review"
 
 
 @dataclass(slots=True)
@@ -334,6 +335,18 @@ async def compose(session: AsyncSession, runtime: Runtime, intent: Intent) -> tu
     await session.flush()
     if decision.status is MessageStatus.QUEUED:
         await enqueue_delivery(session, runtime, message)
+    elif (
+        decision.status is MessageStatus.PENDING_APPROVAL
+        and intent.agent
+        and intent.agent.reviewers
+    ):
+        await queue.enqueue(
+            session,
+            REVIEW_JOB,
+            {"message_id": str(message.id)},
+            key=f"{REVIEW_JOB}:{message.id}",
+            max_attempts=runtime.settings.worker.max_attempts,
+        )
     elif decision.status is not MessageStatus.PENDING_APPROVAL:  # held until reviewed
         runtime.metrics.message_finished(message.status, None, message.category_key)
     return message, True

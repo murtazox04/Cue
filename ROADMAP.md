@@ -29,7 +29,7 @@ for a change in priorities.
 - [ ] Jurisdiction-aware quiet hours (US TCPA 8:00–21:00, Florida 8:00–20:00)
 - [ ] "Revoke all" opt-out propagation ahead of the FCC rule taking effect on 31 Jan 2027
 - [ ] Consent records with provenance (where and how consent was given)
-- [ ] Approval notifications: tell reviewers when something waits for them
+- [x] Approval notifications: tell reviewers when something waits for them
 
 ## 0.3: Visibility (Feb–Apr 2027)
 

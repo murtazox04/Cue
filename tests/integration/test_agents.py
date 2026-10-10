@@ -359,3 +359,41 @@ async def test_agents_cannot_cancel_or_mark_other_messages(
         assert engagement.status_code == 403
         inline = await _send(agent, recipient={"external_id": "user-1", "timezone": "Asia/Tokyo"})
         assert inline.status_code == 403
+
+
+async def test_reviewers_are_told_through_your_own_rules(
+    client: httpx.AsyncClient, runtime: Runtime, push: FakeChannel, bot: Any
+) -> None:
+    await _agent(client, approval=True, reviewers=["reviewer-1"])
+    await create_recipient(
+        client, external_id="reviewer-1", addresses=[{"channel": "push", "value": "lead-phone"}]
+    )
+    await create_template(
+        client,
+        key="review",
+        locales={
+            "en": {
+                "body": "{{ data.agent_name }} wants to tell {{ data.recipient }}: {{ data.body }}"
+            }
+        },
+    )
+    await create_rule(
+        client,
+        key="review",
+        event="cue.approval_requested",
+        template="review",
+        channels=["push"],
+    )
+    agent = await bot()
+    held = (await _send(agent)).json()
+    assert held["status"] == "pending_approval"
+    await drain(runtime)
+
+    [notice] = push.sent
+    assert notice.address == "lead-phone"
+    assert notice.content.body == (
+        "Support assistant wants to tell user-1: Order A-1 is on its way."
+    )
+    events = (await client.get("/v1/events", params={"name": "cue.approval_requested"})).json()
+    assert events["items"][0]["data"]["message_id"] == held["id"]
+    assert events["items"][0]["source"] == "cue"

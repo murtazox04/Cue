@@ -12,6 +12,7 @@ limits, applied on top of everything else Cue already checks:
 | `categories` | any | Categories it may send in; others are refused with `403`. |
 | `approval` | none | A JSON Logic condition (or `true`): when it holds, the message waits for a person to approve it. |
 | `approval_ttl_seconds` | 1 day | Unreviewed messages expire. |
+| `reviewers` | none | Recipients (external ids) to tell when a message waits for review. |
 | `enabled` | `true` | Set `false` to stop the agent at once; its keys are refused. |
 
 Recipient preferences, category policy (caps, quiet hours, unsubscribes), importance
@@ -87,3 +88,26 @@ POST /v1/messages/{id}/reject   {"reason": "wrong customer"}
   another agent's messages, so two agents can never approve each other.
 
 Over MCP, reviewers use the `review_message` tool.
+
+### Telling reviewers
+
+List the people who review an agent's messages in `reviewers`. For each held message, Cue
+reports a `cue.approval_requested` event for each reviewer (source `cue`). Turn it into a
+notification with an ordinary rule and template, so reviewers get it through their own
+channels, quiet hours and preferences:
+
+```json
+POST /v1/rules
+{"key": "review-requests", "name": "Ask a reviewer", "event": "cue.approval_requested",
+ "template": "review-request", "category": "transactional", "channels": ["push", "email"]}
+```
+
+The event's `data` holds `message_id`, `agent`, `agent_name`, `recipient` (whom the agent
+wants to message), `category`, `importance`, `title`, `body` (the first 500 characters)
+and `expires_at`:
+
+```json
+"en": {"title": "{{ data.agent_name }} needs your OK",
+       "body": "To {{ data.recipient }}: {{ data.body }}",
+       "url": "https://admin.example.com/review/{{ data.message_id }}"}
+```
