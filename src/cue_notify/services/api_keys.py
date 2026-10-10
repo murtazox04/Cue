@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cue_notify.core.enums import Scope
 from cue_notify.core.time import utcnow
 from cue_notify.db.models import ApiKey
+from cue_notify.services.errors import UnprocessableError
 
 KEY_PREFIX = "ck"
 TOUCH_INTERVAL = timedelta(minutes=1)
@@ -36,14 +37,20 @@ async def create(
     *,
     agent_key: str | None = None,
 ) -> tuple[ApiKey, str]:
-    """Create a key. Returns the row and the plaintext key (never retrievable again)."""
+    """Create a key. Returns the row and the plaintext key (never retrievable again).
+
+    Keys bound to an agent cannot be ``admin``: an agent could then loosen its own limits.
+    """
+    granted = {Scope(scope) for scope in scopes}
+    if agent_key is not None and Scope.ADMIN in granted:
+        raise UnprocessableError("keys bound to an agent cannot have the admin scope")
     prefix = secrets.token_hex(6)
     raw = f"{KEY_PREFIX}_{prefix}_{secrets.token_urlsafe(24)}"
     key = ApiKey(
         name=name,
         prefix=prefix,
         secret_hash=_hash(raw),
-        scopes=sorted({scope.value for scope in scopes}),
+        scopes=sorted(scope.value for scope in granted),
         expires_at=expires_at,
         agent_key=agent_key,
     )

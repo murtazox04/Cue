@@ -298,3 +298,24 @@ async def test_hosted_page_with_a_stale_link(anon: httpx.AsyncClient) -> None:
     response = await anon.get("/preferences/stale")
     assert response.status_code == 404
     assert "This link is no longer valid" in response.text
+
+
+async def test_hosted_form_size_is_bounded(anon: httpx.AsyncClient, token: str) -> None:
+    form = {"Content-Type": "application/x-www-form-urlencoded"}
+    huge = await anon.post(f"/preferences/{token}", content="channel=" + "x" * 20_000, headers=form)
+    assert huge.status_code == 400
+    assert "too large" in huge.text
+    many = await anon.post(
+        f"/preferences/{token}", content="&".join(["category=a"] * 300), headers=form
+    )
+    assert many.status_code == 400
+
+
+async def test_confirmation_page_only_names_real_categories(
+    anon: httpx.AsyncClient, token: str
+) -> None:
+    spoof = await anon.get(f"/preferences/{token}/unsubscribe?category=Call%20this%20number")
+    assert spoof.status_code == 404
+    assert "Call this number" not in spoof.text
+    locked = await anon.get(f"/preferences/{token}/unsubscribe?category=transactional")
+    assert locked.status_code == 422

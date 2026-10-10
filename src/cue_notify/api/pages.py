@@ -153,9 +153,24 @@ def _error(request: Request, exc: ServiceError) -> HTMLResponse:
     return _render(request, exc.status_code, view="error", message=message)
 
 
+MAX_FORM_BYTES = 16_384
+
+
+class _BadFormError(ServiceError):
+    title = "Bad request"
+
+
 async def _form(request: Request) -> dict[str, list[str]]:
-    body = (await request.body())[:65_536].decode("utf-8", errors="replace")
-    return parse_qs(body, max_num_fields=500)
+    """Parse a small urlencoded form without ever buffering more than the limit."""
+    body = bytearray()
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > MAX_FORM_BYTES:
+            raise _BadFormError("the form is too large")
+    try:
+        return parse_qs(body.decode("utf-8", errors="replace"), max_num_fields=200)
+    except ValueError as exc:
+        raise _BadFormError("the form has too many fields") from exc
 
 
 @router.get("/{token}", response_class=HTMLResponse)
@@ -163,7 +178,7 @@ async def page(
     token: str, request: Request, session: SessionDep, runtime: RuntimeDep, saved: bool = False
 ) -> Response:
     try:
-        recipient = await preferences.by_token(session, token)
+        recipient = await preferences.by_token(session, token, lock=False)
     except ServiceError as exc:
         return _error(request, exc)
     center = await preferences.center(session, runtime, recipient)
@@ -174,9 +189,9 @@ async def page(
 async def save(token: str, request: Request, session: SessionDep, runtime: RuntimeDep) -> Response:
     try:
         recipient = await preferences.by_token(session, token)
+        form = await _form(request)
     except ServiceError as exc:
         return _error(request, exc)
-    form = await _form(request)
     if form.get("action") == ["unsubscribe_all"]:
         await preferences.unsubscribe_all(session, recipient)
     else:
@@ -196,10 +211,11 @@ async def confirm_unsubscribe(
     token: str, category: CategoryQuery, request: Request, session: SessionDep
 ) -> Response:
     try:
-        await preferences.by_token(session, token)
+        await preferences.by_token(session, token, lock=False)
+        known = await preferences.unsubscribable(session, category)
     except ServiceError as exc:
         return _error(request, exc)
-    return _render(request, view="confirm", category=category, center_url=f"../{token}")
+    return _render(request, view="confirm", category=known.key, center_url=f"../{token}")
 
 
 @router.post("/{token}/unsubscribe", response_class=HTMLResponse)

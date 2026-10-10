@@ -14,7 +14,7 @@ from cue_notify.api.schemas import (
 from cue_notify.core.enums import PreferenceSource
 from cue_notify.core.policy import RecipientPreferences
 from cue_notify.db.models import PreferenceChange, Recipient
-from cue_notify.services import preferences
+from cue_notify.services import agents, preferences
 from cue_notify.services import recipients as recipient_service
 
 router = APIRouter(prefix="/recipients", tags=["recipients"])
@@ -80,9 +80,11 @@ async def remove_address(
 
 @router.put("/{external_id}/preferences", summary="Replace delivery preferences")
 async def set_preferences(
-    external_id: str, body: RecipientPreferences, _: RecipientsWriter, session: SessionDep
+    external_id: str, body: RecipientPreferences, key: RecipientsWriter, session: SessionDep
 ) -> RecipientOut:
-    """Changes are recorded in the consent ledger with source `api`."""
+    """Changes are recorded in the consent ledger with source `api`. Agent keys cannot
+    change people's preferences."""
+    agents.check_not_agent(key, "change people's preferences")
     await recipient_service.get(session, external_id)  # 404 rather than create
     recipient = await recipient_service.lock(session, external_id)
     await preferences.apply(session, recipient, body, PreferenceSource.API)
@@ -105,9 +107,10 @@ async def preference_history(
 
 @router.post("/{external_id}/preference-token", summary="Issue a new preference token")
 async def rotate_preference_token(
-    external_id: str, _: RecipientsWriter, session: SessionDep
+    external_id: str, key: RecipientsWriter, session: SessionDep
 ) -> RecipientOut:
     """Preference and unsubscribe links sent before stop working."""
+    agents.check_not_agent(key, "rotate preference tokens")
     await recipient_service.get(session, external_id)
     recipient = await recipient_service.lock(session, external_id)
     preferences.rotate(recipient)

@@ -20,7 +20,7 @@ async def get_preferences(
 ) -> preferences.PreferenceCenter:
     """Categories with their subscription state and the routes this person can be
     reached on, ready to render as a preference page."""
-    recipient = await preferences.by_token(session, token)
+    recipient = await preferences.by_token(session, token, lock=False)
     return await preferences.center(session, runtime, recipient)
 
 

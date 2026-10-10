@@ -113,8 +113,8 @@ async def approve_message(
     message_id: UUID, key: MessagesWriter, session: SessionDep, runtime: RuntimeDep
 ) -> MessageOut:
     """Releases it for delivery (policy is checked again at send time). A message that
-    expired while waiting comes back `suppressed` with reason `expired`. Agents cannot
-    review their own messages."""
+    expired while waiting comes back `suppressed` with reason `expired`. Agent keys cannot
+    review messages."""
     return MessageOut.model_validate(await agents.approve(session, runtime, message_id, key))
 
 

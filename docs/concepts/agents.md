@@ -16,7 +16,8 @@ limits, applied on top of everything else Cue already checks:
 
 Recipient preferences, category policy (caps, quiet hours, unsubscribes), importance
 rules and expiry all still apply. An agent can only ever be *more* restricted than your
-own backend.
+own backend: its keys can never hold the `admin` scope (which would let it loosen its own
+limits), change anyone's preferences or rotate preference tokens.
 
 ## Set one up
 
@@ -57,8 +58,9 @@ The condition sees:
 ```
 
 Matching messages are stored with status `pending_approval`. They are not sent, but they
-count against the agent's budget, so an agent cannot flood the review queue. A reviewer,
-a person or a supervising agent with its own key, then decides:
+count against the agent's budget, so an agent cannot flood the review queue. A person
+then decides, with a key that is not bound to an agent (your admin UI or backend, or
+Claude acting with such a key):
 
 ```http
 GET  /v1/messages?status=pending_approval
@@ -73,6 +75,7 @@ POST /v1/messages/{id}/reject   {"reason": "wrong customer"}
   instead (`suppressed`, `expired`).
 - **Record:** the reviewer's key name and the time are stored on the message
   (`reviewed_by`, `reviewed_at`).
-- **No self-review:** an agent can never approve or reject its own messages.
+- **Only people review:** agent keys cannot approve or reject anything, not even
+  another agent's messages, so two agents can never approve each other.
 
 Over MCP, reviewers use the `review_message` tool.

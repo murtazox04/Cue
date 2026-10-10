@@ -165,8 +165,8 @@ def create_server(client: httpx.AsyncClient) -> MCPServer:
     ) -> Any:
         """Approve or reject a message an agent sent that is waiting for review
         (`status` `pending_approval`; list them with `list_messages`). Approving
-        releases it for delivery; rejecting cancels it. Agents cannot review their own
-        messages."""
+        releases it for delivery; rejecting cancels it. Only keys that are not bound to an
+        agent may review, so call this on behalf of a person who decided."""
         if approve:
             return _result(await client.post(f"/v1/messages/{message_id}/approve"))
         return _result(

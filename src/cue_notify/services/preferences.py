@@ -93,14 +93,12 @@ async def apply(
 # --------------------------------------------------------------------------- tokens
 
 
-async def by_token(session: AsyncSession, preference_token: str) -> Recipient:
-    """The recipient owning ``preference_token``, row-locked for an update."""
-    recipient = await session.scalar(
-        select(Recipient)
-        .where(Recipient.preference_token == preference_token)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
+async def by_token(session: AsyncSession, preference_token: str, *, lock: bool = True) -> Recipient:
+    """The recipient owning ``preference_token``; row-locked unless only reading."""
+    stmt = select(Recipient).where(Recipient.preference_token == preference_token)
+    if lock:
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
+    recipient = await session.scalar(stmt)
     if recipient is None:
         raise NotFoundError("preference page", "for this link")
     return recipient
@@ -208,17 +206,23 @@ async def update(
     return await center(session, runtime, recipient)
 
 
+async def unsubscribable(session: AsyncSession, category_key: str) -> Category:
+    """The category, if people may leave it."""
+    category = await session.get(Category, category_key)
+    if category is None:
+        raise NotFoundError("category", category_key)
+    if not category.allow_unsubscribe:
+        raise UnprocessableError(f"cannot unsubscribe from {category_key}")
+    return category
+
+
 async def unsubscribe(
     session: AsyncSession,
     recipient: Recipient,
     category_key: str,
     source: PreferenceSource = PreferenceSource.ONE_CLICK,
 ) -> Category:
-    category = await session.get(Category, category_key)
-    if category is None:
-        raise NotFoundError("category", category_key)
-    if not category.allow_unsubscribe:
-        raise UnprocessableError(f"cannot unsubscribe from {category_key}")
+    category = await unsubscribable(session, category_key)
     prefs = recipient_service.preferences(recipient)
     updated = prefs.model_copy(
         update={"unsubscribed_categories": prefs.unsubscribed_categories | {category_key}}

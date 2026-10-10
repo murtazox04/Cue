@@ -197,3 +197,42 @@ async def test_approval_conditions_are_validated(client: httpx.AsyncClient) -> N
         "/v1/agents", json={"key": "bad", "name": "Bad", "approval": {"nope": [1]}}
     )
     assert response.status_code == 422
+
+
+async def _key(client: httpx.AsyncClient, agent: str, scopes: list[str]) -> httpx.Response:
+    return await client.post(
+        "/v1/api-keys", json={"name": f"{agent}-{len(scopes)}", "scopes": scopes, "agent": agent}
+    )
+
+
+async def test_agent_keys_cannot_be_admin(client: httpx.AsyncClient) -> None:
+    await _agent(client)
+    response = await _key(client, "support-bot", ["admin"])
+    assert response.status_code == 422
+    assert "admin" in response.json()["detail"]
+
+
+async def test_agents_cannot_review_or_touch_preferences(
+    client: httpx.AsyncClient, runtime: Runtime, bot: Any
+) -> None:
+    await _agent(client, approval=True)
+    agent = await bot()
+    held = (await _send(agent)).json()
+
+    await _agent(client, key="other-bot")
+    other = await _key(client, "other-bot", ["messages:write", "recipients:write"])
+    app = create_app(runtime=runtime)
+    app.state.runtime = runtime
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://cue.test",
+        headers={"Authorization": f"Bearer {other.json()['key']}"},
+    ) as peer:
+        # Another agent cannot approve: two agents could otherwise approve each other.
+        assert (await peer.post(f"/v1/messages/{held['id']}/approve")).status_code == 403
+        resubscribe = await peer.put(
+            "/v1/recipients/user-1/preferences", json={"unsubscribed_categories": []}
+        )
+        assert resubscribe.status_code == 403
+        rotate = await peer.post("/v1/recipients/user-1/preference-token")
+        assert rotate.status_code == 403

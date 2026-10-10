@@ -8,8 +8,9 @@ the agent's rules on top of everything else:
 - how many messages it may send each person per period (its attention budget);
 - when a person must approve a message first (a JSON Logic condition).
 
-Approvals are recorded on the message (who reviewed it, when), and an agent can never
-approve its own messages.
+Approvals are recorded on the message (who reviewed it, when). Agent keys can never
+review messages, hold the ``admin`` scope (which would let them loosen their own limits),
+or change people's preferences.
 """
 
 from __future__ import annotations
@@ -47,6 +48,11 @@ async def for_key(session: AsyncSession, api_key: ApiKey) -> Agent | None:
     return agent
 
 
+def check_not_agent(api_key: ApiKey, action: str) -> None:
+    if api_key.agent_key is not None:
+        raise ForbiddenError(f"agent keys cannot {action}")
+
+
 def check_category(agent: Agent, category: str) -> None:
     if agent.categories is not None and category not in agent.categories:
         raise ForbiddenError(f"agent {agent.key} may not send {category} messages")
@@ -67,8 +73,9 @@ async def _pending(session: AsyncSession, message_id: object, reviewer: ApiKey) 
         raise NotFoundError("message", message_id)
     if message.status is not MessageStatus.PENDING_APPROVAL:
         raise InvalidStateError(f"message is {message.status}, not waiting for approval")
-    if reviewer.agent_key is not None and reviewer.agent_key == message.agent_key:
-        raise ForbiddenError("an agent cannot review its own messages")
+    if reviewer.agent_key is not None:
+        # Not even another agent's: two agents could otherwise approve each other.
+        raise ForbiddenError("agent keys cannot review messages; a person must")
     return message
 
 

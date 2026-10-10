@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+- Agent keys can no longer review messages (also not another agent's), hold the
+  `admin` scope, change people's preferences or rotate preference tokens.
+- The hosted preference form is read with a size limit, and the unsubscribe
+  confirmation page only names categories that exist.
+
 ## [0.1.0] — 2026-10-10
 
 First public release of Cue, the attention layer between software, AI agents and people.
