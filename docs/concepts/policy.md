@@ -61,6 +61,9 @@ PUT /v1/recipients/{external_id}/preferences
 quiet hours for them. Preferences are re-checked right before sending, so an
 unsubscribe also stops messages already queued.
 
+People can manage these themselves through the [preference centre](preferences.md), and
+every change, from any source, is kept in a consent ledger.
+
 ## Quiet hours
 
 The default window (`policy.quiet_hours`, 22:00–08:00) is applied in the **recipient's**

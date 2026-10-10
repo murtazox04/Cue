@@ -58,6 +58,17 @@ class BroadcastStatus(StrEnum):
     FAILED = "failed"
 
 
+class PreferenceSource(StrEnum):
+    """Who changed a recipient's preferences (kept in the consent ledger)."""
+
+    API = "api"
+    """Your backend, through ``PUT /v1/recipients/{id}/preferences``."""
+    SELF_SERVICE = "self_service"
+    """The person, through the hosted page or your UI calling ``/v1/preferences/{token}``."""
+    ONE_CLICK = "one_click"
+    """The person's mail client, through an RFC 8058 one-click unsubscribe."""
+
+
 class DigestStatus(StrEnum):
     OPEN = "open"
     """Collecting events until ``closes_at``."""

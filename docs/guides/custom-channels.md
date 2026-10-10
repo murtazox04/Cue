@@ -76,6 +76,8 @@ phone_number_id = "1234567890"
 - Return a `Receipt` with the provider's message id when there is one.
 - `delivery.metadata` carries `cue_message_id` and `cue_tracking_token`; include
   them in the payload if your channel can carry data to a client app.
+- `delivery.links` carries `preferences` and `unsubscribe` URLs when configured; an
+  e-mail connector should turn `unsubscribe` into `List-Unsubscribe` headers.
 - Override `aclose()` if you hold resources other than the shared HTTP client.
 
 Test providers with `httpx.MockTransport` — see `tests/unit/test_channels.py`.

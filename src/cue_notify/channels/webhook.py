@@ -111,6 +111,7 @@ class WebhookChannel(Channel[WebhookConfig]):
             "locale": delivery.locale,
             "content": delivery.content.model_dump(exclude_none=True),
             "metadata": delivery.metadata,
+            "links": delivery.links,
         }
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
         headers = {

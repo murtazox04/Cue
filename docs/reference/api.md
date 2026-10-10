@@ -35,6 +35,10 @@ The complete, always-current reference is generated from the code: open
 | `POST /v1/recipients/{id}/addresses` | `recipients:write` | Add a device, number, e-mail… |
 | `DELETE /v1/recipients/{id}/addresses/{channel}/{value}` | `recipients:write` | |
 | `PUT /v1/recipients/{id}/preferences` | `recipients:write` | Unsubscribes, muted channels, quiet hours. |
+| `GET /v1/recipients/{id}/preferences/history` | `recipients:read` | Consent ledger. |
+| `POST /v1/recipients/{id}/preference-token` | `recipients:write` | Rotate the preference token. |
+| `GET`, `PUT /v1/preferences/{token}` | the token | Self-service preferences for your own UI. |
+| `GET`, `POST /preferences/{token}[/unsubscribe]` | the token | Hosted page and RFC 8058 one-click unsubscribe. |
 | `/v1/templates[/{key}]`, `POST …/{key}/preview` | `admin` | |
 | `/v1/rules[/{key}]`, `POST /v1/rules/evaluate` | `admin` | |
 | `/v1/categories[/{key}]` | `admin` | |

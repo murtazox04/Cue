@@ -46,6 +46,7 @@ A template holds the content of a message in one or more locales.
 | `recipient` | `external_id`, `locale`, `timezone`, `attributes`. |
 | `event` | `name`, `source`, `occurred_at` — `null` for direct sends and broadcasts. |
 | `category` | The message category key. |
+| `links` | `preferences` and `unsubscribe` URLs and the preference `token` — see [preference centre](preferences.md). |
 
 Filters: everything [Jinja2 provides](https://jinja.palletsprojects.com/en/stable/templates/#list-of-builtin-filters)
 plus `number(decimals=0, separator=" ", point=".")` for thousands separators:

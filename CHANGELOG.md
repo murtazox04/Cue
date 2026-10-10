@@ -18,6 +18,11 @@ First public release of Cue, a self-hosted notification decision engine.
   back to the template. API: `/v1/digests`.
 - A `thread` content field for device-side grouping (APNs `thread-id`, FCM data, e-mail
   `References`).
+- Preference centre: a per-recipient preference token, a hosted preference page, a
+  token-authenticated JSON API for your own UI (`/v1/preferences/{token}`), RFC 8058
+  one-click unsubscribe with `List-Unsubscribe` headers from the SMTP connector and
+  `links` in webhook payloads, template `links`, token rotation, and a consent ledger
+  (`/v1/recipients/{id}/preferences/history`). Configure with `api.public_url`.
 - Categories carrying delivery policy: rolling frequency caps, quiet hours and
   unsubscribe rules. `transactional` and `marketing` are created by default.
 - Localised Jinja2 templates (sandboxed, strict) with per-channel overrides, versioning

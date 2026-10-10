@@ -12,7 +12,7 @@ from fastapi import APIRouter, FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from cue_notify import __version__
-from cue_notify.api import problems
+from cue_notify.api import pages, problems
 from cue_notify.api.deps import RuntimeDep
 from cue_notify.api.routers import (
     api_keys,
@@ -22,6 +22,7 @@ from cue_notify.api.routers import (
     events,
     health,
     messages,
+    preferences,
     recipients,
     rules,
     templates,
@@ -46,6 +47,10 @@ TAGS = [
     {"name": "messages", "description": "Direct sends, message history and engagement."},
     {"name": "digests", "description": "Events grouped into one message per window."},
     {"name": "recipients", "description": "Profiles, addresses and preferences."},
+    {
+        "name": "preferences",
+        "description": "Self-service preferences for your own UI, authenticated by a token.",
+    },
     {"name": "templates", "description": "Localised, channel-aware message content."},
     {"name": "rules", "description": "Which event sends which template, to which channels."},
     {"name": "categories", "description": "Delivery policy: caps, quiet hours, opt-outs."},
@@ -122,6 +127,7 @@ def create_app(settings: Settings | None = None, runtime: Runtime | None = None)
         messages,
         digests,
         recipients,
+        preferences,
         templates,
         rules,
         categories,
@@ -132,6 +138,7 @@ def create_app(settings: Settings | None = None, runtime: Runtime | None = None)
     v1.include_router(messages.tracking)
     app.include_router(v1)
     app.include_router(health.router)
+    app.include_router(pages.router)
 
     if settings.metrics:
 

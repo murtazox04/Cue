@@ -31,6 +31,7 @@ from cue_notify.core.time import utcnow
 from cue_notify.db.dml import upsert_increment
 from cue_notify.db.models import AiUsage, Category, Message, Recipient, Template
 from cue_notify.runtime import Runtime
+from cue_notify.services import preferences
 from cue_notify.services import recipients as recipient_service
 
 logger = logging.getLogger(__name__)
@@ -52,7 +53,12 @@ class ChannelAttempt:
 
 
 async def _send_to_addresses(
-    runtime: Runtime, message: Message, channel_name: str, addresses: list[str], content: Content
+    runtime: Runtime,
+    message: Message,
+    channel_name: str,
+    addresses: list[str],
+    content: Content,
+    links: dict[str, str],
 ) -> ChannelAttempt:
     channel = runtime.channels[channel_name]
     metadata = {
@@ -60,7 +66,9 @@ async def _send_to_addresses(
         "cue_tracking_token": message.tracking_token,
     }
     deliveries = [
-        Delivery(message.id, address, content, locale=message.locale, metadata=metadata)
+        Delivery(
+            message.id, address, content, locale=message.locale, metadata=metadata, links=links
+        )
         for address in addresses
     ]
     results = await asyncio.gather(
@@ -194,6 +202,7 @@ async def deliver(ctx: queue.JobContext) -> None:
             return
         message.status = MessageStatus.SENDING
         message.attempts += 1
+        links = preferences.links(runtime.settings, recipient, category)
         targets = {
             channel: [
                 address.value
@@ -213,7 +222,7 @@ async def deliver(ctx: queue.JobContext) -> None:
         if not addresses:
             continue
         attempt = await _send_to_addresses(
-            runtime, message, channel, addresses, _content_for(message, channel)
+            runtime, message, channel, addresses, _content_for(message, channel), links
         )
         invalid += [(channel, address, reason) for address, reason in attempt.invalid]
         if attempt.receipt is not None:

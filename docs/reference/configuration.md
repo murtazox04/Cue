@@ -34,6 +34,8 @@ Run `cuectl check` to validate a configuration.
 | `cors_origins` | `[]` | Origins allowed to call the API from a browser. |
 | `docs` | `true` | Serve `/docs`, `/redoc` and `/openapi.json`. |
 | `root_path` | `""` | When mounted under a path prefix behind a proxy. |
+| `public_url` | none | Public base URL (with any path prefix). Enables [preference and unsubscribe links](../concepts/preferences.md). |
+| `product_name` | none | Shown on the hosted preference page. |
 
 ## `worker`
 

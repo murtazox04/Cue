@@ -13,6 +13,9 @@ pool_size = 10
 
 [api]
 cors_origins = []
+# Enables preference-centre and one-click unsubscribe links in messages.
+# public_url = "https://notify.example.com"
+# product_name = "Acme"
 
 [worker]
 concurrency = 32

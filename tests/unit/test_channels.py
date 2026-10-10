@@ -300,6 +300,22 @@ def test_smtp_builds_multipart_email() -> None:
     assert email["References"] is None
 
 
+def test_smtp_adds_one_click_unsubscribe_headers() -> None:
+    config = SmtpConfig(host="smtp.test", from_address="noreply@x.test")
+    channel = SmtpChannel("email", config, httpx.AsyncClient())
+    url = "https://n.test/preferences/t/unsubscribe?category=marketing"
+    delivery = Delivery(
+        message_id=uuid4(),
+        address="ann@x.test",
+        content=Content(title="Hi", body="Body"),
+        links={"preferences": "https://n.test/preferences/t", "unsubscribe": url},
+    )
+    email = channel.build(delivery)
+    assert email["List-Unsubscribe"] == f"<{url}>"
+    assert email["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
+    assert channel.build(_delivery("ann@x.test"))["List-Unsubscribe"] is None
+
+
 def test_smtp_thread_becomes_a_stable_references_header() -> None:
     config = SmtpConfig(host="smtp.test", from_address="noreply@x.test")
     channel = SmtpChannel("email", config, httpx.AsyncClient())

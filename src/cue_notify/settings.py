@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, Literal, Self
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -52,6 +52,27 @@ class ApiSettings(BaseModel):
     cors_origins: list[str] = Field(default_factory=list)
     docs: bool = Field(default=True, description="Serve interactive docs at /docs.")
     root_path: str = Field(default="", description="ASGI root path when behind a proxy.")
+    public_url: str | None = Field(
+        default=None,
+        description=(
+            "Public base URL of this instance (e.g. https://notify.example.com). Enables "
+            "preference-centre and one-click unsubscribe links in messages."
+        ),
+        examples=["https://notify.example.com"],
+    )
+    product_name: str | None = Field(
+        default=None, max_length=100, description="Shown on the hosted preference page."
+    )
+
+    @field_validator("public_url")
+    @classmethod
+    def _valid_public_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        url = AnyHttpUrl(value)
+        if url.query or url.fragment:
+            raise ValueError("public_url must not have a query or fragment")
+        return str(url).rstrip("/")
 
 
 class WorkerSettings(BaseModel):

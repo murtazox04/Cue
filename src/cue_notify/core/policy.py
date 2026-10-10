@@ -11,7 +11,7 @@ from collections.abc import Iterable, Sequence
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 
 class QuietHours(BaseModel):
@@ -125,3 +125,7 @@ class RecipientPreferences(BaseModel):
         default=None,
         description="Overrides the default quiet hours. Use equal start and end to disable.",
     )
+
+    @field_serializer("unsubscribed_categories", "muted_channels")
+    def _sorted(self, value: set[str]) -> list[str]:
+        return sorted(value)  # stable JSON for storage, diffs and API responses

@@ -34,6 +34,9 @@ Cue moves that logic into one place:
 - **Fewer, better messages.** [Digests](concepts/digests.md) turn a burst of events
   into one message ("Ann, Bo and 10 others commented"), automatically or summarised by
   AI, and thread ids let phones and inboxes stack related messages.
+- **People in control.** A [preference centre](concepts/preferences.md), hosted or
+  headless, one-click unsubscribe as Gmail and Yahoo require, and a consent ledger
+  recording who changed what, and when.
 - **Bring your own delivery.** Cue does not lock you into a provider. Point a route
   at your existing sending service with a signed webhook, use a bundled connector, or
   write your own in a few dozen lines.

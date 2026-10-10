@@ -52,6 +52,10 @@ class SmtpChannel(Channel[SmtpConfig]):
             email["References"] = f"<{digest}@thread.cue>"
         if config.reply_to:
             email["Reply-To"] = config.reply_to
+        if unsubscribe := delivery.links.get("unsubscribe"):
+            # RFC 2369 + RFC 8058: the one-click unsubscribe Gmail and Yahoo require.
+            email["List-Unsubscribe"] = f"<{unsubscribe}>"
+            email["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
         text = f"{content.body}\n\n{content.url}" if content.url else content.body
         email.set_content(text)
         if content.html:

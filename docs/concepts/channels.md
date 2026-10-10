@@ -90,7 +90,9 @@ Address: e-mail address. Uses only the standard library.
 | `username`, `password` | — |
 | `from_address`, `from_name`, `reply_to` | — |
 
-Sends a text part, plus an HTML part when the template has `html`.
+Sends a text part, plus an HTML part when the template has `html`. With
+[`api.public_url`](preferences.md) set, messages in categories people may leave carry
+`List-Unsubscribe` and `List-Unsubscribe-Post` headers for one-click unsubscribe.
 
 ### `telegram` — Telegram bots
 
@@ -107,6 +109,25 @@ resolve only to public IP addresses (no `localhost`, private ranges or cloud met
 endpoints), and the connection is pinned to the address that was checked. Response bodies
 from such URLs are never stored. `allow_http` and `allow_private_networks` relax this for
 internal deployments; a fixed `url` is operator configuration and is trusted.
+
+The body:
+
+```json
+{
+  "id": "0192…",
+  "channel": "email",
+  "address": "ann@example.com",
+  "locale": "en",
+  "content": {"title": "Your order shipped", "body": "…", "url": "…", "thread": "order-A1"},
+  "metadata": {"cue_message_id": "0192…", "cue_tracking_token": "…"},
+  "links": {"preferences": "https://notify.example.com/preferences/…",
+            "unsubscribe": "https://notify.example.com/preferences/…/unsubscribe?category=marketing"}
+}
+```
+
+`links` is empty unless [`api.public_url`](preferences.md) is set; `unsubscribe` is only
+present for categories people may leave. Put it in a `List-Unsubscribe` header if your
+service sends e-mail.
 
 With `secret` set, requests carry:
 

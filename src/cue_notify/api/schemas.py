@@ -23,6 +23,7 @@ from cue_notify.core.enums import (
     DigestStatus,
     EventStatus,
     MessageStatus,
+    PreferenceSource,
     Scope,
 )
 from cue_notify.core.policy import FrequencyCap, RecipientPreferences
@@ -62,9 +63,25 @@ class RecipientOut(Model):
     timezone: str | None
     attributes: dict[str, Any]
     preferences: RecipientPreferences
+    preference_token: str = Field(
+        description=(
+            "Lets the person manage their own preferences (`/v1/preferences/{token}`, the "
+            "hosted page). Treat it like a password-reset link."
+        )
+    )
     addresses: list[AddressOut]
     created_at: datetime
     updated_at: datetime
+
+
+class PreferenceChangeOut(Model):
+    id: UUID
+    source: PreferenceSource
+    changes: dict[str, Any] = Field(
+        examples=[{"unsubscribed": ["marketing"], "muted": ["sms"]}],
+        description="Only what changed: unsubscribed, resubscribed, muted, unmuted, quiet_hours.",
+    )
+    created_at: datetime
 
 
 class RecipientUpsert(BaseModel):

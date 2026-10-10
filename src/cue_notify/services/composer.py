@@ -24,7 +24,9 @@ from cue_notify.core.templating import RenderError
 from cue_notify.core.time import utcnow
 from cue_notify.db.models import Category, Event, Message, Recipient, Rule, Template
 from cue_notify.runtime import Runtime
+from cue_notify.services import preferences
 from cue_notify.services import recipients as recipient_service
+from cue_notify.settings import Settings
 
 DELIVER_JOB = "deliver"
 
@@ -60,7 +62,7 @@ class Decision:
     existing: Message | None = None
 
 
-def template_context(intent: Intent) -> dict[str, Any]:
+def template_context(intent: Intent, settings: Settings) -> dict[str, Any]:
     event = intent.event
     return {
         "data": intent.data,
@@ -71,6 +73,7 @@ def template_context(intent: Intent) -> dict[str, Any]:
             else None
         ),
         "category": intent.category.key,
+        "links": preferences.template_links(settings, intent.recipient, intent.category),
     }
 
 
@@ -150,7 +153,7 @@ async def decide(session: AsyncSession, runtime: Runtime, intent: Intent) -> Dec
         return Decision(MessageStatus.FAILED, f"{SuppressionReason.TEMPLATE_ERROR}: no locales")
     try:
         localized = LocalizedTemplate.model_validate(template.locales[locale])
-        rendered = localized.render_variants(template_context(intent))
+        rendered = localized.render_variants(template_context(intent, runtime.settings))
     except (RenderError, ValueError) as exc:
         return Decision(
             MessageStatus.FAILED, f"{SuppressionReason.TEMPLATE_ERROR}: {exc}", locale=locale

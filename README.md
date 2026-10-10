@@ -64,6 +64,9 @@ Your delivery endpoint then receives a signed, fully rendered message:
   ("Ann, Bo and 10 others commented"), optionally summarised by AI, plus thread ids so
   phones and mail clients stack related messages.
 - **When** — delays, quiet hours in each recipient's time zone, scheduled broadcasts.
+- **Who decides** — the person: a hosted preference page (or a JSON API for your own),
+  RFC 8058 one-click unsubscribe for Gmail and Yahoo, and a consent ledger of every
+  change.
 - **Where** — an ordered list of routes per rule (e.g. push, then SMS), every address a
   person has on a route, fallback on permanent failure, retries on transient failure,
   dead addresses disabled automatically.

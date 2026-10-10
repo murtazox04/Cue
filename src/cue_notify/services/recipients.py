@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cue_notify.core.ids import uuid7
+from cue_notify.core.ids import token, uuid7
 from cue_notify.core.policy import RecipientPreferences
 from cue_notify.core.time import utcnow
 from cue_notify.db.dml import insert_ignore
@@ -61,6 +61,7 @@ async def ensure(session: AsyncSession, external_id: str) -> Recipient:
             "external_id": external_id,
             "attributes": {},
             "preferences": {},
+            "preference_token": token(),
             "created_at": now,
             "updated_at": now,
         },

@@ -4,9 +4,17 @@ from fastapi import APIRouter, status
 from sqlalchemy import select
 
 from cue_notify.api.deps import PageDep, RecipientsReader, RecipientsWriter, SessionDep, paginate
-from cue_notify.api.schemas import AddressIn, Page, RecipientOut, RecipientUpsert
+from cue_notify.api.schemas import (
+    AddressIn,
+    Page,
+    PreferenceChangeOut,
+    RecipientOut,
+    RecipientUpsert,
+)
+from cue_notify.core.enums import PreferenceSource
 from cue_notify.core.policy import RecipientPreferences
-from cue_notify.db.models import Recipient
+from cue_notify.db.models import PreferenceChange, Recipient
+from cue_notify.services import preferences
 from cue_notify.services import recipients as recipient_service
 
 router = APIRouter(prefix="/recipients", tags=["recipients"])
@@ -74,6 +82,33 @@ async def remove_address(
 async def set_preferences(
     external_id: str, body: RecipientPreferences, _: RecipientsWriter, session: SessionDep
 ) -> RecipientOut:
+    """Changes are recorded in the consent ledger with source `api`."""
+    await recipient_service.get(session, external_id)  # 404 rather than create
+    recipient = await recipient_service.lock(session, external_id)
+    await preferences.apply(session, recipient, body, PreferenceSource.API)
+    return RecipientOut.model_validate(recipient)
+
+
+@router.get("/{external_id}/preferences/history", summary="Consent ledger: every preference change")
+async def preference_history(
+    external_id: str, _: RecipientsReader, session: SessionDep, page: PageDep
+) -> Page[PreferenceChangeOut]:
+    """Newest first, with the source of each change: your backend (`api`), the person
+    themselves (`self_service`) or their mail client's one-click unsubscribe (`one_click`)."""
     recipient = await recipient_service.get(session, external_id)
-    recipient_service.set_preferences(recipient, body)
+    stmt = select(PreferenceChange).where(PreferenceChange.recipient_id == recipient.id)
+    items, cursor = await paginate(session, stmt, PreferenceChange.id, page)
+    return Page(
+        items=[PreferenceChangeOut.model_validate(item) for item in items], next_cursor=cursor
+    )
+
+
+@router.post("/{external_id}/preference-token", summary="Issue a new preference token")
+async def rotate_preference_token(
+    external_id: str, _: RecipientsWriter, session: SessionDep
+) -> RecipientOut:
+    """Preference and unsubscribe links sent before stop working."""
+    await recipient_service.get(session, external_id)
+    recipient = await recipient_service.lock(session, external_id)
+    preferences.rotate(recipient)
     return RecipientOut.model_validate(recipient)

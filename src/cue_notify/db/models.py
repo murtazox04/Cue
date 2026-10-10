@@ -24,8 +24,15 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from cue_notify.core.enums import BroadcastStatus, DigestStatus, EventStatus, MessageStatus
+from cue_notify.core.enums import (
+    BroadcastStatus,
+    DigestStatus,
+    EventStatus,
+    MessageStatus,
+    PreferenceSource,
+)
 from cue_notify.core.ids import token
+from cue_notify.core.time import utcnow
 from cue_notify.db.base import Base, IdMixin, TimestampMixin, enum_type
 
 KEY = 128  # length of human-chosen keys (templates, rules)
@@ -53,6 +60,8 @@ class Recipient(IdMixin, TimestampMixin, Base):
     timezone: Mapped[str | None] = mapped_column(String(64))
     attributes: Mapped[dict[str, Any]] = mapped_column(default=dict)
     preferences: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    preference_token: Mapped[str] = mapped_column(String(64), unique=True, default=token)
+    """Lets the person manage their own preferences (hosted page, unsubscribe links)."""
 
     addresses: Mapped[list[Address]] = relationship(
         back_populates="recipient",
@@ -252,6 +261,21 @@ class Digest(IdMixin, TimestampMixin, Base):
     closes_at: Mapped[datetime]
     sent_at: Mapped[datetime | None]
     message_id: Mapped[UUID | None] = mapped_column(ForeignKey("messages.id", ondelete="SET NULL"))
+
+
+class PreferenceChange(IdMixin, Base):
+    """Consent ledger: one row per change to a recipient's preferences."""
+
+    __tablename__ = "preference_changes"
+
+    recipient_id: Mapped[UUID] = mapped_column(
+        ForeignKey("recipients.id", ondelete="CASCADE"), index=True
+    )
+    source: Mapped[PreferenceSource] = mapped_column(enum_type(PreferenceSource))
+    changes: Mapped[dict[str, Any]]
+    """``{"unsubscribed": [...], "resubscribed": [...], "muted": [...], "unmuted": [...],
+    "quiet_hours": {...}}`` — only the keys that changed."""
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
 class Job(IdMixin, Base):
