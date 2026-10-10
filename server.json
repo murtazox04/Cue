@@ -1,0 +1,42 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.murtazox04/cue",
+  "title": "Cue",
+  "description": "Notify people through Cue: preferences, attention budgets, quiet hours and approval apply.",
+  "repository": {
+    "url": "https://github.com/murtazox04/Cue",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "cue-notify",
+      "version": "0.1.0",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "CUE_URL",
+          "description": "Base URL of your Cue instance, e.g. https://cue.example.com",
+          "isRequired": true
+        },
+        {
+          "name": "CUE_API_KEY",
+          "description": "Cue API key the agent acts with; bind it to an agent for budgets and approval",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

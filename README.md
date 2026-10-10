@@ -2,11 +2,11 @@
 
 # Cue
 
-**The right message, at the right moment.**
+**The attention layer between software, AI agents and people.**
 
-A self-hosted notification decision engine. Your product reports what happened;<br/>
-Cue decides who to tell, what to say, when, and over which route — then hands a
-ready-to-send message to the delivery you plug in.
+Your product and your agents report what happened;<br/>
+Cue decides whether it is worth someone's attention, what to say, when, and over which
+route, then hands a ready-to-send message to the delivery you plug in.
 
 [![CI](https://github.com/murtazox04/Cue/actions/workflows/ci.yml/badge.svg)](https://github.com/murtazox04/Cue/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.12%20|%203.13%20|%203.14-blue)](pyproject.toml)
@@ -20,11 +20,15 @@ ready-to-send message to the delivery you plug in.
 
 ---
 
-Cue sits between your product and your users' attention. Your backend reports what
-happened — `order.shipped`, `payment.failed`, `trial.ending` — and Cue decides whether a
-notification is warranted, which template and language to use, when to send it in the
-recipient's time zone, and which route to try first. It renders the message and hands it
-to whatever delivery you connect: your own service, a webhook, or a ready-made connector.
+People now hear from more software than ever: your product, background jobs, and a
+growing number of AI agents acting on someone's behalf. Each sender is reasonable alone;
+together they bury the person, and phones increasingly silence them. Cue is the one place
+that decides. Your backend (or an agent) reports what happened — `order.shipped`,
+`payment.failed`, `pr.review_requested` — and Cue decides whether a notification is
+warranted, which template and language to use, when to send it in the recipient's time
+zone, how important it really is, and which route to try first. It renders the message
+and hands it to whatever delivery you connect: your own service, a webhook, or a
+ready-made connector.
 
 **Delivery is pluggable. The decisions are Cue's job** — and every one of them is
 recorded, so "why didn't this user get the message?" becomes a query, not an
@@ -45,9 +49,12 @@ Your delivery endpoint then receives a signed, fully rendered message:
   "channel": "push",
   "address": "<device token>",
   "locale": "en",
+  "importance": "normal",
+  "expires_at": null,
   "content": {"title": "Your order is on its way", "body": "Order 1001 ships today.",
               "url": "https://shop.example/orders/1001"},
-  "metadata": {"cue_message_id": "01a1…", "cue_tracking_token": "…"}
+  "metadata": {"cue_message_id": "01a1…", "cue_tracking_token": "…"},
+  "links": {"preferences": "https://cue.example.com/preferences/…"}
 }
 ```
 
@@ -72,6 +79,18 @@ Your delivery endpoint then receives a signed, fully rendered message:
 - **Where** — an ordered list of routes per rule (e.g. push, then SMS), every address a
   person has on a route, fallback on permanent failure, retries on transient failure,
   dead addresses disabled automatically.
+
+## Built for AI agents
+
+- **Agents as first-class senders.** Each agent gets its own key with a per-person
+  attention budget, an importance ceiling and, where you want it, human approval before
+  anything goes out. See [agents](docs/concepts/agents.md).
+- **MCP built in.** `uvx cue-notify mcp` gives Claude, Cursor or your own agent tools to
+  notify people and inspect delivery, with the same policy and audit trail.
+- **Claude Code plugin.** `/plugin marketplace add murtazox04/Cue`, then
+  `/plugin install cue@cue`, teaches Claude to integrate Cue into your app.
+- **Docs for machines.** [`llms.txt`](https://murtazox04.github.io/Cue/llms.txt) and
+  [`AGENTS.md`](AGENTS.md).
 
 ## Bring your own delivery
 
@@ -171,3 +190,5 @@ contributions are very welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 ## License
 
 [MIT](LICENSE)
+
+<!-- mcp-name: io.github.murtazox04/cue -->

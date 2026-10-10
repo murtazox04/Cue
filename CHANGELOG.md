@@ -36,6 +36,10 @@ First public release of Cue, a self-hosted notification decision engine.
   to an agent (`--agent`).
 - Fatigue: a category can pause low and normal messages to people who ignored its
   last N messages, probe again after the pause, and resume on any engagement.
+- Agent-first distribution: the MCP server is part of the core package
+  (`uvx cue-notify mcp`), an MCP registry manifest (`server.json`), a Claude Code
+  plugin with an integration skill, `llms.txt` and `AGENTS.md`.
+- `cuectl serve --migrate` applies migrations before starting.
 - Categories carrying delivery policy: rolling frequency caps, quiet hours and
   unsubscribe rules. `transactional` and `marketing` are created by default.
 - Localised Jinja2 templates (sandboxed, strict) with per-channel overrides, versioning

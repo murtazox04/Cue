@@ -1,0 +1,12 @@
+{
+  "name": "cue",
+  "owner": { "name": "Murtazo Xurramov" },
+  "description": "Cue: the attention layer between software, AI agents and people.",
+  "plugins": [
+    {
+      "name": "cue",
+      "source": "./plugins/cue",
+      "description": "Add Cue notifications to your app, and let Claude notify people through Cue's MCP server."
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "cue",
+  "version": "0.1.0",
+  "description": "Add Cue notifications to your app, and let Claude notify people through Cue's MCP server.",
+  "author": { "name": "Murtazo Xurramov" },
+  "license": "MIT",
+  "homepage": "https://murtazox04.github.io/Cue",
+  "repository": "https://github.com/murtazox04/Cue",
+  "keywords": ["notifications", "mcp", "agents", "preferences", "push", "email"]
+}

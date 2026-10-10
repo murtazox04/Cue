@@ -65,9 +65,15 @@ def serve(
     port: Annotated[int, typer.Option(help="Port.")] = 8000,
     workers: Annotated[int, typer.Option(help="Worker processes.")] = 1,
     reload: Annotated[bool, typer.Option(help="Reload on code changes (development).")] = False,
+    migrate: Annotated[
+        bool, typer.Option(help="Apply database migrations before starting.")
+    ] = False,
 ) -> None:
     """Run the HTTP API."""
     import uvicorn
+
+    if migrate:
+        db_upgrade()
 
     uvicorn.run(
         "cue_notify.api.app:create_app",
@@ -131,10 +137,8 @@ def mcp_server(
     """Run a Model Context Protocol server so AI agents can send notifications."""
     if not api_key:
         raise typer.BadParameter("an API key is required (--api-key or CUE_API_KEY)")
-    try:
-        from cue_notify import mcp_server
-    except ImportError as exc:
-        raise typer.BadParameter("install the MCP extra: pip install 'cue-notify[mcp]'") from exc
+    from cue_notify import mcp_server  # imported lazily: it is only needed here
+
     if transport == "stdio":
         mcp_server.run(url, api_key)
     elif transport == "streamable-http":

@@ -5,7 +5,7 @@ agents — Claude, Cursor, your own agent framework — can notify people and ch
 happened, through the same rules, policy and audit trail as the rest of your system.
 
 ```bash
-pip install 'cue-notify[mcp]'
+pip install cue-notify
 cuectl keys create support-agent -s events:write -s messages:read
 ```
 

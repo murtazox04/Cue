@@ -54,3 +54,12 @@ def test_cli_lifecycle() -> None:
     key_id = listed.split()[0]
     _run("keys", "revoke", key_id)
     assert runner.invoke(app, ["keys", "revoke", key_id]).exit_code == 1  # already revoked
+
+
+@pytest.mark.usefixtures("cli_env")
+def test_serve_can_migrate_first(monkeypatch: pytest.MonkeyPatch) -> None:
+    started: list[str] = []
+    monkeypatch.setattr("uvicorn.run", lambda app, **_: started.append(app))
+    output = _run("serve", "--migrate", "--port", "8123")
+    assert "database upgraded to head" in output
+    assert started == ["cue_notify.api.app:create_app"]

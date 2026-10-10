@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "cue": {
+      "command": "uvx",
+      "args": ["cue-notify", "mcp"],
+      "env": {
+        "CUE_URL": "${CUE_URL:-http://127.0.0.1:8000}",
+        "CUE_API_KEY": "${CUE_API_KEY}"
+      }
+    }
+  }
+}
