@@ -23,7 +23,7 @@ from cue_notify.settings import get_settings
 
 app = typer.Typer(
     name="cuectl",
-    help="Cue — the right message, at the right moment. Notification decision engine.",
+    help="Cue — the attention layer between software, AI agents and people.",
     no_args_is_help=True,
     pretty_exceptions_show_locals=False,
 )

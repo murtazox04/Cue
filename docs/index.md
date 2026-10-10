@@ -1,8 +1,8 @@
 # Cue
 
-**The right message, at the right moment.** Cue is a self-hosted notification decision
-engine. Your product reports what happened; Cue decides whether, what, when and over
-which route to tell each person, renders a ready-to-send message, and hands it to the
+**The attention layer between software, AI agents and people.** Your product and your
+agents report what happened; Cue decides whether it is worth someone's attention, what to
+say, when and over which route, renders a ready-to-send message, and hands it to the
 delivery you plug in — your own service through a signed webhook, or a ready-made
 connector.
 
