@@ -37,6 +37,7 @@ Key facts for integrating Cue:
 - [AI agents (MCP)](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/guides/ai-agents.md): tools, transports and good practice for agents
 - [Performance](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/guides/performance.md): cost per event, benchmark, scaling
 - [Deployment](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/guides/deployment.md): PostgreSQL, workers, Docker, scaling
+- [SDKs](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/guides/sdks.md): Python and TypeScript clients, webhook signature verification
 - [Custom connectors](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/guides/custom-channels.md): writing a delivery plugin
 
 ## Reference

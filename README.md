@@ -89,6 +89,8 @@ Your delivery endpoint then receives a signed, fully rendered message:
   notify people and inspect delivery, with the same policy and audit trail.
 - **Claude Code plugin.** `/plugin marketplace add murtazox04/Cue`, then
   `/plugin install cue@cue`, teaches Claude to integrate Cue into your app.
+- **SDKs.** `pip install cue-client` and `npm install cue-client`, both with webhook
+  signature verification. See [SDKs](https://github.com/murtazox04/Cue/blob/main/docs/guides/sdks.md).
 - **Docs for machines.** [`llms.txt`](https://murtazox04.github.io/Cue/llms.txt) and
   [`AGENTS.md`](https://github.com/murtazox04/Cue/blob/main/AGENTS.md).
 

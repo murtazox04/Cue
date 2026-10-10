@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cue-client"
+dynamic = ["version"]
+description = "Python client for Cue: send events and messages, and verify Cue's signed webhooks."
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Murtazo Xurramov" }]
+requires-python = ">=3.10"
+dependencies = ["httpx>=0.27"]
+keywords = ["notifications", "cue", "webhooks", "sdk"]
+classifiers = [
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/murtazox04/Cue/tree/main/sdks/python"
+Documentation = "https://murtazox04.github.io/Cue"
+
+[tool.hatch.version]
+path = "src/cue_client/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cue_client"]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.4",
+  "pytest-asyncio>=1.0",
+  "pyright>=1.1.400",
+  # The tests run the client against the real Cue application.
+  "cue-notify; python_version >= '3.12'",
+]
+
+[tool.uv.sources]
+cue-notify = { path = "../..", editable = true }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+
+[tool.pyright]
+include = ["src"]
+pythonVersion = "3.10"
+typeCheckingMode = "strict"

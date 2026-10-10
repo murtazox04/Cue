@@ -50,6 +50,7 @@ nav:
       - Deployment: guides/deployment.md
       - Performance: guides/performance.md
       - Custom channels: guides/custom-channels.md
+      - SDKs: guides/sdks.md
       - AI agents (MCP): guides/ai-agents.md
   - Reference:
       - Configuration: reference/configuration.md

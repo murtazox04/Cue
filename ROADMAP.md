@@ -18,7 +18,7 @@ for a change in priorities.
 - [x] Agent-first distribution: MCP in core, MCP registry manifest, Claude Code plugin,
       `llms.txt`, `AGENTS.md`
 - [ ] Publish to PyPI and the MCP registry
-- [ ] Python and TypeScript SDKs: event helpers and webhook signature verification
+- [x] Python and TypeScript SDKs: event helpers and webhook signature verification
 - [ ] Deploy kits: Helm chart, Railway and Render templates
 - [ ] Django and FastAPI integration packages
 - [x] Benchmark tool and performance guide

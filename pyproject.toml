@@ -107,7 +107,7 @@ include = ["src/cue_notify", "tests", "README.md", "LICENSE", "CHANGELOG.md"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["src", "tests"]
+src = ["src", "tests", "sdks/python/src"]
 
 [tool.ruff.lint]
 select = [
@@ -136,6 +136,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S105", "S106", "S311", "PT018", "DTZ001"]
+"sdks/python/tests/**" = ["S105", "S106"]
 "src/cue_notify/db/migrations/**" = ["N999"]
 
 [tool.ruff.lint.flake8-bugbear]
@@ -163,7 +164,7 @@ filterwarnings = ["error::DeprecationWarning:cue.*"]
 markers = ["postgres: requires a PostgreSQL database (CUE_TEST_DATABASE_URL)"]
 
 [tool.coverage.run]
-source = ["cue"]
+source = ["cue_notify"]
 branch = true
 # SQLAlchemy's asyncio layer runs ORM code inside greenlets.
 concurrency = ["greenlet", "thread"]

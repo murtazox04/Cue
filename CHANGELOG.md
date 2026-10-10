@@ -8,8 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 - A throughput benchmark (`benchmarks/throughput.py`) and a performance guide.
+- Python (`cue-client`, httpx only) and TypeScript (`cue-client`, no dependencies) SDKs
+  with webhook signature verification, tested in CI and released by tag.
 
 ### Fixed
+- Test coverage now measures `cue_notify` (it pointed at a package name from before
+  the rename).
 - The database pool now defaults to the worker's concurrency plus 4 connections. With
   the old fixed default of 10, a busy worker opened and closed connections constantly;
   end-to-end throughput roughly doubled with four workers.

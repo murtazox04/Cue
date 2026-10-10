@@ -1,0 +1,53 @@
+name: SDK release
+
+# Tag python-sdk-v0.1.0 or typescript-sdk-v0.1.0 (a GitHub release creates the tag).
+on:
+  push:
+    tags: ["python-sdk-v*", "typescript-sdk-v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Publish cue-client to PyPI
+    if: startsWith(github.ref_name, 'python-sdk-v')
+    runs-on: ubuntu-latest
+    environment: pypi-sdk
+    permissions:
+      id-token: write # trusted publishing
+    defaults:
+      run:
+        working-directory: sdks/python
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - name: Check the tag matches the version
+        run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/cue_client/__init__.py)
+          test "python-sdk-v$version" = "$GITHUB_REF_NAME"
+      - run: uv sync --frozen && uv run pytest
+      - run: uv build
+      - run: uv publish
+
+  typescript:
+    name: Publish cue-client to npm
+    if: startsWith(github.ref_name, 'typescript-sdk-v')
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      id-token: write # trusted publishing and provenance
+    defaults:
+      run:
+        working-directory: sdks/typescript
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@11 # trusted publishing needs npm 11.5 or later
+      - name: Check the tag matches the version
+        run: test "typescript-sdk-v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+      - run: npm ci
+      - run: npm publish --provenance --access public
