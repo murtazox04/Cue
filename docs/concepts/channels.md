@@ -1,17 +1,28 @@
-# Channels
+# Channels and connectors
 
-A **channel** is a named, configured delivery route — `push`, `sms`, `email`, `alerts`…
-Its **provider** is the implementation. Rules, broadcasts and recipient addresses refer
-to channels by name, so you can switch SMS vendors without touching any rule.
+Cue decides and prepares; **delivery is yours to plug in**. A **channel** is a named
+route — `push`, `sms`, `email`, `ops-alerts`… — and its **connector** (the `provider`
+setting) is what actually hands the message over. Rules, broadcasts and recipient
+addresses refer to channels by name, so you can change how a route is delivered without
+touching any rule.
+
+The most flexible connector is `webhook`: Cue POSTs the fully rendered, signed message to
+your service, and your service sends it however you like.
 
 ```toml
 [channels.push]
-provider = "fcm"
-credentials_file = "/run/secrets/firebase.json"
+provider = "webhook"
+url = "https://notifications.internal.example/push"
+# secret from CUE_CHANNELS__PUSH__SECRET
+
+[channels.sms]
+provider = "twilio"            # or a bundled connector
+account_sid = "AC…"
+from_number = "+15550100"
 ```
 
-Equivalent environment variables: `CUE_CHANNELS__PUSH__PROVIDER=fcm`,
-`CUE_CHANNELS__PUSH__CREDENTIALS_FILE=…`. Configuration is validated at start-up;
+Equivalent environment variables: `CUE_CHANNELS__PUSH__PROVIDER=webhook`,
+`CUE_CHANNELS__PUSH__URL=…`. Configuration is validated at start-up;
 `cuectl check` prints the configured channels.
 
 ## Addresses
@@ -40,7 +51,7 @@ For each planned channel, in order:
 
 If no channel succeeds the message is `failed` with the reasons in `status_reason`.
 
-## Built-in providers
+## Bundled connectors
 
 ### `fcm` — Firebase Cloud Messaging
 
@@ -110,6 +121,6 @@ Verify the signature and reject timestamps older than a few minutes.
 
 Logs messages instead of sending them. For development and demos.
 
-## Your own provider
+## Your own connector
 
-Any package can add a provider — see [custom channels](../guides/custom-channels.md).
+Any package can add a connector — see [custom channels](../guides/custom-channels.md).

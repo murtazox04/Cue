@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "cue-notify"
 dynamic = ["version"]
-description = "Self-hosted notification orchestration: events in, the right message out — on the right channel, at the right time."
+description = "Notification decision engine: events in, ready-to-send messages out — you plug in the delivery."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -13,6 +13,9 @@ authors = [{ name = "Murtazo Xurramov" }]
 requires-python = ">=3.12"
 keywords = [
   "notifications",
+  "notification-engine",
+  "rules-engine",
+  "event-driven",
   "push",
   "sms",
   "email",

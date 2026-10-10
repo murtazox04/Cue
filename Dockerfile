@@ -30,7 +30,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 FROM python:${PYTHON_VERSION}-slim AS runtime
 LABEL org.opencontainers.image.source="https://github.com/murtazox04/Cue" \
-      org.opencontainers.image.description="Self-hosted notification orchestration" \
+      org.opencontainers.image.description="Self-hosted notification decision engine" \
       org.opencontainers.image.licenses="MIT"
 RUN useradd --system --uid 10001 --home-dir /app --shell /usr/sbin/nologin cue \
     && install -d -o cue -g cue /app

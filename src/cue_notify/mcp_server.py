@@ -23,9 +23,11 @@ from mcp.types import ToolAnnotations
 from cue_notify import __version__
 
 INSTRUCTIONS = """\
-Cue delivers notifications (push, SMS, e-mail, Telegram, webhooks) to people
-identified by an external id. Prefer `send_event` to report what happened and let the
-configured rules decide what to send; use `send_message` for an explicit one-off message
+Cue decides and prepares notifications for people identified by an external id and
+hands them to the configured delivery routes (push, SMS, e-mail, webhooks…).
+
+Prefer `send_event` to report what happened and let the configured rules decide what
+to send; use `send_message` for an explicit one-off message
 with a known template. Always pass an idempotency key derived from the triggering
 action so retries never notify someone twice. Messages may be suppressed by the
 recipient's preferences, frequency caps or quiet hours — check `status` and

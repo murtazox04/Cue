@@ -1,20 +1,20 @@
 # Cue
 
-**Self-hosted notification orchestration.** Your product reports what happened; Cue
-decides whether, when, where and what to tell each person — and then makes sure it gets
-there.
+**The right message, at the right moment.** Cue is a self-hosted notification decision
+engine. Your product reports what happened; Cue decides whether, what, when and over
+which route to tell each person, renders a ready-to-send message, and hands it to the
+delivery you plug in — your own service through a signed webhook, or a ready-made
+connector.
 
 ```mermaid
 flowchart LR
     A[Your backend] -- "POST /v1/events" --> B[Rules]
     B --> C[Policy<br/>preferences · caps · quiet hours]
     C --> D[Templates<br/>+ optional AI]
-    D --> E{Channels}
-    E --> F[Push · FCM]
-    E --> G[SMS · Twilio]
-    E --> H[E-mail · SMTP]
-    E --> I[Telegram]
-    E --> J[Webhooks]
+    D --> E{Your delivery}
+    E --> F[Webhook → your service]
+    E --> G[Connectors<br/>FCM · Twilio · SMTP · Telegram]
+    E --> H[Your own plugin]
 ```
 
 ## Why Cue?
@@ -31,7 +31,10 @@ Cue moves that logic into one place:
 - **Policy everywhere.** Every message — rule-triggered, direct or broadcast — passes the
   same checks: unsubscribes, muted channels, frequency caps, cooldowns and quiet hours in
   the recipient's own time zone.
-- **Reliable delivery.** Multiple devices per person, channel fallback (push → SMS),
+- **Bring your own delivery.** Cue does not lock you into a provider. Point a route
+  at your existing sending service with a signed webhook, use a bundled connector, or
+  write your own in a few dozen lines.
+- **Reliable routing.** Multiple devices per person, channel fallback (push → SMS),
   retries with backoff, automatic removal of dead tokens, at-least-once jobs that are
   safe to retry.
 - **Answers, not guesses.** Every event records which rules matched and why; every message

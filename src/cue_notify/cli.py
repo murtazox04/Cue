@@ -22,7 +22,7 @@ from cue_notify.settings import get_settings
 
 app = typer.Typer(
     name="cuectl",
-    help="Cue — self-hosted notification orchestration.",
+    help="Cue — the right message, at the right moment. Notification decision engine.",
     no_args_is_help=True,
     pretty_exceptions_show_locals=False,
 )
@@ -129,9 +129,7 @@ def mcp_server(
     try:
         from cue_notify import mcp_server
     except ImportError as exc:
-        raise typer.BadParameter(
-            "install the MCP extra: pip install 'cue-notify[mcp]'"
-        ) from exc
+        raise typer.BadParameter("install the MCP extra: pip install 'cue-notify[mcp]'") from exc
     if transport == "stdio":
         mcp_server.run(url, api_key)
     elif transport == "streamable-http":

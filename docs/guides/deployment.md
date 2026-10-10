@@ -53,7 +53,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: migrate
-          image: ghcr.io/murtazox04/cue:2
+          image: ghcr.io/murtazox04/cue:0.1
           args: ["db", "upgrade"]
           envFrom: [{ secretRef: { name: cue } }]
 ---
@@ -69,7 +69,7 @@ spec:
       terminationGracePeriodSeconds: 60
       containers:
         - name: worker
-          image: ghcr.io/murtazox04/cue:2
+          image: ghcr.io/murtazox04/cue:0.1
           args: ["worker"]
           envFrom: [{ secretRef: { name: cue } }]
 ```

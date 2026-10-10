@@ -1,0 +1,72 @@
+# Example configuration. Copy to ./cue.toml (or point CUE_CONFIG_FILE at it).
+# Every key can be overridden by an environment variable: CUE_<SECTION>__<KEY>.
+# Keep secrets in the environment, e.g. CUE_CHANNELS__SMS__AUTH_TOKEN=...
+
+environment = "production"
+log_level = "INFO"
+log_format = "json"
+metrics = true
+
+[database]
+url = "postgresql+asyncpg://cue:change-me@localhost:5432/cue"
+pool_size = 10
+
+[api]
+cors_origins = []
+
+[worker]
+concurrency = 32
+max_attempts = 10
+
+[policy]
+default_locale = "en"
+default_timezone = "UTC"
+quiet_hours = { start = "22:00", end = "08:00" }
+
+# --------------------------------------------------------------------- channels
+# The table name ("push", "sms"…) is what rules, broadcasts and addresses refer to.
+# `provider` picks the connector that hands messages over. `webhook` sends the rendered,
+# signed message to your own service; the others are bundled connectors.
+
+[channels.inapp]
+provider = "webhook"
+url = "https://notifications.internal.example/deliver"
+# secret from CUE_CHANNELS__INAPP__SECRET
+
+[channels.push]
+provider = "fcm"
+credentials_file = "/run/secrets/firebase-service-account.json"
+
+[channels.sms]
+provider = "twilio"
+account_sid = "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+messaging_service_sid = "MGxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+# auth_token from CUE_CHANNELS__SMS__AUTH_TOKEN
+
+[channels.email]
+provider = "smtp"
+host = "smtp.example.com"
+port = 587
+security = "starttls"
+username = "apikey"
+from_address = "notifications@example.com"
+from_name = "Example"
+# password from CUE_CHANNELS__EMAIL__PASSWORD
+
+[channels.telegram]
+provider = "telegram"
+# bot_token from CUE_CHANNELS__TELEGRAM__BOT_TOKEN
+
+[channels.slack]
+provider = "webhook"   # no url: each address is the recipient's incoming-webhook URL
+
+# --------------------------------------------------------------------- AI (optional)
+# Requires: pip install 'cue-notify[ai]' and the provider's API key in its usual
+# environment variable (OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY…).
+
+[ai]
+enabled = false
+model = "openai:gpt-5-mini"
+fallback_models = ["anthropic:claude-haiku-4-5"]
+instructions = "Friendly, concise, never pushy. No emojis in SMS."
+daily_token_budget = 2000000

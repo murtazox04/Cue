@@ -33,9 +33,9 @@ from cue_notify.settings import Settings, get_settings
 logger = logging.getLogger(__name__)
 
 DESCRIPTION = """
-Cue turns **events** from your product into **notifications** that respect each
-person's preferences, time zone and attention — over push, SMS, e-mail, Telegram or
-webhooks, with optional AI personalisation.
+Cue turns **events** from your product into **ready-to-send notifications** that respect
+each person's preferences, time zone and attention, and hands them to the delivery you
+plug in — your own service through a signed webhook, or a bundled connector.
 
 Authenticate with `Authorization: Bearer <api key>`.
 """

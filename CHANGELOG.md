@@ -4,10 +4,9 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [semantic versioning](https://semver.org/).
 
-## [Unreleased] — 2.0.0
+## [Unreleased] — 0.1.0
 
-A ground-up rewrite. Version 1 was an internal service tied to one product; version 2
-is a general-purpose, self-hosted notification orchestrator.
+First public release of Cue, a self-hosted notification decision engine.
 
 ### Added
 - Event ingestion with idempotency keys and inline recipient profiles.
@@ -17,8 +16,9 @@ is a general-purpose, self-hosted notification orchestrator.
   unsubscribe rules. `transactional` and `marketing` are created by default.
 - Localised Jinja2 templates (sandboxed, strict) with per-channel overrides, versioning
   and a preview endpoint.
-- Channels: Firebase Cloud Messaging, Twilio SMS, SMTP e-mail, Telegram, signed
-  webhooks and a console channel; third-party channels via entry points.
+- Pluggable delivery: a signed webhook connector for your own sending service,
+  bundled connectors for Firebase Cloud Messaging, Twilio SMS, SMTP e-mail and Telegram,
+  a console connector, and third-party connectors via entry points.
 - Multi-address delivery, channel fallback, retry with backoff and automatic disabling
   of dead addresses.
 - Broadcasts with resumable batches, pause/resume/cancel and audience filters.
@@ -30,10 +30,6 @@ is a general-purpose, self-hosted notification orchestrator.
   rule evaluator, race-free cancellation, job lease heartbeats, and failure states for
   events, messages and broadcasts whose jobs exhaust their retries.
 - A transactional, database-backed job queue (no Redis required).
-- `cue` CLI: `serve`, `worker`, `db`, `keys`, `jobs`, `prune`, `check`, `mcp`.
+- `cuectl` CLI: `serve`, `worker`, `db`, `keys`, `jobs`, `prune`, `check`, `mcp`.
 - A Model Context Protocol server so AI agents can send notifications and inspect
   delivery with scoped API keys.
-
-### Removed
-- The v1 Piccolo/Dramatiq/APScheduler stack, product-specific triggers and the
-  Kubernetes deployment of the original product.

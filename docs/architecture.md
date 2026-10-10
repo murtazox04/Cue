@@ -23,7 +23,7 @@ flowchart TB
 | `cue_notify.db` | SQLAlchemy models, portable types, Alembic migrations. |
 | `cue_notify.queue` | Durable job queue on the application database. |
 | `cue_notify.services` | Use cases: ingest, evaluate, compose, deliver, broadcast, engagement. |
-| `cue.channels` | Provider contract, built-in providers, plugin registry. |
+| `cue_notify.channels` | Provider contract, built-in providers, plugin registry. |
 | `cue_notify.ai` | Personalisation contract, guardrails and the Pydantic AI implementation. |
 | `cue_notify.api` / `cue_notify.cli` | Thin adapters over services. |
 | `cue_notify.runtime` | Long-lived resources (engine, HTTP client, channels, generator) shared by all entry points. |

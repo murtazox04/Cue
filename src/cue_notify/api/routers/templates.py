@@ -4,7 +4,14 @@ from fastapi import APIRouter, status
 from sqlalchemy import select
 
 from cue_notify.api.deps import Admin, PageDep, RuntimeDep, SessionDep, paginate
-from cue_notify.api.schemas import Page, PreviewIn, PreviewOut, TemplateFields, TemplateIn, TemplateOut
+from cue_notify.api.schemas import (
+    Page,
+    PreviewIn,
+    PreviewOut,
+    TemplateFields,
+    TemplateIn,
+    TemplateOut,
+)
 from cue_notify.core import policy
 from cue_notify.core.content import LocalizedTemplate
 from cue_notify.core.templating import RenderError

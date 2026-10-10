@@ -132,6 +132,7 @@ curl -X POST localhost:8000/v1/rules/evaluate \
 
 ## Next
 
-- Configure real [channels](concepts/channels.md).
+- Plug in real delivery: point a route at your own service with the
+  [webhook connector](concepts/channels.md), or use a bundled one.
 - Learn how [delivery policy](concepts/policy.md) protects your users' attention.
 - Send a [direct message](reference/api.md#messages) for OTPs and receipts.
