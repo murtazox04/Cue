@@ -163,8 +163,8 @@ See the [configuration reference](docs/reference/configuration.md) and
 ## Project status
 
 Cue is in early development (0.x): the model and API are stable in shape but may still
-change before 1.0. Feedback and contributions are very welcome — see
-[CONTRIBUTING.md](CONTRIBUTING.md).
+change before 1.0. See the [roadmap](ROADMAP.md) for what comes next. Feedback and
+contributions are very welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
