@@ -1,6 +1,7 @@
 # Roadmap
 
-Cue's direction: **decide fewer, better notifications, and prove it.** Each release
+Cue's direction: **be the attention layer between software, AI agents and people:
+decide fewer, better notifications, and prove it.** Each release
 moves one step toward that, ordered by what people running notifications in production
 ask for most. Dates are targets, not promises. Open an issue or a discussion to argue
 for a change in priorities.
@@ -11,6 +12,12 @@ for a change in priorities.
 - [x] Digests with optional AI summaries; thread grouping on devices and in inboxes
 - [x] Preference centre: hosted page, JSON API, RFC 8058 one-click unsubscribe,
       consent ledger
+- [x] Importance levels mapped to iOS and Android, expiry, action buttons
+- [x] Agents: per-person attention budgets, importance ceilings, human approval
+- [x] Fatigue: back off from people who stopped paying attention
+- [x] Agent-first distribution: MCP in core, MCP registry manifest, Claude Code plugin,
+      `llms.txt`, `AGENTS.md`
+- [ ] Publish to PyPI and the MCP registry
 - [ ] Python and TypeScript SDKs: event helpers and webhook signature verification
 - [ ] Deploy kits: Helm chart, Railway and Render templates
 - [ ] Django and FastAPI integration packages
@@ -22,7 +29,7 @@ for a change in priorities.
 - [ ] Jurisdiction-aware quiet hours (US TCPA 8:00–21:00, Florida 8:00–20:00)
 - [ ] "Revoke all" opt-out propagation ahead of the FCC rule taking effect on 31 Jan 2027
 - [ ] Consent records with provenance (where and how consent was given)
-- [ ] Agent governance over MCP: per-agent budgets, caps and an approval queue
+- [ ] Approval notifications: tell reviewers when something waits for them
 
 ## 0.3: Visibility (Feb–Apr 2027)
 
@@ -36,7 +43,9 @@ for a change in priorities.
 ## 1.0: Scale (May–Sep 2027)
 
 - [ ] Headless in-app feed: API, server-sent events and a small React component
-- [ ] Mapping priorities to iOS interruption levels and Android channels
+- [ ] Learned send times: deliver when each person usually engages
+- [ ] Cross-sender arbitration: when many agents compete for one person, the most
+      important message wins and the rest are merged or deferred
 - [ ] Stable API and schema guarantees, with long-term support releases
 
 ## Not planned
