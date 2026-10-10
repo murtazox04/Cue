@@ -29,6 +29,11 @@ First public release of Cue, a self-hosted notification decision engine.
 - Expiry: `expires_at` on sends and `expires_after_seconds` on rules; stale messages are
   dropped and push TTLs shortened to match.
 - Template actions (buttons) for push, Telegram, e-mail and webhooks.
+- Agents: automated senders with a per-person attention budget (5 a day by default), an
+  importance ceiling, allowed categories and an approval policy. Held messages wait in
+  `pending_approval` until approved or rejected (`/v1/messages/{id}/approve`,
+  `/reject`, MCP `review_message`), with the reviewer recorded. API keys can be bound
+  to an agent (`--agent`).
 - Categories carrying delivery policy: rolling frequency caps, quiet hours and
   unsubscribe rules. `transactional` and `marketing` are created by default.
 - Localised Jinja2 templates (sandboxed, strict) with per-channel overrides, versioning

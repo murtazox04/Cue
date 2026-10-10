@@ -9,6 +9,10 @@ pip install 'cue-notify[mcp]'
 cuectl keys create support-agent -s events:write -s messages:read
 ```
 
+If the agent sends messages itself, register it as an [agent](../concepts/agents.md)
+and bind its key with `--agent`. It then gets a per-person attention budget, an
+importance ceiling, and approval for anything you want a person to check first.
+
 ## Desktop agents (stdio)
 
 Add Cue to your agent's MCP configuration, for example:
@@ -45,6 +49,7 @@ the server holds decides what any connected agent may do.
 | `send_message` | Send a template directly over given channels. | `messages:write` |
 | `get_message`, `list_messages` | Delivery status, content, engagement. | `messages:read` |
 | `get_event` | Per-rule outcome of an event. | `messages:read` |
+| `review_message` | Approve or reject a message waiting for review. | `messages:write` |
 | `explain` | Dry-run: which rules would fire and why not. | `admin` |
 | `preview_template`, `list_templates` | Discover and render templates. | `admin` |
 

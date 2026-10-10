@@ -39,6 +39,10 @@ def test_cli_lifecycle() -> None:
     assert "backend" in listed
     assert "events:write" in listed
 
+    missing = runner.invoke(app, ["keys", "create", "bot", "--agent", "nope"])
+    assert missing.exit_code == 1
+    assert "agent nope does not exist" in missing.output
+
     summary = json.loads(_run("check"))
     assert summary["channels"] == {"log": "console"}
     assert summary["ai"] is None

@@ -33,6 +33,8 @@ async def create(
     name: str,
     scopes: Iterable[Scope],
     expires_at: datetime | None = None,
+    *,
+    agent_key: str | None = None,
 ) -> tuple[ApiKey, str]:
     """Create a key. Returns the row and the plaintext key (never retrievable again)."""
     prefix = secrets.token_hex(6)
@@ -43,6 +45,7 @@ async def create(
         secret_hash=_hash(raw),
         scopes=sorted({scope.value for scope in scopes}),
         expires_at=expires_at,
+        agent_key=agent_key,
     )
     session.add(key)
     await session.flush()

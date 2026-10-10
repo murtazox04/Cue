@@ -34,6 +34,12 @@ with a known template. Always pass an idempotency key derived from the triggerin
 action so retries never notify someone twice. Messages may be suppressed by the
 recipient's preferences, frequency caps or quiet hours — check `status` and
 `status_reason`, and use `explain` to see why a rule did or did not fire.
+
+People's attention is limited and shared with every other sender. Send only what the
+person would want now, pick `importance` honestly and set an expiry on anything that
+goes stale. If your key belongs to an agent, you also have a per-person budget
+(`suppressed` with reason `agent_budget` means you used it up) and some messages wait
+for a human (`pending_approval`): do not retry those, they are not lost.
 """
 
 type F = Callable[..., Any]
@@ -133,7 +139,14 @@ def create_server(client: httpx.AsyncClient) -> MCPServer:
     async def list_messages(  # pyright: ignore[reportUnusedFunction]
         recipient: str | None = None,
         status: Literal[
-            "queued", "sending", "sent", "delivered", "failed", "suppressed", "cancelled"
+            "queued",
+            "sending",
+            "sent",
+            "delivered",
+            "failed",
+            "suppressed",
+            "cancelled",
+            "pending_approval",
         ]
         | None = None,
         limit: int = 20,
@@ -145,6 +158,20 @@ def create_server(client: httpx.AsyncClient) -> MCPServer:
         if status:
             params["status"] = status
         return _result(await client.get("/v1/messages", params=params))
+
+    @_tool(server, SENDS)
+    async def review_message(  # pyright: ignore[reportUnusedFunction]
+        message_id: str, approve: bool, reason: str | None = None
+    ) -> Any:
+        """Approve or reject a message an agent sent that is waiting for review
+        (`status` `pending_approval`; list them with `list_messages`). Approving
+        releases it for delivery; rejecting cancels it. Agents cannot review their own
+        messages."""
+        if approve:
+            return _result(await client.post(f"/v1/messages/{message_id}/approve"))
+        return _result(
+            await client.post(f"/v1/messages/{message_id}/reject", json={"reason": reason})
+        )
 
     @_tool(server, READ_ONLY)
     async def get_event(event_id: str) -> Any:  # pyright: ignore[reportUnusedFunction]

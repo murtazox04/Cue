@@ -18,6 +18,7 @@ from cue_notify.core.enums import Scope
 from cue_notify.core.time import utcnow
 from cue_notify.observability import configure_logging
 from cue_notify.runtime import Runtime
+from cue_notify.services.errors import ServiceError
 from cue_notify.settings import get_settings
 
 app = typer.Typer(
@@ -45,7 +46,11 @@ def _with_runtime[T](fn: Callable[[Runtime], Awaitable[T]], *, quiet: bool = Tru
         finally:
             await runtime.aclose()
 
-    return asyncio.run(main())
+    try:
+        return asyncio.run(main())
+    except ServiceError as exc:
+        typer.echo(f"error: {exc.detail}", err=True)
+        raise typer.Exit(1) from exc
 
 
 @app.command()
@@ -202,13 +207,18 @@ def keys_create(
     scope: Annotated[
         list[Scope], typer.Option("--scope", "-s", help="Repeatable. Default: admin.")
     ] = [Scope.ADMIN],  # noqa: B006 — Typer requires a literal default
+    agent: Annotated[
+        str | None, typer.Option(help="Bind the key to an agent (its budget and approval apply).")
+    ] = None,
 ) -> None:
     """Create an API key and print it once."""
-    from cue_notify.services import api_keys
+    from cue_notify.services import agents, api_keys
 
     async def main(runtime: Runtime) -> str:
         async with runtime.transaction() as session:
-            _, raw = await api_keys.create(session, name, scope)
+            if agent is not None:
+                await agents.get(session, agent)
+            _, raw = await api_keys.create(session, name, scope, agent_key=agent)
         return raw
 
     raw = _with_runtime(main)
@@ -227,7 +237,10 @@ def keys_list() -> None:
 
     for key in _with_runtime(main):
         state = "revoked" if key.revoked_at else "active"
-        typer.echo(f"{key.id}  ck_{key.prefix}_…  {key.name:<20} {state:<8} {','.join(key.scopes)}")
+        agent = f"  agent={key.agent_key}" if key.agent_key else ""
+        typer.echo(
+            f"{key.id}  ck_{key.prefix}_…  {key.name:<20} {state:<8} {','.join(key.scopes)}{agent}"
+        )
 
 
 @keys_app.command("revoke")

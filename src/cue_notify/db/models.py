@@ -34,9 +34,34 @@ from cue_notify.core.enums import (
 )
 from cue_notify.core.ids import token
 from cue_notify.core.time import utcnow
-from cue_notify.db.base import Base, IdMixin, TimestampMixin, enum_type
+from cue_notify.db.base import Base, IdMixin, JSONType, TimestampMixin, enum_type
 
 KEY = 128  # length of human-chosen keys (templates, rules)
+
+
+class Agent(TimestampMixin, Base):
+    """An automated sender (an AI agent, a service) with its own attention budget.
+
+    API keys bound to an agent send on its behalf; Cue then applies the agent's limits on
+    top of the recipient's preferences and the category's policy.
+    """
+
+    __tablename__ = "agents"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    categories: Mapped[list[str] | None]
+    """Categories the agent may send in; ``None`` allows all."""
+    max_importance: Mapped[Importance] = mapped_column(
+        enum_type(Importance), default=Importance.HIGH
+    )
+    frequency_caps: Mapped[list[dict[str, Any]]] = mapped_column(default=list)
+    """Per recipient: at most ``limit`` messages from this agent per ``period``."""
+    approval: Mapped[dict[str, Any] | bool | None] = mapped_column(JSONType)
+    """JSON Logic (or ``true``); when it holds, a person must approve the message first."""
+    approval_ttl_seconds: Mapped[int] = mapped_column(Integer, default=86_400)
 
 
 class ApiKey(IdMixin, TimestampMixin, Base):
@@ -49,6 +74,9 @@ class ApiKey(IdMixin, TimestampMixin, Base):
     last_used_at: Mapped[datetime | None]
     expires_at: Mapped[datetime | None]
     revoked_at: Mapped[datetime | None]
+    agent_key: Mapped[str | None] = mapped_column(
+        ForeignKey("agents.key", ondelete="RESTRICT", onupdate="CASCADE")
+    )
 
 
 class Recipient(IdMixin, TimestampMixin, Base):
@@ -168,6 +196,7 @@ class Message(IdMixin, TimestampMixin, Base):
     __table_args__ = (
         Index("ix_messages_caps", "recipient_id", "category_key", "send_at"),
         Index("ix_messages_cooldown", "recipient_id", "rule_id", "send_at"),
+        Index("ix_messages_agent", "recipient_id", "agent_key", "send_at"),
     )
 
     recipient_id: Mapped[UUID] = mapped_column(ForeignKey("recipients.id", ondelete="CASCADE"))
@@ -178,6 +207,10 @@ class Message(IdMixin, TimestampMixin, Base):
     broadcast_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("broadcasts.id", ondelete="SET NULL"), index=True
     )
+    agent_key: Mapped[str | None] = mapped_column(String(64))
+    reviewed_by: Mapped[str | None] = mapped_column(String(100))
+    """Name of the API key that approved or rejected the message."""
+    reviewed_at: Mapped[datetime | None]
     # Snapshots, not foreign keys: message history must survive template/category edits.
     template_key: Mapped[str | None] = mapped_column(String(KEY))
     template_version: Mapped[int | None] = mapped_column(Integer)

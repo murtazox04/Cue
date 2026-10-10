@@ -41,6 +41,7 @@ nav:
       - Importance and expiry: concepts/importance.md
       - Digests: concepts/digests.md
       - Preference centre: concepts/preferences.md
+      - Agents: concepts/agents.md
       - Channels: concepts/channels.md
       - Broadcasts: concepts/broadcasts.md
       - Engagement tracking: concepts/engagement.md

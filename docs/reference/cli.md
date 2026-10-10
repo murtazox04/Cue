@@ -9,7 +9,8 @@ cuectl check                      validate configuration and database connectivi
 cuectl db upgrade [REVISION]      apply migrations (default: head)
 cuectl db downgrade REVISION
 cuectl db current
-cuectl keys create NAME [-s SCOPE]...   print a new API key once
+cuectl keys create NAME [-s SCOPE]... [--agent AGENT]
+                                  print a new API key once (bound to an agent)
 cuectl keys list
 cuectl keys revoke KEY_ID
 cuectl jobs stats                 queued and dead jobs by kind
@@ -26,7 +27,7 @@ deployments and debugging. All commands read the same [configuration](configurat
 | Scope | Grants |
 |---|---|
 | `events:write` | Ingest events, report engagement. |
-| `messages:write` | Direct sends, cancel messages. |
+| `messages:write` | Direct sends, cancel messages, approve or reject held messages. |
 | `messages:read` | Read messages and events. |
 | `recipients:write` | Create, update and erase recipients, addresses and preferences. |
 | `recipients:read` | Read recipients. |

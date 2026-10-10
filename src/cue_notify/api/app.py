@@ -15,6 +15,7 @@ from cue_notify import __version__
 from cue_notify.api import pages, problems
 from cue_notify.api.deps import RuntimeDep
 from cue_notify.api.routers import (
+    agents,
     api_keys,
     broadcasts,
     categories,
@@ -55,6 +56,7 @@ TAGS = [
     {"name": "rules", "description": "Which event sends which template, to which channels."},
     {"name": "categories", "description": "Delivery policy: caps, quiet hours, opt-outs."},
     {"name": "broadcasts", "description": "One message to many recipients, in batches."},
+    {"name": "agents", "description": "Automated senders with attention budgets and approval."},
     {"name": "api keys", "description": "Scoped credentials for the API."},
     {"name": "health", "description": "Probes for orchestrators and load balancers."},
 ]
@@ -132,6 +134,7 @@ def create_app(settings: Settings | None = None, runtime: Runtime | None = None)
         rules,
         categories,
         broadcasts,
+        agents,
         api_keys,
     ):
         v1.include_router(module.router)

@@ -9,7 +9,7 @@ from cue_notify.api.deps import Admin, SessionDep
 from cue_notify.api.schemas import ApiKeyCreated, ApiKeyIn, ApiKeyOut
 from cue_notify.core.time import utcnow
 from cue_notify.db.models import ApiKey
-from cue_notify.services import api_keys
+from cue_notify.services import agents, api_keys
 from cue_notify.services.errors import NotFoundError
 
 router = APIRouter(prefix="/api-keys", tags=["api keys"])
@@ -23,7 +23,11 @@ async def list_keys(_: Admin, session: SessionDep) -> list[ApiKeyOut]:
 
 @router.post("", status_code=status.HTTP_201_CREATED, summary="Create an API key")
 async def create_key(body: ApiKeyIn, _: Admin, session: SessionDep) -> ApiKeyCreated:
-    key, raw = await api_keys.create(session, body.name, body.scopes, body.expires_at)
+    if body.agent is not None:
+        await agents.get(session, body.agent)
+    key, raw = await api_keys.create(
+        session, body.name, body.scopes, body.expires_at, agent_key=body.agent
+    )
     return ApiKeyCreated.model_validate({**ApiKeyOut.model_validate(key).model_dump(), "key": raw})
 
 

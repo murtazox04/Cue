@@ -24,6 +24,7 @@ The complete, always-current reference is generated from the code: open
 | `GET /v1/events`, `GET /v1/events/{id}` | `messages:read` | Events with per-rule outcomes. |
 | `POST /v1/messages` | `messages:write` | Send a template directly. |
 | `GET /v1/messages`, `GET /v1/messages/{id}` | `messages:read` | Filter by `recipient`, `status`, `event_id`, `broadcast_id`. |
+| `POST /v1/messages/{id}/approve`, `…/reject` | `messages:write` | Review a message an agent sent that is `pending_approval`. |
 | `POST /v1/messages/{id}/cancel` | `messages:write` | Cancel a queued message. |
 | `GET /v1/digests`, `GET /v1/digests/{id}` | `messages:read` | Grouped events; filter by `recipient`, `status`. |
 | `POST /v1/digests/{id}/send` | `messages:write` | Close a digest's window early. |
@@ -43,7 +44,8 @@ The complete, always-current reference is generated from the code: open
 | `/v1/rules[/{key}]`, `POST /v1/rules/evaluate` | `admin` | |
 | `/v1/categories[/{key}]` | `admin` | |
 | `/v1/broadcasts[/{id}]`, `…/start`, `…/pause`, `…/resume`, `…/cancel` | `admin` | |
-| `/v1/api-keys`, `…/{id}/revoke` | `admin` | |
+| `/v1/agents[/{key}]` | `admin` | Automated senders: budgets, importance ceiling, approval. |
+| `/v1/api-keys`, `…/{id}/revoke` | `admin` | Keys may be bound to an agent. |
 | `GET /healthz`, `GET /readyz` | none | Probes. |
 
 ## Messages

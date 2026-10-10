@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Self
 from uuid import UUID
 
 from pydantic import (
+    AliasChoices,
     AwareDatetime,
     BaseModel,
     ConfigDict,
@@ -380,6 +381,9 @@ class MessageOut(Model):
     event_id: UUID | None
     rule_id: UUID | None
     broadcast_id: UUID | None
+    agent: str | None = Field(validation_alias="agent_key")
+    reviewed_by: str | None
+    reviewed_at: datetime | None
     attempts: int
     provider_message_id: str | None
     send_at: datetime
@@ -390,6 +394,72 @@ class MessageOut(Model):
     clicked_at: datetime | None
     converted_at: datetime | None
     created_at: datetime
+
+
+class ReviewIn(BaseModel):
+    reason: str | None = Field(default=None, max_length=400)
+
+
+# --------------------------------------------------------------------------- agents
+
+
+class AgentFields(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+    enabled: bool = True
+    categories: list[str] | None = Field(
+        default=None, description="Categories it may send in. Null allows all."
+    )
+    max_importance: Importance = Field(
+        default=Importance.HIGH, description="Higher importance is lowered to this."
+    )
+    frequency_caps: list[FrequencyCap] = Field(
+        default_factory=lambda: [FrequencyCap(period=timedelta(days=1), limit=5)],
+        description="Its attention budget: messages per recipient per period.",
+        examples=[[{"period": "P1D", "limit": 5}]],
+    )
+    approval: dict[str, Any] | bool | None = Field(
+        default=None,
+        description=(
+            "JSON Logic over `{message, recipient, data}`; when it holds, the message waits "
+            "for approval. `true` reviews everything, null nothing."
+        ),
+        examples=[{"in": [{"var": "message.importance"}, ["high", "critical"]]}],
+    )
+    approval_ttl_seconds: int = Field(
+        default=86_400, ge=60, le=604_800, description="Unreviewed messages expire after this."
+    )
+
+    @field_validator("approval")
+    @classmethod
+    def _valid_logic(cls, value: dict[str, Any] | bool | None) -> dict[str, Any] | bool | None:
+        return value if isinstance(value, bool) else check_condition(value)
+
+
+class AgentIn(AgentFields):
+    key: str = Field(min_length=1, max_length=64, pattern=KEY_PATTERN, examples=["support-bot"])
+
+
+class AgentUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
+    enabled: bool | None = None
+    categories: list[str] | None = None
+    max_importance: Importance | None = None
+    frequency_caps: list[FrequencyCap] | None = None
+    approval: dict[str, Any] | bool | None = None
+    approval_ttl_seconds: int | None = Field(default=None, ge=60, le=604_800)
+
+    @field_validator("approval")
+    @classmethod
+    def _valid_logic(cls, value: dict[str, Any] | bool | None) -> dict[str, Any] | bool | None:
+        return value if isinstance(value, bool) else check_condition(value)
+
+
+class AgentOut(Model, AgentFields):
+    key: str
+    created_at: datetime
+    updated_at: datetime
 
 
 # --------------------------------------------------------------------------- broadcasts
@@ -432,6 +502,9 @@ class ApiKeyIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     scopes: list[Scope] = Field(min_length=1)
     expires_at: AwareDatetime | None = None
+    agent: str | None = Field(
+        default=None, description="Bind the key to an agent: its sends follow that agent's policy."
+    )
 
 
 class ApiKeyOut(Model):
@@ -443,6 +516,7 @@ class ApiKeyOut(Model):
     last_used_at: datetime | None
     expires_at: datetime | None
     revoked_at: datetime | None
+    agent: str | None = Field(validation_alias=AliasChoices("agent_key", "agent"))
 
 
 class ApiKeyCreated(ApiKeyOut):

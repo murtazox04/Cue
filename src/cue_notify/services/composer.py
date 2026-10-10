@@ -16,13 +16,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cue_notify import queue
-from cue_notify.core import policy
+from cue_notify.core import logic, policy
 from cue_notify.core.content import DEFAULT_VARIANT, LocalizedTemplate
 from cue_notify.core.enums import COUNTED_STATUSES, Importance, MessageStatus, SuppressionReason
 from cue_notify.core.policy import FrequencyCap
 from cue_notify.core.templating import RenderError
 from cue_notify.core.time import utcnow
-from cue_notify.db.models import Category, Event, Message, Recipient, Rule, Template
+from cue_notify.db.models import Agent, Category, Event, Message, Recipient, Rule, Template
 from cue_notify.runtime import Runtime
 from cue_notify.services import preferences
 from cue_notify.services import recipients as recipient_service
@@ -51,6 +51,8 @@ class Intent:
     """Extra, explicitly allowed data the AI may see (e.g. grouped digest items)."""
     importance: Importance = Importance.NORMAL
     expires_at: datetime | None = None
+    agent: Agent | None = None
+    """The automated sender, whose budget and approval policy apply on top."""
 
 
 @dataclass(slots=True)
@@ -72,11 +74,37 @@ def expiry(rule: Rule) -> datetime | None:
 
 
 def effective_importance(intent: Intent) -> Importance:
-    """``critical`` is honoured only in categories people cannot unsubscribe from, so a
-    marketing sender cannot use it to break through quiet hours and caps."""
-    if intent.importance is Importance.CRITICAL and intent.category.allow_unsubscribe:
+    """The importance policy will act on.
+
+    An agent cannot go above its ``max_importance``, and ``critical`` is honoured only in
+    categories people cannot unsubscribe from, so a marketing sender cannot use it to
+    break through quiet hours and caps.
+    """
+    importance = intent.importance
+    if intent.agent is not None and importance.rank > intent.agent.max_importance.rank:
+        importance = intent.agent.max_importance
+    if importance is Importance.CRITICAL and intent.category.allow_unsubscribe:
         return Importance.HIGH
-    return intent.importance
+    return importance
+
+
+def _needs_approval(intent: Intent, importance: Importance) -> bool:
+    agent = intent.agent
+    if agent is None or agent.approval is None or agent.approval is False:
+        return False
+    if agent.approval is True:
+        return True
+    context = {
+        "message": {
+            "category": intent.category.key,
+            "importance": importance.value,
+            "channels": list(intent.channels),
+            "template": intent.template.key,
+        },
+        "recipient": recipient_service.profile(intent.recipient),
+        "data": intent.data,
+    }
+    return logic.matches(agent.approval, context)
 
 
 def template_context(intent: Intent, settings: Settings) -> dict[str, Any]:
@@ -95,11 +123,37 @@ def template_context(intent: Intent, settings: Settings) -> dict[str, Any]:
     }
 
 
-async def _count_recent(session: AsyncSession, *conditions: Any, since: datetime) -> int:
+async def _count_recent(
+    session: AsyncSession,
+    *conditions: Any,
+    since: datetime,
+    statuses: tuple[MessageStatus, ...] = COUNTED_STATUSES,
+) -> int:
     stmt = select(func.count(Message.id)).where(
-        *conditions, Message.status.in_(COUNTED_STATUSES), Message.send_at > since
+        *conditions, Message.status.in_(statuses), Message.send_at > since
     )
     return int(await session.scalar(stmt) or 0)
+
+
+async def _agent_budget_exceeded(
+    session: AsyncSession, agent: Agent, recipient: Recipient, send_at: datetime
+) -> str | None:
+    """The reason to hold back, if this agent already used its budget for this person.
+
+    Messages waiting for approval count, so an agent cannot flood the review queue.
+    """
+    for raw_cap in agent.frequency_caps:
+        cap = FrequencyCap.model_validate(raw_cap)
+        recent = await _count_recent(
+            session,
+            Message.recipient_id == recipient.id,
+            Message.agent_key == agent.key,
+            since=send_at - cap.period,
+            statuses=(*COUNTED_STATUSES, MessageStatus.PENDING_APPROVAL),
+        )
+        if recent >= cap.limit:
+            return f"{SuppressionReason.AGENT_BUDGET}: {cap.limit} per {cap.period}"
+    return None
 
 
 async def decide(session: AsyncSession, runtime: Runtime, intent: Intent) -> Decision:
@@ -168,6 +222,11 @@ async def decide(session: AsyncSession, runtime: Runtime, intent: Intent) -> Dec
                 send_at=send_at,
             )
 
+    if intent.agent is not None:
+        exceeded = await _agent_budget_exceeded(session, intent.agent, recipient, send_at)
+        if exceeded is not None:
+            return Decision(MessageStatus.SUPPRESSED, exceeded, send_at=send_at)
+
     template = intent.template
     locale = policy.pick_locale(
         template.locales, recipient.locale or defaults.default_locale, template.default_locale
@@ -187,7 +246,9 @@ async def decide(session: AsyncSession, runtime: Runtime, intent: Intent) -> Dec
         if name == DEFAULT_VARIANT or name in channels
     }
     return Decision(
-        MessageStatus.QUEUED,
+        MessageStatus.PENDING_APPROVAL
+        if _needs_approval(intent, importance)
+        else MessageStatus.QUEUED,
         send_at=send_at,
         channels=channels,
         locale=locale,
@@ -208,6 +269,10 @@ async def compose(session: AsyncSession, runtime: Runtime, intent: Intent) -> tu
     if decision.existing is not None:
         return decision.existing, False
 
+    expires_at = intent.expires_at
+    if decision.status is MessageStatus.PENDING_APPROVAL and intent.agent is not None:
+        deadline = utcnow() + timedelta(seconds=intent.agent.approval_ttl_seconds)
+        expires_at = deadline if expires_at is None else min(expires_at, deadline)
     message = Message(
         recipient_id=intent.recipient.id,
         event_id=intent.event.id if intent.event else None,
@@ -226,19 +291,24 @@ async def compose(session: AsyncSession, runtime: Runtime, intent: Intent) -> tu
         dedup_key=intent.dedup_key,
         importance=effective_importance(intent),
         send_at=decision.send_at or utcnow(),
-        expires_at=intent.expires_at,
+        expires_at=expires_at,
+        agent_key=intent.agent.key if intent.agent else None,
     )
     session.add(message)
     await session.flush()
-    if decision.status is not MessageStatus.QUEUED:
+    if decision.status is MessageStatus.QUEUED:
+        await enqueue_delivery(session, runtime, message)
+    elif decision.status is not MessageStatus.PENDING_APPROVAL:  # held until reviewed
         runtime.metrics.message_finished(message.status, None, message.category_key)
-    else:
-        await queue.enqueue(
-            session,
-            DELIVER_JOB,
-            {"message_id": str(message.id)},
-            run_at=message.send_at,
-            key=f"{DELIVER_JOB}:{message.id}",
-            max_attempts=runtime.settings.worker.max_attempts,
-        )
     return message, True
+
+
+async def enqueue_delivery(session: AsyncSession, runtime: Runtime, message: Message) -> None:
+    await queue.enqueue(
+        session,
+        DELIVER_JOB,
+        {"message_id": str(message.id)},
+        run_at=message.send_at,
+        key=f"{DELIVER_JOB}:{message.id}",
+        max_attempts=runtime.settings.worker.max_attempts,
+    )

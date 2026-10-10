@@ -1,0 +1,199 @@
+"""Agents: attention budgets, importance limits and human approval."""
+
+from __future__ import annotations
+
+from collections.abc import AsyncIterator, Awaitable, Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+import httpx
+import pytest
+from sqlalchemy import update
+
+from cue_notify.api.app import create_app
+from cue_notify.db.models import Message
+from cue_notify.runtime import Runtime
+from tests.helpers import FakeChannel, create_recipient, create_template, drain
+
+
+async def _agent(client: httpx.AsyncClient, **fields: Any) -> dict[str, Any]:
+    body = {"key": "support-bot", "name": "Support assistant", **fields}
+    response = await client.post("/v1/agents", json=body)
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+@pytest.fixture
+async def bot(
+    client: httpx.AsyncClient, runtime: Runtime
+) -> AsyncIterator[Callable[[], Awaitable[httpx.AsyncClient]]]:
+    """Connects a client authenticated as the support agent (each test creates it first)."""
+    await create_template(client)
+    await create_recipient(client)
+
+    async def connect(agent: str = "support-bot") -> httpx.AsyncClient:
+        response = await client.post(
+            "/v1/api-keys",
+            json={
+                "name": f"{agent}-key",
+                "scopes": ["messages:write", "messages:read"],
+                "agent": agent,
+            },
+        )
+        assert response.status_code == 201, response.text
+        assert response.json()["agent"] == agent
+        app = create_app(runtime=runtime)
+        app.state.runtime = runtime
+        return httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://cue.test",
+            headers={"Authorization": f"Bearer {response.json()['key']}"},
+        )
+
+    clients: list[httpx.AsyncClient] = []
+
+    async def factory() -> httpx.AsyncClient:
+        connected = await connect()
+        clients.append(connected)
+        return connected
+
+    yield factory
+    for connected in clients:
+        await connected.aclose()
+
+
+async def _send(http: httpx.AsyncClient, **fields: Any) -> httpx.Response:
+    body = {
+        "recipient": "user-1",
+        "template": "order-shipped",
+        "channels": ["push"],
+        "data": {"order_id": "A-1"},
+        **fields,
+    }
+    return await http.post("/v1/messages", json=body)
+
+
+async def test_agents_have_a_per_person_budget(client: httpx.AsyncClient, bot: Any) -> None:
+    await _agent(client, frequency_caps=[{"period": "P1D", "limit": 2}])
+    agent = await bot()
+    statuses = [(await _send(agent)).json() for _ in range(3)]
+    assert [m["status"] for m in statuses] == ["queued", "queued", "suppressed"]
+    assert statuses[2]["status_reason"] == "agent_budget: 2 per 1 day, 0:00:00"
+    assert statuses[0]["agent"] == "support-bot"
+    # Your own backend is not bound by the agent's budget.
+    assert (await _send(client)).json()["status"] == "queued"
+    mine = (await client.get("/v1/messages", params={"agent": "support-bot"})).json()["items"]
+    assert len(mine) == 3
+
+
+async def test_agents_default_to_five_messages_a_day(client: httpx.AsyncClient) -> None:
+    agent = await _agent(client)
+    assert agent["frequency_caps"] == [{"period": "P1D", "limit": 5}]
+    assert agent["max_importance"] == "high"
+
+
+async def test_categories_and_importance_are_limited(client: httpx.AsyncClient, bot: Any) -> None:
+    await _agent(client, categories=["transactional"], max_importance="normal")
+    agent = await bot()
+    refused = await _send(agent, category="marketing")
+    assert refused.status_code == 403
+    assert "may not send marketing" in refused.json()["detail"]
+    message = (await _send(agent, importance="critical")).json()
+    assert message["importance"] == "normal"
+
+
+async def test_high_importance_waits_for_a_human(
+    client: httpx.AsyncClient, runtime: Runtime, push: FakeChannel, bot: Any
+) -> None:
+    await _agent(client, approval={"in": [{"var": "message.importance"}, ["high", "critical"]]})
+    agent = await bot()
+    routine = (await _send(agent)).json()
+    held = (await _send(agent, importance="high")).json()
+    assert (routine["status"], held["status"]) == ("queued", "pending_approval")
+    assert held["expires_at"] is not None  # unreviewed messages do not wait forever
+    await drain(runtime)
+    assert len(push.sent) == 1
+
+    own = await agent.post(f"/v1/messages/{held['id']}/approve")
+    assert own.status_code == 403
+
+    approved = await client.post(f"/v1/messages/{held['id']}/approve")
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "queued"
+    assert approved.json()["reviewed_by"] == "tests"
+    await drain(runtime)
+    assert len(push.sent) == 2
+
+    again = await client.post(f"/v1/messages/{held['id']}/approve")
+    assert again.status_code == 409
+
+
+async def test_rejected_messages_are_cancelled_with_the_reason(
+    client: httpx.AsyncClient, runtime: Runtime, push: FakeChannel, bot: Any
+) -> None:
+    await _agent(client, approval=True)
+    agent = await bot()
+    held = (await _send(agent)).json()
+    response = await client.post(
+        f"/v1/messages/{held['id']}/reject", json={"reason": "wrong customer"}
+    )
+    assert response.status_code == 200
+    rejected = response.json()
+    assert (rejected["status"], rejected["status_reason"]) == (
+        "cancelled",
+        "rejected: wrong customer",
+    )
+    assert rejected["reviewed_at"] is not None
+    await drain(runtime)
+    assert push.sent == []
+
+
+async def test_approval_that_comes_too_late_drops_the_message(
+    client: httpx.AsyncClient, runtime: Runtime, push: FakeChannel, bot: Any
+) -> None:
+    await _agent(client, approval=True, approval_ttl_seconds=60)
+    agent = await bot()
+    held = (await _send(agent)).json()
+    async with runtime.transaction() as session:
+        await session.execute(
+            update(Message).values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
+        )
+    late = (await client.post(f"/v1/messages/{held['id']}/approve")).json()
+    assert (late["status"], late["status_reason"]) == ("suppressed", "expired")
+    await drain(runtime)
+    assert push.sent == []
+
+
+async def test_held_messages_count_against_the_budget(client: httpx.AsyncClient, bot: Any) -> None:
+    await _agent(client, approval=True, frequency_caps=[{"period": "P1D", "limit": 1}])
+    agent = await bot()
+    first = (await _send(agent)).json()
+    second = (await _send(agent)).json()
+    assert first["status"] == "pending_approval"
+    assert second["status_reason"].startswith("agent_budget")
+
+
+async def test_disabling_an_agent_stops_it_at_once(client: httpx.AsyncClient, bot: Any) -> None:
+    await _agent(client)
+    agent = await bot()
+    await client.patch("/v1/agents/support-bot", json={"enabled": False})
+    response = await _send(agent)
+    assert response.status_code == 403
+    assert "disabled" in response.json()["detail"]
+
+
+async def test_agents_with_keys_cannot_be_deleted(client: httpx.AsyncClient, bot: Any) -> None:
+    await _agent(client)
+    await bot()
+    assert (await client.delete("/v1/agents/support-bot")).status_code == 409
+    unknown = await client.post(
+        "/v1/api-keys", json={"name": "x", "scopes": ["messages:write"], "agent": "ghost"}
+    )
+    assert unknown.status_code == 404
+
+
+async def test_approval_conditions_are_validated(client: httpx.AsyncClient) -> None:
+    response = await client.post(
+        "/v1/agents", json={"key": "bad", "name": "Bad", "approval": {"nope": [1]}}
+    )
+    assert response.status_code == 422

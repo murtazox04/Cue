@@ -33,3 +33,8 @@ class InvalidStateError(ServiceError):
 class UnprocessableError(ServiceError):
     status_code = 422
     title = "Unprocessable content"
+
+
+class ForbiddenError(ServiceError):
+    status_code = 403
+    title = "Forbidden"

@@ -19,11 +19,17 @@ class MessageStatus(StrEnum):
     SUPPRESSED = "suppressed"
     """Not sent because a policy decided against it; see ``status_reason``."""
     CANCELLED = "cancelled"
-    """Withdrawn before sending (e.g. its broadcast was cancelled)."""
+    """Withdrawn before sending (e.g. its broadcast was cancelled, or a reviewer rejected it)."""
+    PENDING_APPROVAL = "pending_approval"
+    """Held until someone approves it (agent policy); not sent, not yet counted."""
 
     @property
     def is_final(self) -> bool:
-        return self not in (MessageStatus.QUEUED, MessageStatus.SENDING)
+        return self not in (
+            MessageStatus.QUEUED,
+            MessageStatus.SENDING,
+            MessageStatus.PENDING_APPROVAL,
+        )
 
 
 #: Statuses that count towards frequency caps and cooldowns.
@@ -50,6 +56,10 @@ class Importance(StrEnum):
     """Time-sensitive: worth interrupting for, within the person's quiet hours."""
     CRITICAL = "critical"
     """Security or safety: may break through quiet hours and caps."""
+
+    @property
+    def rank(self) -> int:
+        return list(Importance).index(self)
 
 
 class EngagementType(StrEnum):
@@ -103,6 +113,7 @@ class SuppressionReason(StrEnum):
     FREQUENCY_CAP = "frequency_cap"
     TEMPLATE_ERROR = "template_error"
     EXPIRED = "expired"
+    AGENT_BUDGET = "agent_budget"
 
 
 class Scope(StrEnum):

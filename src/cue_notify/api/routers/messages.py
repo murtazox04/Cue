@@ -16,11 +16,11 @@ from cue_notify.api.deps import (
     check_inline_profile,
     paginate,
 )
-from cue_notify.api.schemas import MessageOut, Page, SendIn
+from cue_notify.api.schemas import MessageOut, Page, ReviewIn, SendIn
 from cue_notify.core.enums import MessageStatus
 from cue_notify.core.time import ensure_utc
 from cue_notify.db.models import Message
-from cue_notify.services import catalog, composer, engagement
+from cue_notify.services import agents, catalog, composer, engagement
 from cue_notify.services import recipients as recipient_service
 from cue_notify.services.errors import InvalidStateError, NotFoundError
 
@@ -46,10 +46,14 @@ async def send_message(
 ) -> MessageOut:
     """Send a template to one recipient without an event rule — OTPs, receipts, alerts.
 
-    The message still passes through preferences, caps and quiet hours of its category.
-    Check `status`: it may be `suppressed` with a `status_reason`.
+    The message still passes through preferences, caps and quiet hours of its category,
+    and, for keys bound to an agent, that agent's budget and approval policy. Check
+    `status`: it may be `suppressed` (see `status_reason`) or `pending_approval`.
     """
     check_inline_profile(key, body.recipient)
+    agent = await agents.for_key(session, key)
+    if agent is not None:
+        agents.check_category(agent, body.category)
     if isinstance(body.recipient, recipient_service.RecipientIn):
         recipient = await recipient_service.upsert(session, body.recipient)
     else:
@@ -62,6 +66,7 @@ async def send_message(
         data=body.data,
         send_at=ensure_utc(body.send_at) if body.send_at else None,
         importance=body.importance,
+        agent=agent,
         expires_at=ensure_utc(body.expires_at) if body.expires_at else None,
         dedup_key=f"api:{key.id}:{body.idempotency_key}" if body.idempotency_key else None,
     )
@@ -80,6 +85,7 @@ async def list_messages(
     status_: Annotated[MessageStatus | None, Query(alias="status")] = None,
     event_id: UUID | None = None,
     broadcast_id: UUID | None = None,
+    agent: str | None = None,
 ) -> Page[MessageOut]:
     stmt = select(Message)
     if recipient is not None:
@@ -91,6 +97,8 @@ async def list_messages(
         stmt = stmt.where(Message.event_id == event_id)
     if broadcast_id is not None:
         stmt = stmt.where(Message.broadcast_id == broadcast_id)
+    if agent is not None:
+        stmt = stmt.where(Message.agent_key == agent)
     items, cursor = await paginate(session, stmt, Message.id, page)
     return Page(items=[MessageOut.model_validate(item) for item in items], next_cursor=cursor)
 
@@ -98,6 +106,23 @@ async def list_messages(
 @router.get("/{message_id}", summary="Get a message")
 async def get_message(message_id: UUID, _: MessagesReader, session: SessionDep) -> MessageOut:
     return MessageOut.model_validate(await _get(session, message_id))
+
+
+@router.post("/{message_id}/approve", summary="Approve a message held for review")
+async def approve_message(
+    message_id: UUID, key: MessagesWriter, session: SessionDep, runtime: RuntimeDep
+) -> MessageOut:
+    """Releases it for delivery (policy is checked again at send time). A message that
+    expired while waiting comes back `suppressed` with reason `expired`. Agents cannot
+    review their own messages."""
+    return MessageOut.model_validate(await agents.approve(session, runtime, message_id, key))
+
+
+@router.post("/{message_id}/reject", summary="Reject a message held for review")
+async def reject_message(
+    message_id: UUID, body: ReviewIn, key: MessagesWriter, session: SessionDep
+) -> MessageOut:
+    return MessageOut.model_validate(await agents.reject(session, message_id, key, body.reason))
 
 
 @router.post("/{message_id}/cancel", summary="Cancel a queued message")
