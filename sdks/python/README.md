@@ -1,11 +1,13 @@
-# cue-client
+# cue-notify-client
 
 Python client for [Cue](https://github.com/murtazox04/Cue), the attention layer between
 software, AI agents and people. Its only dependency is `httpx`.
 
 ```bash
-pip install cue-client
+pip install cue-notify-client
 ```
+
+The package is imported as `cue_client`.
 
 ```python
 from cue_client import Cue

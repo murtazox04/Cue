@@ -287,32 +287,6 @@ wheels = [
 ]
 
 [[package]]
-name = "cue-client"
-source = { editable = "." }
-dependencies = [
-    { name = "httpx" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "cue-notify", marker = "python_full_version >= '3.12'" },
-    { name = "pyright" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "httpx", specifier = ">=0.27" }]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "cue-notify", marker = "python_full_version >= '3.12'", editable = "../../" },
-    { name = "pyright", specifier = ">=1.1.400" },
-    { name = "pytest", specifier = ">=8.4" },
-    { name = "pytest-asyncio", specifier = ">=1.0" },
-]
-
-[[package]]
 name = "cue-notify"
 source = { editable = "../../" }
 dependencies = [
@@ -365,6 +339,32 @@ dev = [
 docs = [
     { name = "mkdocs", specifier = ">=1.6,<2" },
     { name = "mkdocs-material", specifier = ">=9.6" },
+]
+
+[[package]]
+name = "cue-notify-client"
+source = { editable = "." }
+dependencies = [
+    { name = "httpx" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "cue-notify", marker = "python_full_version >= '3.12'" },
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "httpx", specifier = ">=0.27" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "cue-notify", marker = "python_full_version >= '3.12'", editable = "../../" },
+    { name = "pyright", specifier = ">=1.1.400" },
+    { name = "pytest", specifier = ">=8.4" },
+    { name = "pytest-asyncio", specifier = ">=1.0" },
 ]
 
 [[package]]

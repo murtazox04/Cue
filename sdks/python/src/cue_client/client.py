@@ -114,7 +114,10 @@ def _profile(
 
 
 def _headers(api_key: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {api_key}", "User-Agent": f"cue-client-python/{__version__}"}
+    return {
+        "Authorization": f"Bearer {api_key}",
+        "User-Agent": f"cue-notify-client-python/{__version__}",
+    }
 
 
 class Cue:

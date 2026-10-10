@@ -1,15 +1,15 @@
-# cue-client
+# cue-notify-client
 
 TypeScript client for [Cue](https://github.com/murtazox04/Cue), the attention layer
 between software, AI agents and people. It has no dependencies: it uses `fetch` and Web
 Crypto, so it runs on Node 18+, Deno, Bun, Cloudflare Workers and other edge runtimes.
 
 ```bash
-npm install cue-client
+npm install cue-notify-client
 ```
 
 ```ts
-import { Cue } from "cue-client";
+import { Cue } from "cue-notify-client";
 
 const cue = new Cue({ apiKey: process.env.CUE_API_KEY!, baseUrl: "https://cue.example.com" });
 
@@ -33,7 +33,7 @@ key.
 ## Verifying webhooks
 
 ```ts
-import { InvalidSignatureError, verifyWebhook } from "cue-client";
+import { InvalidSignatureError, verifyWebhook } from "cue-notify-client";
 
 export async function POST(request: Request) {
   const body = await request.text();

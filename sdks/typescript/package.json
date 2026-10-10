@@ -1,5 +1,5 @@
 {
-  "name": "cue-client",
+  "name": "cue-notify-client",
   "version": "0.1.0",
   "description": "TypeScript client for Cue: send events and messages, and verify Cue's signed webhooks.",
   "license": "MIT",

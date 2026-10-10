@@ -10,7 +10,7 @@ All notable changes to this project are documented here. The format follows
 - A throughput benchmark (`benchmarks/throughput.py`) and a performance guide.
 - Agent `reviewers`: Cue reports a `cue.approval_requested` event for each reviewer when
   a message waits for approval, so your own rules and templates notify them.
-- Python (`cue-client`, httpx only) and TypeScript (`cue-client`, no dependencies) SDKs
+- Python (`cue-notify-client`, httpx only) and TypeScript (`cue-notify-client`, no dependencies) SDKs
   with webhook signature verification, tested in CI and released by tag.
 
 ### Fixed

@@ -1,17 +1,31 @@
 name: SDK release
 
-# Tag python-sdk-v0.1.0 or typescript-sdk-v0.1.0 (a GitHub release creates the tag).
+# Tag python-sdk-v0.1.0 or typescript-sdk-v0.1.0, or run by hand with the SDK and its
+# version (the tag is then created after a successful publish).
 on:
   push:
     tags: ["python-sdk-v*", "typescript-sdk-v*"]
+  workflow_dispatch:
+    inputs:
+      sdk:
+        description: "Which SDK to release"
+        type: choice
+        options: [python, typescript]
+        required: true
+      version:
+        description: "Version, e.g. 0.1.0 (must match the SDK's version in the code)"
+        required: true
 
 permissions:
   contents: read
 
+env:
+  TAG: ${{ github.event_name == 'workflow_dispatch' && format('{0}-sdk-v{1}', inputs.sdk, inputs.version) || github.ref_name }}
+
 jobs:
   python:
-    name: Publish cue-client to PyPI
-    if: startsWith(github.ref_name, 'python-sdk-v')
+    name: Publish cue-notify-client to PyPI
+    if: startsWith(github.ref_name, 'python-sdk-v') || inputs.sdk == 'python'
     runs-on: ubuntu-latest
     environment: pypi-sdk
     permissions:
@@ -25,18 +39,18 @@ jobs:
       - name: Check the tag matches the version
         run: |
           version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/cue_client/__init__.py)
-          test "python-sdk-v$version" = "$GITHUB_REF_NAME"
+          test "python-sdk-v$version" = "$TAG"
       - run: uv sync --frozen && uv run pytest
       - run: uv build
       - run: uv publish
 
   typescript:
-    name: Publish cue-client to npm
-    if: startsWith(github.ref_name, 'typescript-sdk-v')
+    name: Publish cue-notify-client to npm
+    if: startsWith(github.ref_name, 'typescript-sdk-v') || inputs.sdk == 'typescript'
     runs-on: ubuntu-latest
     environment: npm
     permissions:
-      id-token: write # trusted publishing and provenance
+      id-token: write # npm provenance
     defaults:
       run:
         working-directory: sdks/typescript
@@ -46,8 +60,28 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-      - run: npm install -g npm@11 # trusted publishing needs npm 11.5 or later
       - name: Check the tag matches the version
-        run: test "typescript-sdk-v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+        run: test "typescript-sdk-v$(node -p "require('./package.json').version")" = "$TAG"
       - run: npm ci
       - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  tag:
+    name: Tag the release
+    needs: [python, typescript]
+    # Runs after whichever SDK was published by hand; tag pushes already have their tag.
+    if: >-
+      always() && github.event_name == 'workflow_dispatch' &&
+      (needs.python.result == 'success' || needs.typescript.result == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$TAG" --target "$GITHUB_SHA" --latest=false \
+            --title "${{ inputs.sdk }} SDK ${{ inputs.version }}" \
+            --notes "cue-notify-client ${{ inputs.version }} for ${{ inputs.sdk }}. See [SDKs](https://github.com/murtazox04/Cue/blob/main/docs/guides/sdks.md)."

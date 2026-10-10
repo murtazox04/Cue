@@ -167,7 +167,7 @@ export class Cue {
   #send(method: string, path: string, body: Json | undefined): Promise<Response> {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.#apiKey}`,
-      "User-Agent": `cue-client-js/${VERSION}`,
+      "User-Agent": `cue-notify-client-js/${VERSION}`,
     };
     if (body !== undefined) headers["Content-Type"] = "application/json";
     return this.#fetch(`${this.#baseUrl}${path}`, {
