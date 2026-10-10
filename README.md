@@ -9,12 +9,12 @@ Cue decides whether it is worth someone's attention, what to say, when, and over
 route, then hands a ready-to-send message to the delivery you plug in.
 
 [![CI](https://github.com/murtazox04/Cue/actions/workflows/ci.yml/badge.svg)](https://github.com/murtazox04/Cue/actions/workflows/ci.yml)
-[![Python](https://img.shields.io/badge/python-3.12%20|%203.13%20|%203.14-blue)](pyproject.toml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.12%20|%203.13%20|%203.14-blue)](https://github.com/murtazox04/Cue/blob/main/pyproject.toml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](https://github.com/murtazox04/Cue/blob/main/LICENSE)
 
 [Documentation](https://murtazox04.github.io/Cue) ·
-[Getting started](docs/getting-started.md) ·
-[Architecture](docs/architecture.md)
+[Getting started](https://github.com/murtazox04/Cue/blob/main/docs/getting-started.md) ·
+[Architecture](https://github.com/murtazox04/Cue/blob/main/docs/architecture.md)
 
 </div>
 
@@ -84,13 +84,13 @@ Your delivery endpoint then receives a signed, fully rendered message:
 
 - **Agents as first-class senders.** Each agent gets its own key with a per-person
   attention budget, an importance ceiling and, where you want it, human approval before
-  anything goes out. See [agents](docs/concepts/agents.md).
+  anything goes out. See [agents](https://github.com/murtazox04/Cue/blob/main/docs/concepts/agents.md).
 - **MCP built in.** `uvx cue-notify mcp` gives Claude, Cursor or your own agent tools to
   notify people and inspect delivery, with the same policy and audit trail.
 - **Claude Code plugin.** `/plugin marketplace add murtazox04/Cue`, then
   `/plugin install cue@cue`, teaches Claude to integrate Cue into your app.
 - **Docs for machines.** [`llms.txt`](https://murtazox04.github.io/Cue/llms.txt) and
-  [`AGENTS.md`](AGENTS.md).
+  [`AGENTS.md`](https://github.com/murtazox04/Cue/blob/main/AGENTS.md).
 
 ## Bring your own delivery
 
@@ -101,7 +101,7 @@ Each route (`push`, `sms`, `email`, `ops-alerts`…) is backed by a **connector*
 | `webhook` | You already have a sending service, or want full control. Cue POSTs signed JSON to it. |
 | `fcm`, `twilio`, `smtp`, `telegram` | You want a ready-made connector for these providers. |
 | `console` | Local development. |
-| your own | Write a small class and register it as a plugin — see [custom connectors](docs/guides/custom-channels.md). |
+| your own | Write a small class and register it as a plugin — see [custom connectors](https://github.com/murtazox04/Cue/blob/main/docs/guides/custom-channels.md). |
 
 Connectors are configuration, not code changes — swap SMS vendors without touching a
 rule.
@@ -135,7 +135,7 @@ export CUE_WORKER__EMBEDDED=true CUE_CHANNELS__PUSH__PROVIDER=console
 cuectl db upgrade && cuectl keys create admin && cuectl serve
 ```
 
-Then follow the [getting-started guide](docs/getting-started.md).
+Then follow the [getting-started guide](https://github.com/murtazox04/Cue/blob/main/docs/getting-started.md).
 
 ## How it works
 
@@ -178,17 +178,17 @@ account_sid = "AC…"
 from_number = "+15550100"   # auth token via CUE_CHANNELS__SMS__AUTH_TOKEN
 ```
 
-See the [configuration reference](docs/reference/configuration.md) and
-[`examples/cue.toml`](examples/cue.toml).
+See the [configuration reference](https://github.com/murtazox04/Cue/blob/main/docs/reference/configuration.md) and
+[`examples/cue.toml`](https://github.com/murtazox04/Cue/blob/main/examples/cue.toml).
 
 ## Project status
 
 Cue is in early development (0.x): the model and API are stable in shape but may still
-change before 1.0. See the [roadmap](ROADMAP.md) for what comes next. Feedback and
-contributions are very welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+change before 1.0. See the [roadmap](https://github.com/murtazox04/Cue/blob/main/ROADMAP.md) for what comes next. Feedback and
+contributions are very welcome — see [CONTRIBUTING.md](https://github.com/murtazox04/Cue/blob/main/CONTRIBUTING.md).
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/murtazox04/Cue/blob/main/LICENSE)
 
 <!-- mcp-name: io.github.murtazox04/cue -->

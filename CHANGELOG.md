@@ -4,9 +4,11 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [semantic versioning](https://semver.org/).
 
-## [Unreleased] — 0.1.0
+## [Unreleased]
 
-First public release of Cue, a self-hosted notification decision engine.
+## [0.1.0] — 2026-10-10
+
+First public release of Cue, the attention layer between software, AI agents and people.
 
 ### Added
 - Event ingestion with idempotency keys and inline recipient profiles.
@@ -61,3 +63,6 @@ First public release of Cue, a self-hosted notification decision engine.
 - `cuectl` CLI: `serve`, `worker`, `db`, `keys`, `jobs`, `prune`, `check`, `mcp`.
 - A Model Context Protocol server so AI agents can send notifications and inspect
   delivery with scoped API keys.
+
+[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/murtazox04/Cue/releases/tag/v0.1.0

@@ -1,3 +1,3 @@
-"""Cue — a self-hosted notification decision engine."""
+"""Cue — the attention layer between software, AI agents and people."""
 
-__version__ = "0.1.0.dev0"
+__version__ = "0.1.0"
