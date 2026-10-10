@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import smtplib
 import ssl
 from email.message import EmailMessage
@@ -45,6 +46,10 @@ class SmtpChannel(Channel[SmtpConfig]):
         email["From"] = formataddr((config.from_name or "", config.from_address))
         email["To"] = delivery.address
         email["Message-ID"] = make_msgid(idstring=str(delivery.message_id))
+        if content.thread:
+            # A stable root id per thread lets mail clients stack the conversation.
+            digest = hashlib.sha256(content.thread.encode()).hexdigest()[:32]
+            email["References"] = f"<{digest}@thread.cue>"
         if config.reply_to:
             email["Reply-To"] = config.reply_to
         text = f"{content.body}\n\n{content.url}" if content.url else content.body

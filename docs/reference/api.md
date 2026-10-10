@@ -25,6 +25,8 @@ The complete, always-current reference is generated from the code: open
 | `POST /v1/messages` | `messages:write` | Send a template directly. |
 | `GET /v1/messages`, `GET /v1/messages/{id}` | `messages:read` | Filter by `recipient`, `status`, `event_id`, `broadcast_id`. |
 | `POST /v1/messages/{id}/cancel` | `messages:write` | Cancel a queued message. |
+| `GET /v1/digests`, `GET /v1/digests/{id}` | `messages:read` | Grouped events; filter by `recipient`, `status`. |
+| `POST /v1/digests/{id}/send` | `messages:write` | Close a digest's window early. |
 | `POST /v1/messages/{id}/engagement` | `events:write` | Record delivered/opened/clicked/converted. |
 | `POST /v1/track/{token}` | none | Engagement from client apps. |
 | `PUT /v1/recipients/{external_id}` | `recipients:write` | Create or update. |

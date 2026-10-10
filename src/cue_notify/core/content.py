@@ -25,6 +25,11 @@ class Content(BaseModel):
     body: str = Field(max_length=10_000)
     url: str | None = Field(default=None, max_length=2048, description="Deep link or web URL.")
     image_url: str | None = Field(default=None, max_length=2048)
+    thread: str | None = Field(
+        default=None,
+        max_length=128,
+        description="Grouping key: devices stack notifications with the same thread together.",
+    )
     html: str | None = Field(default=None, description="Rich body for channels that support it.")
     data: dict[str, str] = Field(
         default_factory=dict, description="Key/value payload delivered alongside (push data)."
@@ -38,6 +43,7 @@ class ContentTemplate(BaseModel):
     body: str
     url: str | None = None
     image_url: str | None = None
+    thread: str | None = None
     html: str | None = None
     data: dict[str, str] = Field(default_factory=dict)
 
@@ -52,7 +58,7 @@ class ContentTemplate(BaseModel):
 
     def _sources(self) -> list[tuple[str, str]]:
         fields = [("title", self.title), ("body", self.body), ("url", self.url)]
-        fields += [("image_url", self.image_url), ("html", self.html)]
+        fields += [("image_url", self.image_url), ("thread", self.thread), ("html", self.html)]
         sources = [(name, value) for name, value in fields if value]
         sources += [(f"data.{key}", value) for key, value in self.data.items()]
         return sources
@@ -66,6 +72,7 @@ class ContentTemplate(BaseModel):
             body=templating.render(self.body, context),
             url=text(self.url),
             image_url=text(self.image_url),
+            thread=text(self.thread),
             html=templating.render(self.html, context, html=True) if self.html else None,
             data={key: templating.render(value, context) for key, value in self.data.items()},
         )
@@ -95,6 +102,7 @@ class ContentOverride(BaseModel):
     body: str | None = None
     url: str | None = None
     image_url: str | None = None
+    thread: str | None = None
     html: str | None = None
     data: dict[str, str] | None = None
 

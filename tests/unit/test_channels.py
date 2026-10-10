@@ -259,6 +259,26 @@ async def test_fcm_authenticates_builds_message_and_classifies(service_account: 
     assert token_requests == 1  # cached between sends
 
 
+async def test_fcm_thread_groups_notifications_on_both_platforms(service_account: str) -> None:
+    payloads: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "oauth.test":
+            return httpx.Response(200, json={"access_token": "ya29", "expires_in": 3600})
+        payloads.append(json.loads(request.content)["message"])
+        return httpx.Response(200, json={"name": "projects/demo/messages/1"})
+
+    async with _client(handler) as http:
+        channel = FcmChannel("push", FcmConfig(credentials_json=service_account), http)
+        await channel.send(_delivery("tok", thread="post-1"))
+        await channel.send(_delivery("tok"))
+    grouped, plain = payloads
+    assert grouped["data"]["thread"] == "post-1"
+    assert grouped["apns"]["payload"]["aps"]["thread-id"] == "post-1"
+    assert "thread" not in plain["data"]
+    assert "thread-id" not in plain["apns"]["payload"]["aps"]
+
+
 def test_fcm_needs_exactly_one_credential_source() -> None:
     with pytest.raises(ValidationError, match="exactly one"):
         FcmConfig()
@@ -277,6 +297,17 @@ def test_smtp_builds_multipart_email() -> None:
     text_part, html_part = email.iter_parts()
     assert "https://x.test" in text_part.get_content()
     assert html_part.get_content().strip() == "<p>Body</p>"
+    assert email["References"] is None
+
+
+def test_smtp_thread_becomes_a_stable_references_header() -> None:
+    config = SmtpConfig(host="smtp.test", from_address="noreply@x.test")
+    channel = SmtpChannel("email", config, httpx.AsyncClient())
+    first = channel.build(_delivery("ann@x.test", thread="post 1/ü"))
+    second = channel.build(_delivery("ann@x.test", thread="post 1/ü"))
+    other = channel.build(_delivery("ann@x.test", thread="post-2"))
+    assert first["References"] == second["References"] != other["References"]
+    assert first["References"].endswith("@thread.cue>")
 
 
 # --------------------------------------------------------------------------- registry

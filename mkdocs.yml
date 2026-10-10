@@ -38,6 +38,7 @@ nav:
       - Events and rules: concepts/events-and-rules.md
       - Templates: concepts/templates.md
       - Delivery policy: concepts/policy.md
+      - Digests: concepts/digests.md
       - Channels: concepts/channels.md
       - Broadcasts: concepts/broadcasts.md
       - Engagement tracking: concepts/engagement.md

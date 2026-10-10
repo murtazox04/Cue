@@ -14,7 +14,7 @@ cuectl keys list
 cuectl keys revoke KEY_ID
 cuectl jobs stats                 queued and dead jobs by kind
 cuectl jobs retry-dead [--kind K]
-cuectl prune [--older-than DAYS]  delete old events and finished messages
+cuectl prune [--older-than DAYS]  delete old events, finished messages and closed digests
 cuectl version
 ```
 

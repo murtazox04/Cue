@@ -139,6 +139,8 @@ class FcmChannel(Channel[FcmConfig]):
         data = flatten_data({**content.data, **delivery.metadata})
         if content.url:
             data.setdefault("url", content.url)
+        if content.thread:
+            data.setdefault("thread", content.thread)  # Android apps group by this key
         android: dict[str, Any] = {"priority": self.config.android_priority.upper()}
         if self.config.ttl_seconds is not None:
             android["ttl"] = f"{self.config.ttl_seconds}s"
@@ -150,8 +152,13 @@ class FcmChannel(Channel[FcmConfig]):
             "data": data,
             "android": android,
         }
+        aps: dict[str, Any] = {}
         if self.config.sound:
-            message["apns"] = {"payload": {"aps": {"sound": self.config.sound}}}
+            aps["sound"] = self.config.sound
+        if content.thread:
+            aps["thread-id"] = content.thread  # iOS stacks notifications by thread
+        if aps:
+            message["apns"] = {"payload": {"aps": aps}}
         return {"message": message}
 
     async def _post(self, url: str, payload: dict[str, Any]) -> httpx.Response:

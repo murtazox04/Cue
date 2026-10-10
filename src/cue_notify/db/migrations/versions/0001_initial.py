@@ -130,7 +130,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["recipient_id"],
             ["recipients.id"],
-            name=op.f("ck_addresses_recipient_id_recipients"),
+            name=op.f("fk_addresses_recipient_id_recipients"),
             ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_addresses")),
@@ -183,14 +183,14 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["category_key"],
             ["categories.key"],
-            name=op.f("ck_broadcasts_category_key_categories"),
+            name=op.f("fk_broadcasts_category_key_categories"),
             onupdate="CASCADE",
             ondelete="RESTRICT",
         ),
         sa.ForeignKeyConstraint(
             ["template_key"],
             ["templates.key"],
-            name=op.f("ck_broadcasts_template_key_templates"),
+            name=op.f("fk_broadcasts_template_key_templates"),
             onupdate="CASCADE",
             ondelete="RESTRICT",
         ),
@@ -220,7 +220,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["recipient_id"],
             ["recipients.id"],
-            name=op.f("ck_events_recipient_id_recipients"),
+            name=op.f("fk_events_recipient_id_recipients"),
             ondelete="SET NULL",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_events")),
@@ -256,14 +256,14 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["category_key"],
             ["categories.key"],
-            name=op.f("ck_rules_category_key_categories"),
+            name=op.f("fk_rules_category_key_categories"),
             onupdate="CASCADE",
             ondelete="RESTRICT",
         ),
         sa.ForeignKeyConstraint(
             ["template_key"],
             ["templates.key"],
-            name=op.f("ck_rules_template_key_templates"),
+            name=op.f("fk_rules_template_key_templates"),
             onupdate="CASCADE",
             ondelete="RESTRICT",
         ),
@@ -325,23 +325,23 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["broadcast_id"],
             ["broadcasts.id"],
-            name=op.f("ck_messages_broadcast_id_broadcasts"),
+            name=op.f("fk_messages_broadcast_id_broadcasts"),
             ondelete="SET NULL",
         ),
         sa.ForeignKeyConstraint(
             ["event_id"],
             ["events.id"],
-            name=op.f("ck_messages_event_id_events"),
+            name=op.f("fk_messages_event_id_events"),
             ondelete="SET NULL",
         ),
         sa.ForeignKeyConstraint(
             ["recipient_id"],
             ["recipients.id"],
-            name=op.f("ck_messages_recipient_id_recipients"),
+            name=op.f("fk_messages_recipient_id_recipients"),
             ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(
-            ["rule_id"], ["rules.id"], name=op.f("ck_messages_rule_id_rules"), ondelete="SET NULL"
+            ["rule_id"], ["rules.id"], name=op.f("fk_messages_rule_id_rules"), ondelete="SET NULL"
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_messages")),
         sa.UniqueConstraint("dedup_key", name=op.f("uq_messages_dedup_key")),

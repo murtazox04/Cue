@@ -36,9 +36,10 @@ async def create_rule(body: RuleIn, _: Admin, session: SessionDep, runtime: Runt
         raise ConflictError(f"rule {body.key} already exists")
     await catalog.template(session, body.template)
     await catalog.category(session, body.category)
-    values = body.model_dump(exclude={"template", "category", "channels"})
+    values = body.model_dump(exclude={"template", "category", "channels", "digest"})
     rule = Rule(
         **values,
+        digest=body.digest.model_dump(mode="json") if body.digest else None,
         template_key=body.template,
         category_key=body.category,
         channels=catalog.channels(runtime, body.channels),
@@ -65,6 +66,9 @@ async def update_rule(
         rule.category_key = (await catalog.category(session, category)).key
     if (channels := changes.pop("channels", None)) is not None:
         rule.channels = catalog.channels(runtime, channels)
+    if "digest" in changes:
+        changes.pop("digest")
+        rule.digest = body.digest.model_dump(mode="json") if body.digest else None
     for field, value in changes.items():
         setattr(rule, field, value)
     await session.flush()

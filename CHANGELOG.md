@@ -12,6 +12,12 @@ First public release of Cue, a self-hosted notification decision engine.
 - Event ingestion with idempotency keys and inline recipient profiles.
 - Rules: JSON Logic conditions, wildcard event names, priorities, `stop_processing`,
   delays, cooldowns and deterministic percentage rollouts, plus a dry-run endpoint.
+- Digests: a rule can group matching events per recipient and grouping key for a
+  window (or until `send_after` events) and send one message rendered from all of them.
+  Smart digests let the AI layer summarise the group from allow-listed fields, falling
+  back to the template. API: `/v1/digests`.
+- A `thread` content field for device-side grouping (APNs `thread-id`, FCM data, e-mail
+  `References`).
 - Categories carrying delivery policy: rolling frequency caps, quiet hours and
   unsubscribe rules. `transactional` and `marketing` are created by default.
 - Localised Jinja2 templates (sandboxed, strict) with per-channel overrides, versioning

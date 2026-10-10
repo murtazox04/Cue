@@ -31,6 +31,9 @@ Cue moves that logic into one place:
 - **Policy everywhere.** Every message — rule-triggered, direct or broadcast — passes the
   same checks: unsubscribes, muted channels, frequency caps, cooldowns and quiet hours in
   the recipient's own time zone.
+- **Fewer, better messages.** [Digests](concepts/digests.md) turn a burst of events
+  into one message ("Ann, Bo and 10 others commented"), automatically or summarised by
+  AI, and thread ids let phones and inboxes stack related messages.
 - **Bring your own delivery.** Cue does not lock you into a provider. Point a route
   at your existing sending service with a signed webhook, use a bundled connector, or
   write your own in a few dozen lines.

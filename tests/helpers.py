@@ -7,6 +7,7 @@ from typing import Any, ClassVar
 
 import httpx
 
+from cue_notify.ai import Copy, GenerationError, PersonalizationRequest, PersonalizationResult
 from cue_notify.channels.base import (
     Channel,
     ChannelConfig,
@@ -55,6 +56,30 @@ class FakeChannel(Channel[FakeConfig]):
 async def drain(runtime: Runtime) -> int:
     """Run every job that is due now."""
     return await create_worker(runtime, name="test").run_until_idle()
+
+
+# --------------------------------------------------------------------------- fake AI
+
+
+@dataclass
+class FakeGenerator:
+    fail: bool = False
+    requests: list[PersonalizationRequest] = field(default_factory=list)
+
+    @property
+    def model_name(self) -> str:
+        return "fake-model"
+
+    async def personalize(self, request: PersonalizationRequest) -> PersonalizationResult:
+        self.requests.append(request)
+        if self.fail:
+            raise GenerationError("provider down")
+        name = request.context.get("first_name", "there")
+        copy = Copy(title=request.baseline.title, body=f"{name}, {request.baseline.body}")
+        return PersonalizationResult(copy=copy, model=self.model_name, tokens=120)
+
+    async def aclose(self) -> None:
+        return None
 
 
 # --------------------------------------------------------------------------- builders

@@ -33,6 +33,7 @@ A template holds the content of a message in one or more locales.
 | `body` | Every channel. |
 | `url` | Deep link: push `data.url`, appended to SMS/Telegram, link in e-mail text. |
 | `image_url` | Push notification image. |
+| `thread` | Groups related messages on the device: APNs `thread-id`, FCM `data.thread`, an e-mail `References` header, forwarded by webhooks. See [digests](digests.md). |
 | `html` | E-mail HTML part (auto-escaped). |
 | `data` | Push data payload / webhook payload. Values are templates too. |
 | `channels` | Per-channel overrides. Unset fields inherit from the locale's base content. |

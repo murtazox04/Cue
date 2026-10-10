@@ -145,7 +145,13 @@ async def test_dry_run_evaluation_sends_nothing(
     )
     assert response.status_code == 200, response.text
     assert response.json() == [
-        {"rule": "notify-shipped", "matched": True, "status": "queued", "reason": None}
+        {
+            "rule": "notify-shipped",
+            "matched": True,
+            "status": "queued",
+            "reason": None,
+            "digest_id": None,
+        }
     ]
     assert await drain(runtime) == 0
     assert push.sent == []

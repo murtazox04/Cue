@@ -21,7 +21,7 @@ from cue_notify.core.time import ensure_utc, utcnow
 from cue_notify.db.dml import insert_ignore
 from cue_notify.db.models import Category, Event, Recipient, Rule, Template
 from cue_notify.runtime import Runtime
-from cue_notify.services import composer
+from cue_notify.services import composer, digests
 from cue_notify.services import recipients as recipient_service
 from cue_notify.services.errors import NotFoundError
 
@@ -111,6 +111,7 @@ class RuleOutcome:
     reason: str | None = None
     message_id: str | None = None
     status: str | None = None
+    digest_id: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {key: value for key, value in asdict(self).items() if value is not None}
@@ -169,6 +170,17 @@ async def evaluate(
         category = await session.get(Category, rule.category_key)
         if template is None or category is None:  # guarded by FKs; defensive for dry runs
             outcomes.append(RuleOutcome(rule.key, matched=True, reason="misconfigured"))
+            continue
+        if rule.digest is not None:
+            if dry_run:
+                outcomes.append(RuleOutcome(rule.key, matched=True, reason="digested"))
+            else:
+                digest = await digests.add(session, runtime, rule, event, recipient, context)
+                outcomes.append(
+                    RuleOutcome(rule.key, matched=True, reason="digested", digest_id=str(digest.id))
+                )
+            if rule.stop_processing:
+                break
             continue
         intent = composer.Intent(
             recipient=recipient,

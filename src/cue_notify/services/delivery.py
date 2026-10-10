@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select, update
@@ -33,6 +34,12 @@ from cue_notify.runtime import Runtime
 from cue_notify.services import recipients as recipient_service
 
 logger = logging.getLogger(__name__)
+
+DIGEST_INSTRUCTIONS = (
+    "This message groups several updates (see grouped_updates). Summarise them so the "
+    "reader immediately knows what happened: mention the most relevant names or items, "
+    "keep every number from the original exactly, and do not list everything."
+)
 
 
 @dataclass(slots=True)
@@ -111,19 +118,25 @@ async def _personalize(runtime: Runtime, message: Message, recipient: Recipient)
         template = await session.scalar(
             select(Template).where(Template.key == message.template_key)
         )
-    if template is None or not template.ai_instructions:
+    if template is None:
+        return
+    instructions = template.ai_instructions
+    if message.ai_context and "grouped_updates" in message.ai_context:
+        instructions = "\n\n".join(filter(None, [instructions, DIGEST_INSTRUCTIONS]))
+    if not instructions:
         return
     baseline = Content.model_validate(message.content[DEFAULT_VARIANT])
-    context = {
+    context: dict[str, Any] = {
         key: recipient.attributes[key]
         for key in template.ai_attributes
         if key in recipient.attributes
     }
+    context |= message.ai_context or {}
     request = PersonalizationRequest(
         baseline=baseline,
         locale=message.locale or runtime.settings.policy.default_locale,
         channel=message.channels[0] if message.channels else "push",
-        instructions=template.ai_instructions,
+        instructions=instructions,
         context=context,
     )
     try:

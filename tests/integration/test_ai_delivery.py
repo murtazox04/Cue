@@ -3,39 +3,16 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
 
 import httpx
 import pytest
 
-from cue_notify.ai import Copy, GenerationError, PersonalizationRequest, PersonalizationResult
 from cue_notify.api.app import create_app
 from cue_notify.core.enums import Scope
 from cue_notify.runtime import Runtime
 from cue_notify.services import api_keys
 from cue_notify.settings import AISettings, Settings
-from tests.helpers import FakeChannel, create_recipient, drain
-
-
-@dataclass
-class FakeGenerator:
-    fail: bool = False
-    requests: list[PersonalizationRequest] = field(default_factory=list)
-
-    @property
-    def model_name(self) -> str:
-        return "fake-model"
-
-    async def personalize(self, request: PersonalizationRequest) -> PersonalizationResult:
-        self.requests.append(request)
-        if self.fail:
-            raise GenerationError("provider down")
-        name = request.context.get("first_name", "there")
-        copy = Copy(title=request.baseline.title, body=f"{name}, {request.baseline.body}")
-        return PersonalizationResult(copy=copy, model=self.model_name, tokens=120)
-
-    async def aclose(self) -> None:
-        return None
+from tests.helpers import FakeChannel, FakeGenerator, create_recipient, drain
 
 
 @pytest.fixture

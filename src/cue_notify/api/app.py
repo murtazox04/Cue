@@ -18,6 +18,7 @@ from cue_notify.api.routers import (
     api_keys,
     broadcasts,
     categories,
+    digests,
     events,
     health,
     messages,
@@ -43,6 +44,7 @@ Authenticate with `Authorization: Bearer <api key>`.
 TAGS = [
     {"name": "events", "description": "Tell Cue what happened; rules decide what to send."},
     {"name": "messages", "description": "Direct sends, message history and engagement."},
+    {"name": "digests", "description": "Events grouped into one message per window."},
     {"name": "recipients", "description": "Profiles, addresses and preferences."},
     {"name": "templates", "description": "Localised, channel-aware message content."},
     {"name": "rules", "description": "Which event sends which template, to which channels."},
@@ -118,6 +120,7 @@ def create_app(settings: Settings | None = None, runtime: Runtime | None = None)
     for module in (
         events,
         messages,
+        digests,
         recipients,
         templates,
         rules,

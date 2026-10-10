@@ -60,6 +60,9 @@ Your delivery endpoint then receives a signed, fully rendered message:
   a rich e-mail), versioning and previews; optional AI rewording through any
   [Pydantic AI](https://ai.pydantic.dev) model, with guardrails that keep numbers and
   links verbatim.
+- **How often** — digests that turn a burst of events into one message per window
+  ("Ann, Bo and 10 others commented"), optionally summarised by AI, plus thread ids so
+  phones and mail clients stack related messages.
 - **When** — delays, quiet hours in each recipient's time zone, scheduled broadcasts.
 - **Where** — an ordered list of routes per rule (e.g. push, then SMS), every address a
   person has on a route, fallback on permanent failure, retries on transient failure,

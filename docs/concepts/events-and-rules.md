@@ -63,6 +63,7 @@ A rule connects an event to a template:
 | `stop_processing` | When this rule matches, lower-priority rules are skipped (default `true`). Set `false` to let several rules fire for one event. |
 | `delay_seconds` | Wait before sending (e.g. "remind me in an hour"). |
 | `cooldown_seconds` | At most one message from this rule per recipient per window. |
+| `digest` | Group matching events into one message per window instead of one per event — see [digests](digests.md). |
 | `rollout_percent` | Deterministic percentage rollout; the same recipient always gets the same answer, and raising the percentage only adds people. |
 | `enabled` | Disable without deleting. |
 
@@ -103,4 +104,4 @@ are evaluated safely — no code execution, bounded nesting.
 
 `POST /v1/rules/evaluate` evaluates rules **and delivery policy** for a hypothetical
 event without storing or sending anything. Use it in CI for your rule definitions, or to
-answer "would this user get that?".
+answer "would this user get that?". Digest rules report `"reason": "digested"`.

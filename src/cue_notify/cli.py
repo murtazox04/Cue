@@ -288,13 +288,16 @@ def jobs_retry_dead(
 def prune(
     older_than: Annotated[int, typer.Option(help="Retention in days.")] = 90,
 ) -> None:
-    """Delete events and final messages older than the retention period."""
-    from cue_notify.core.enums import EventStatus, MessageStatus
-    from cue_notify.db.models import Event, Message
+    """Delete events, final messages and closed digests older than the retention period."""
+    from cue_notify.core.enums import DigestStatus, EventStatus, MessageStatus
+    from cue_notify.db.models import Digest, Event, Message
 
     async def main(runtime: Runtime) -> tuple[int, int]:
         cutoff = utcnow() - timedelta(days=older_than)
         async with runtime.transaction() as session:
+            await session.execute(
+                delete(Digest).where(Digest.created_at < cutoff, Digest.status != DigestStatus.OPEN)
+            )
             messages = await session.execute(
                 delete(Message).where(
                     Message.created_at < cutoff,

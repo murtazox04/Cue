@@ -58,6 +58,15 @@ class BroadcastStatus(StrEnum):
     FAILED = "failed"
 
 
+class DigestStatus(StrEnum):
+    OPEN = "open"
+    """Collecting events until ``closes_at``."""
+    SENT = "sent"
+    """Composed into a message (which may itself have been suppressed by policy)."""
+    CANCELLED = "cancelled"
+    """Discarded, e.g. because its rule was disabled."""
+
+
 class SuppressionReason(StrEnum):
     UNSUBSCRIBED = "unsubscribed"
     NO_REACHABLE_CHANNEL = "no_reachable_channel"

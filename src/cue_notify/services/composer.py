@@ -43,6 +43,10 @@ class Intent:
     delay: timedelta = timedelta()
     cooldown: timedelta | None = None
     dedup_key: str | None = None
+    personalize: bool = False
+    """Ask the AI layer to reword even if the template has no ``ai_instructions``."""
+    ai_context: dict[str, Any] | None = None
+    """Extra, explicitly allowed data the AI may see (e.g. grouped digest items)."""
 
 
 @dataclass(slots=True)
@@ -185,7 +189,8 @@ async def compose(session: AsyncSession, runtime: Runtime, intent: Intent) -> tu
         channels=decision.channels or list(intent.channels),
         locale=decision.locale,
         content=decision.variants,
-        personalize=bool(intent.template.ai_instructions),
+        personalize=bool(intent.template.ai_instructions) or intent.personalize,
+        ai_context=intent.ai_context,
         status=decision.status,
         status_reason=decision.reason,
         dedup_key=intent.dedup_key,

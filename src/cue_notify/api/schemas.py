@@ -17,7 +17,14 @@ from pydantic import (
 
 from cue_notify.core import logic
 from cue_notify.core.content import LocalizedTemplate
-from cue_notify.core.enums import BroadcastStatus, EventStatus, MessageStatus, Scope
+from cue_notify.core.digest import DigestPolicy
+from cue_notify.core.enums import (
+    BroadcastStatus,
+    DigestStatus,
+    EventStatus,
+    MessageStatus,
+    Scope,
+)
 from cue_notify.core.policy import FrequencyCap, RecipientPreferences
 from cue_notify.services.broadcasts import Audience
 from cue_notify.services.recipients import AddressIn, RecipientIn
@@ -220,6 +227,11 @@ class RuleFields(BaseModel):
         default=None, ge=1, description="Minimum gap between this rule's messages to a recipient."
     )
     rollout_percent: float = Field(default=100.0, ge=0, le=100)
+    digest: DigestPolicy | None = Field(
+        default=None,
+        description="Group matching events into one message per window instead of one each.",
+        examples=[{"window": "PT10M", "key": "{{ event.data.post_id }}", "send_after": 20}],
+    )
 
     @field_validator("condition")
     @classmethod
@@ -245,6 +257,7 @@ class RuleUpdate(BaseModel):
     delay_seconds: int | None = Field(default=None, ge=0, le=31_536_000)
     cooldown_seconds: int | None = Field(default=None, ge=1)
     rollout_percent: float | None = Field(default=None, ge=0, le=100)
+    digest: DigestPolicy | None = Field(default=None, description="Set to null to turn off.")
 
     @field_validator("condition")
     @classmethod
@@ -267,6 +280,7 @@ class RuleOut(Model):
     delay_seconds: int
     cooldown_seconds: int | None
     rollout_percent: float
+    digest: DigestPolicy | None
     created_at: datetime
     updated_at: datetime
 
@@ -282,6 +296,23 @@ class RuleOutcomeOut(BaseModel):
     matched: bool
     status: MessageStatus | None = None
     reason: str | None = None
+    digest_id: UUID | None = None
+
+
+# --------------------------------------------------------------------------- digests
+
+
+class DigestOut(Model):
+    id: UUID
+    rule_id: UUID
+    key: str
+    status: DigestStatus
+    count: int
+    items: list[dict[str, Any]]
+    closes_at: datetime
+    sent_at: datetime | None
+    message_id: UUID | None
+    created_at: datetime
 
 
 # --------------------------------------------------------------------------- messages

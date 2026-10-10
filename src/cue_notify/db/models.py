@@ -20,10 +20,11 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from cue_notify.core.enums import BroadcastStatus, EventStatus, MessageStatus
+from cue_notify.core.enums import BroadcastStatus, DigestStatus, EventStatus, MessageStatus
 from cue_notify.core.ids import token
 from cue_notify.db.base import Base, IdMixin, TimestampMixin, enum_type
 
@@ -129,6 +130,7 @@ class Rule(IdMixin, TimestampMixin, Base):
     delay_seconds: Mapped[int] = mapped_column(Integer, default=0)
     cooldown_seconds: Mapped[int | None] = mapped_column(Integer)
     rollout_percent: Mapped[float] = mapped_column(Float, default=100.0)
+    digest: Mapped[dict[str, Any] | None]
 
 
 class Event(IdMixin, Base):
@@ -174,6 +176,7 @@ class Message(IdMixin, TimestampMixin, Base):
     locale: Mapped[str | None] = mapped_column(String(35))
     content: Mapped[dict[str, Any]] = mapped_column(default=dict)
     personalize: Mapped[bool] = mapped_column(Boolean, default=False)
+    ai_context: Mapped[dict[str, Any] | None]
     generated_by: Mapped[str] = mapped_column(String(128), default="template")
     ai_tokens: Mapped[int] = mapped_column(Integer, default=0)
 
@@ -219,6 +222,36 @@ class Broadcast(IdMixin, TimestampMixin, Base):
     error: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime | None]
     completed_at: Mapped[datetime | None]
+
+
+class Digest(IdMixin, TimestampMixin, Base):
+    """Events grouped by a digest rule, waiting to become one message."""
+
+    __tablename__ = "digests"
+    __table_args__ = (
+        # At most one open digest per rule, recipient and grouping key.
+        Index(
+            "uq_digests_open",
+            "rule_id",
+            "recipient_id",
+            "key",
+            unique=True,
+            postgresql_where=text("status = 'open'"),
+            sqlite_where=text("status = 'open'"),
+        ),
+    )
+
+    rule_id: Mapped[UUID] = mapped_column(ForeignKey("rules.id", ondelete="CASCADE"))
+    recipient_id: Mapped[UUID] = mapped_column(
+        ForeignKey("recipients.id", ondelete="CASCADE"), index=True
+    )
+    key: Mapped[str] = mapped_column(String(255))
+    status: Mapped[DigestStatus] = mapped_column(enum_type(DigestStatus), default=DigestStatus.OPEN)
+    items: Mapped[list[dict[str, Any]]] = mapped_column(default=list)
+    count: Mapped[int] = mapped_column(Integer, default=0)
+    closes_at: Mapped[datetime]
+    sent_at: Mapped[datetime | None]
+    message_id: Mapped[UUID | None] = mapped_column(ForeignKey("messages.id", ondelete="SET NULL"))
 
 
 class Job(IdMixin, Base):
