@@ -78,3 +78,25 @@ async def test_ids_cannot_reach_other_endpoints(client: httpx.AsyncClient) -> No
             "review_message",
             {"message_id": "../recipients/user-1/preference-token", "approve": True},
         )
+
+
+async def test_agent_asks_a_person_before_acting(
+    client: httpx.AsyncClient, runtime: Runtime
+) -> None:
+    await create_recipient(client, external_id="lead")
+    server = create_server(client)
+    asked = await _call(
+        server,
+        "request_approval",
+        title="Refund order 9?",
+        reviewers=["lead"],
+        body="Customer says it never arrived.",
+        expires_in_minutes=30,
+        metadata={"order": "9"},
+    )
+    assert asked["status"] == "pending"
+    assert asked["metadata"] == {"order": "9"}
+    approved = await client.post(f"/v1/approvals/{asked['id']}/approve")
+    assert approved.status_code == 200
+    decided = await _call(server, "get_approval", approval_id=asked["id"])
+    assert decided["status"] == "approved"

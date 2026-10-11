@@ -5,7 +5,7 @@
  * Cloudflare Workers and in browsers (keep API keys on the server).
  */
 
-export const VERSION = "0.1.1";
+export const VERSION = "0.2.0";
 export const SIGNATURE_HEADER = "Cue-Signature";
 
 export type Importance = "low" | "normal" | "high" | "critical";
@@ -43,6 +43,19 @@ export interface MessageInput {
   expiresAt?: Date;
   sendAt?: Date;
   idempotencyKey?: string;
+}
+
+export interface ApprovalInput {
+  /** What needs a decision. */
+  title: string;
+  /** External ids of the people who may decide. */
+  reviewers: string[];
+  body?: string;
+  importance?: Importance;
+  /** Undecided requests expire after this (default 3600). */
+  expiresInSeconds?: number;
+  /** Returned with the decision, e.g. the id of the paused workflow. */
+  metadata?: Json;
 }
 
 export interface CueOptions {
@@ -139,6 +152,24 @@ export class Cue {
       Object.entries(filters).map(([key, value]) => [key, String(value)]),
     ).toString();
     return this.#request("GET", `/v1/messages${query ? `?${query}` : ""}`, undefined, true);
+  }
+
+  /** Ask people to approve or reject an action. Never retried: it notifies people. */
+  requestApproval(approval: ApprovalInput): Promise<Json> {
+    const body = {
+      title: approval.title,
+      body: approval.body ?? "",
+      reviewers: approval.reviewers,
+      importance: approval.importance ?? "high",
+      expires_in_seconds: approval.expiresInSeconds ?? 3600,
+      metadata: approval.metadata ?? {},
+    };
+    return this.#request("POST", "/v1/approvals", body, false);
+  }
+
+  /** `status` is `pending`, `approved`, `rejected` or `expired`. */
+  getApproval(id: string): Promise<Json> {
+    return this.#request("GET", `/v1/approvals/${segment(id)}`, undefined, true);
   }
 
   async #request(method: string, path: string, body: Json | undefined, safe: boolean): Promise<Json> {

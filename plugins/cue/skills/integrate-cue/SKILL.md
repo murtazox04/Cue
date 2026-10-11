@@ -125,6 +125,12 @@ someone calls `POST /v1/messages/{id}/approve` or `/reject`. For agents that wri
 own copy, turn on `[screening]` (needs `TYPESAFE_API_KEY`): a decision model holds
 messages that pressure, deceive or leak secrets, and lowers overstated importance.
 
+Before an agent takes an action a person should own, have it ask: `POST /v1/approvals`
+(`title`, `reviewers`, `expires_in_seconds`, `metadata`) or the `request_approval` MCP
+tool. Set `[approvals] callback_url` (secret via `CUE_APPROVALS__CALLBACK_SECRET`) to
+receive the signed decision. CrewAI Flows: `cue_client.crewai.CueFeedbackProvider`; Dapr
+Agents: `cue_client.dapr.approval_request` / `approval_response`.
+
 ## Rules of thumb
 
 - Use `transactional` only for messages people genuinely cannot do without.

@@ -92,3 +92,13 @@ Screens [agents'](../concepts/agents.md#screening) messages before delivery.
 | `min_confidence` | `0.6` | Lower importance only when the urgency answer is this sure. |
 | `on_error` | `hold` | `hold` or `send` a message when screening fails. |
 
+## `approvals`
+
+Where decisions on [approval requests](../concepts/approvals.md) are reported.
+
+| Key | Default | |
+|---|---|---|
+| `callback_url` | — | Receives a signed `POST` for each decision. |
+| `callback_secret` | — | Signs callbacks (`Cue-Signature`). Required with `callback_url`. |
+| `timeout` | `10` | Seconds per callback request. |
+

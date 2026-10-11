@@ -126,3 +126,13 @@ class Scope(StrEnum):
     RECIPIENTS_WRITE = "recipients:write"
     RECIPIENTS_READ = "recipients:read"
     ADMIN = "admin"
+
+
+class ApprovalStatus(StrEnum):
+    """Where a request for a person's decision stands."""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+    """Nobody decided before ``expires_at``; treat it as a no."""

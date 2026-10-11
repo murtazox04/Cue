@@ -21,6 +21,7 @@ from cue_notify.core import logic
 from cue_notify.core.content import LocalizedTemplate
 from cue_notify.core.digest import DigestPolicy
 from cue_notify.core.enums import (
+    ApprovalStatus,
     BroadcastStatus,
     DigestStatus,
     EventStatus,
@@ -409,6 +410,23 @@ class MessageOut(Model):
 
 class ReviewIn(BaseModel):
     reason: str | None = Field(default=None, max_length=400)
+
+
+class ApprovalOut(Model):
+    id: UUID
+    status: ApprovalStatus
+    title: str
+    body: str
+    reviewers: list[str]
+    importance: Importance
+    agent: str | None = Field(validation_alias="agent_key")
+    requested_by: str
+    metadata: dict[str, Any] = Field(validation_alias="meta")
+    comment: str | None
+    decided_by: str | None
+    decided_at: datetime | None
+    expires_at: datetime
+    created_at: datetime
 
 
 # --------------------------------------------------------------------------- agents

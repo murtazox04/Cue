@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Approval requests (`POST /v1/approvals`): an agent or service asks people to approve
+  an action outside Cue. Reviewers are told through the `cue.approval_requested` event
+  with a one-time link; the decision is sent, signed, to `approvals.callback_url` and
+  can be polled. Undecided requests expire. MCP tools `request_approval` and
+  `get_approval`.
+- Python SDK 0.2.0: `request_approval` / `get_approval`, a CrewAI Flows
+  `CueFeedbackProvider`, and Dapr Agents event translation (`cue_client.dapr`).
+  TypeScript SDK 0.2.0: `requestApproval` / `getApproval`.
+
 ## [0.1.2] — 2026-10-11
 
 ### Added

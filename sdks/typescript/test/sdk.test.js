@@ -102,3 +102,30 @@ test("ids are escaped in paths", async () => {
   await client([{ status: 200, body: {} }], seen).upsertRecipient("../api-keys");
   assert.equal(seen[0].url, "http://cue.test/v1/recipients/..%2Fapi-keys");
 });
+
+test("asks for approval once and reads the decision", async () => {
+  const busy = { status: 503, headers: { "Retry-After": "0" } };
+  const once = [];
+  await assert.rejects(
+    client([busy], once).requestApproval({ title: "Refund?", reviewers: ["lead"] }),
+    CueError,
+  );
+  assert.equal(once.length, 1);
+
+  const seen = [];
+  const cue = client(
+    [{ status: 201, body: { id: "a1", status: "pending" } }, { status: 200, body: { id: "a1", status: "approved" } }],
+    seen,
+  );
+  await cue.requestApproval({ title: "Refund?", reviewers: ["lead"], metadata: { order: "9" } });
+  assert.deepEqual(JSON.parse(seen[0].init.body), {
+    title: "Refund?",
+    body: "",
+    reviewers: ["lead"],
+    importance: "high",
+    expires_in_seconds: 3600,
+    metadata: { order: "9" },
+  });
+  assert.equal((await cue.getApproval("a1")).status, "approved");
+  assert.equal(seen[1].url, "http://cue.test/v1/approvals/a1");
+});

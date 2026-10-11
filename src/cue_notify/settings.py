@@ -191,6 +191,25 @@ class ScreeningSettings(BaseModel):
         return self
 
 
+class ApprovalSettings(BaseModel):
+    """Where Cue reports decisions on approval requests (``POST /v1/approvals``)."""
+
+    callback_url: AnyHttpUrl | None = Field(
+        default=None,
+        description="Receives a signed POST when a request is approved, rejected or expires.",
+    )
+    callback_secret: SecretStr | None = Field(
+        default=None, description="Signs callbacks (Cue-Signature header). Required with a URL."
+    )
+    timeout: float = Field(default=10.0, gt=0)
+
+    @model_validator(mode="after")
+    def _secret_with_url(self) -> Self:
+        if self.callback_url is not None and self.callback_secret is None:
+            raise ValueError("approvals.callback_secret is required with approvals.callback_url")
+        return self
+
+
 class ChannelSpec(BaseModel):
     """Configuration of one delivery channel.
 
@@ -229,6 +248,7 @@ class Settings(BaseSettings):
     policy: PolicySettings = Field(default_factory=PolicySettings)
     ai: AISettings = Field(default_factory=AISettings)
     screening: ScreeningSettings = Field(default_factory=ScreeningSettings)
+    approvals: ApprovalSettings = Field(default_factory=ApprovalSettings)
     channels: dict[str, ChannelSpec] = Field(
         default_factory=dict,
         description="Delivery channels keyed by the name used in rules and addresses.",

@@ -25,6 +25,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cue_notify.core.enums import (
+    ApprovalStatus,
     BroadcastStatus,
     DigestStatus,
     EventStatus,
@@ -324,17 +325,46 @@ class PreferenceChange(IdMixin, Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
-class ReviewLink(Base):
-    """A one-time link that lets a reviewer approve or reject a held message.
+class Approval(IdMixin, TimestampMixin, Base):
+    """A request for a person's decision on something an agent (or a service) wants to do.
 
-    Only a hash of the token is stored, so the table cannot be used to act on messages.
+    Unlike a held message, the thing to approve lives outside Cue: deleting data, a
+    refund, publishing a draft. Cue finds the reviewers, collects the decision and
+    reports it back.
+    """
+
+    __tablename__ = "approvals"
+
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text)
+    reviewers: Mapped[list[str]] = mapped_column(default=list)
+    importance: Mapped[Importance] = mapped_column(enum_type(Importance), default=Importance.HIGH)
+    agent_key: Mapped[str | None] = mapped_column(String(64), index=True)
+    requested_by: Mapped[str] = mapped_column(String(100))
+    """Name of the API key that asked."""
+    meta: Mapped[dict[str, Any]] = mapped_column("metadata", default=dict)
+    """Returned untouched with the decision (a flow or workflow id, say)."""
+    status: Mapped[ApprovalStatus] = mapped_column(enum_type(ApprovalStatus), index=True)
+    comment: Mapped[str | None] = mapped_column(Text)
+    decided_by: Mapped[str | None] = mapped_column(String(300))
+    decided_at: Mapped[datetime | None]
+    expires_at: Mapped[datetime]
+
+
+class ReviewLink(Base):
+    """A one-time link that lets a reviewer decide on a held message or an approval.
+
+    Only a hash of the token is stored, so the table cannot be used to act on anything.
     """
 
     __tablename__ = "review_links"
 
     token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
-    message_id: Mapped[UUID] = mapped_column(
+    message_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("messages.id", ondelete="CASCADE"), index=True
+    )
+    approval_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("approvals.id", ondelete="CASCADE"), index=True
     )
     reviewer: Mapped[str] = mapped_column(String(255))
     """External id of the recipient the link was sent to."""

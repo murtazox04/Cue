@@ -18,9 +18,7 @@ Reviewers can also decide from the notification itself: each one gets a one-time
 
 from __future__ import annotations
 
-import hashlib
-import secrets
-from datetime import datetime, timedelta
+from datetime import timedelta
 from uuid import UUID
 
 from sqlalchemy import exists, select
@@ -32,7 +30,7 @@ from cue_notify.core.enums import MessageStatus, SuppressionReason
 from cue_notify.core.time import utcnow
 from cue_notify.db.models import Agent, ApiKey, Message, Recipient, ReviewLink
 from cue_notify.runtime import Runtime
-from cue_notify.services import composer, events
+from cue_notify.services import composer, events, review_links
 from cue_notify.services.errors import (
     ConflictError,
     ForbiddenError,
@@ -40,7 +38,6 @@ from cue_notify.services.errors import (
     InvalidStateError,
     NotFoundError,
 )
-from cue_notify.settings import Settings
 
 
 async def get(session: AsyncSession, key: str) -> Agent:
@@ -106,7 +103,7 @@ async def _release(
     now = utcnow()
     message.reviewed_by = reviewer[:100]
     message.reviewed_at = now
-    await _close_links(session, message, now)
+    await review_links.close(session, now, message_id=message.id)
     if message.expires_at is not None and message.expires_at <= now:
         message.status = MessageStatus.SUPPRESSED
         message.status_reason = SuppressionReason.EXPIRED
@@ -145,6 +142,7 @@ async def request_review(ctx: queue.JobContext) -> None:
             return
         content = message.content.get(DEFAULT_VARIANT, {})
         data = {
+            "kind": "message",
             "message_id": str(message.id),
             "agent": agent.key,
             "agent_name": agent.name,
@@ -156,14 +154,19 @@ async def request_review(ctx: queue.JobContext) -> None:
             "expires_at": message.expires_at.isoformat() if message.expires_at else None,
         }
         for reviewer in agent.reviewers:
-            token = await create_review_link(session, message, reviewer)
+            token = await review_links.create(
+                session,
+                reviewer,
+                message.expires_at or utcnow() + REVIEW_LINK_TTL,
+                message_id=message.id,
+            )
             await events.ingest(
                 session,
                 runtime,
                 events.EventIn(
                     name=APPROVAL_EVENT,
                     recipient=reviewer,
-                    data={**data, "review_url": review_url(runtime.settings, token)},
+                    data={**data, "review_url": review_links.url(runtime.settings, token)},
                     idempotency_key=f"{message.id}:{reviewer}",
                 ),
                 source="cue",
@@ -175,7 +178,7 @@ async def reject(
 ) -> Message:
     message = await _pending(session, message_id, reviewer)
     _cancel(message, reviewer.name, reason)
-    await _close_links(session, message, utcnow())
+    await review_links.close(session, utcnow(), message_id=message.id)
     return message
 
 
@@ -185,63 +188,32 @@ REVIEW_LINK_TTL = timedelta(days=1)
 """How long a link lives when the message itself has no expiry."""
 
 
-def _hash(token: str) -> str:
-    return hashlib.sha256(token.encode()).hexdigest()
-
-
-async def create_review_link(session: AsyncSession, message: Message, reviewer: str) -> str:
-    """A one-time token letting ``reviewer`` decide on ``message`` until it expires."""
-    token = secrets.token_urlsafe(32)
-    expires_at = message.expires_at or utcnow() + REVIEW_LINK_TTL
-    session.add(
-        ReviewLink(
-            token_hash=_hash(token), message_id=message.id, reviewer=reviewer, expires_at=expires_at
-        )
-    )
-    await session.flush()
-    return token
-
-
-def review_url(settings: Settings, token: str) -> str | None:
-    if settings.api.public_url is None:
-        return None
-    return f"{str(settings.api.public_url).rstrip('/')}/review/{token}"
-
-
-async def _close_links(session: AsyncSession, message: Message, now: datetime) -> None:
-    links = await session.scalars(
-        select(ReviewLink).where(ReviewLink.message_id == message.id, ReviewLink.used_at.is_(None))
-    )
-    for link in links:
-        link.used_at = now
-
-
-async def by_review_token(
-    session: AsyncSession, token: str, *, lock: bool = True
-) -> tuple[ReviewLink, Message]:
-    """The link and its message, or why the link can no longer be used."""
-    link = await session.get(ReviewLink, _hash(token), with_for_update=lock)
-    if link is None:
-        raise NotFoundError("review link", "…")
+async def by_review_link(session: AsyncSession, link: ReviewLink, *, lock: bool = True) -> Message:
+    """The held message behind ``link``, or why the link can no longer be used."""
     message = await session.get(Message, link.message_id, with_for_update=lock)
     if message is None:
         raise NotFoundError("message", link.message_id)
-    if link.used_at is not None or message.status is not MessageStatus.PENDING_APPROVAL:
-        who = f" by {message.reviewed_by}" if message.reviewed_by else ""
-        raise GoneError(f"This message was already reviewed{who}; it is now {message.status}.")
-    if link.expires_at <= utcnow():
-        raise GoneError("This review link has expired.")
-    return link, message
+    who = f" by {message.reviewed_by}" if message.reviewed_by else ""
+    already = f"This message was already reviewed{who}; it is now {message.status}."
+    if message.status is not MessageStatus.PENDING_APPROVAL:
+        raise GoneError(already)
+    review_links.check_open(link, utcnow(), already)
+    return message
 
 
 async def decide_by_link(
-    session: AsyncSession, runtime: Runtime, token: str, *, approve: bool, reason: str | None
+    session: AsyncSession,
+    runtime: Runtime,
+    link: ReviewLink,
+    *,
+    approve: bool,
+    reason: str | None,
 ) -> Message:
-    link, message = await by_review_token(session, token)
+    message = await by_review_link(session, link)
     reviewer = f"link:{link.reviewer}"
     if approve:
         await _release(session, runtime, message, reviewer)
     else:
         _cancel(message, reviewer, reason)
-        await _close_links(session, message, utcnow())
+        await review_links.close(session, utcnow(), message_id=message.id)
     return message

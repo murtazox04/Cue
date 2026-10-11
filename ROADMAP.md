@@ -27,7 +27,8 @@ for a change in priorities.
       lower overstated importance
 - [x] One-time, expiring approval links, so a reviewer can approve from the notification itself
 - [x] Daily and weekly digests at a local time of day (`deliver_at`)
-- [ ] Adapters for agent frameworks: Pydantic AI, LangGraph, CrewAI, OpenHands, Dapr Agents
+- [x] Approval requests for agents' actions, with CrewAI Flows and Dapr Agents bridges
+- [ ] Adapters for more agent frameworks: Pydantic AI, LangGraph, OpenHands
 - [ ] Message class on every rule (transactional or marketing) with policy presets
 - [ ] Jurisdiction-aware quiet hours (US TCPA 8:00–21:00, Florida 8:00–20:00)
 - [ ] "Revoke all" opt-out propagation, ahead of the FCC rule taking effect on 31 Jan 2027

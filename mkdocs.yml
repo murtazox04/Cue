@@ -42,6 +42,7 @@ nav:
       - Digests: concepts/digests.md
       - Preference centre: concepts/preferences.md
       - Agents: concepts/agents.md
+      - Approval requests: concepts/approvals.md
       - Channels: concepts/channels.md
       - Broadcasts: concepts/broadcasts.md
       - Engagement tracking: concepts/engagement.md

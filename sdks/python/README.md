@@ -48,3 +48,14 @@ def handle(request):
 
 Verify the raw body bytes, before parsing them. Requests signed more than five minutes
 ago are rejected (`tolerance=` changes this).
+
+## Asking a person first
+
+```python
+asked = cue.request_approval("Refund order 9?", ["lead"], body="Never arrived.")
+cue.get_approval(asked["id"])["status"]  # pending, approved, rejected or expired
+```
+
+CrewAI Flows: `cue_client.crewai.CueFeedbackProvider`. Dapr Agents:
+`cue_client.dapr.approval_request` and `approval_response`. See
+[approval requests](https://github.com/murtazox04/Cue/blob/main/docs/concepts/approvals.md).

@@ -89,6 +89,11 @@ Your delivery endpoint then receives a signed, fully rendered message:
   reads each agent message before it is sent: pressure, deception or leaked secrets hold
   it for a person, and overstated importance is lowered. Built against TypeSafe's
   published API; not yet proven in production.
+- **Ask a person first.** Before a risky action (a refund, a deletion, a mass e-mail), an
+  agent calls `POST /v1/approvals` or the `request_approval` MCP tool. Cue tells the
+  reviewers on their own channels with a one-time link and reports the decision back,
+  with ready-made bridges for CrewAI Flows and Dapr Agents. See
+  [approval requests](https://github.com/murtazox04/Cue/blob/main/docs/concepts/approvals.md).
 - **MCP built in.** `uvx cue-notify mcp` gives Claude, Cursor or your own agent tools to
   notify people and inspect delivery, with the same policy and audit trail.
 - **Claude Code plugin.** `/plugin marketplace add murtazox04/Cue`, then

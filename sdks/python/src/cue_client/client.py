@@ -113,6 +113,24 @@ def _profile(
     )
 
 
+def _approval(
+    title: str,
+    reviewers: list[str],
+    body: str,
+    importance: Importance,
+    expires_in_seconds: int,
+    metadata: Mapping[str, Any] | None,
+) -> JSON:
+    return {
+        "title": title,
+        "body": body,
+        "reviewers": reviewers,
+        "importance": importance,
+        "expires_in_seconds": expires_in_seconds,
+        "metadata": dict(metadata or {}),
+    }
+
+
 def _headers(api_key: str) -> dict[str, str]:
     return {
         "Authorization": f"Bearer {api_key}",
@@ -220,6 +238,25 @@ class Cue:
         """Filters: ``recipient``, ``status``, ``event_id``, ``agent``, ``limit``, ``cursor``."""
         return self._request("GET", "/v1/messages", params=filters, safe=True)
 
+    def request_approval(
+        self,
+        title: str,
+        reviewers: list[str],
+        body: str = "",
+        *,
+        importance: Importance = "high",
+        expires_in_seconds: int = 3600,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> JSON:
+        """Ask people to approve or reject an action. Poll :meth:`get_approval`, or receive
+        the decision at Cue's ``approvals.callback_url``. Not retried: it notifies people."""
+        payload = _approval(title, reviewers, body, importance, expires_in_seconds, metadata)
+        return self._request("POST", "/v1/approvals", json=payload, safe=False)
+
+    def get_approval(self, approval_id: str) -> JSON:
+        """``status`` is ``pending``, ``approved``, ``rejected`` or ``expired``."""
+        return self._request("GET", f"/v1/approvals/{_segment(approval_id)}", safe=True)
+
 
 class AsyncCue:
     """The asynchronous twin of :class:`Cue`."""
@@ -319,6 +356,22 @@ class AsyncCue:
 
     async def list_messages(self, **filters: str | int) -> JSON:
         return await self._request("GET", "/v1/messages", params=filters, safe=True)
+
+    async def request_approval(
+        self,
+        title: str,
+        reviewers: list[str],
+        body: str = "",
+        *,
+        importance: Importance = "high",
+        expires_in_seconds: int = 3600,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> JSON:
+        payload = _approval(title, reviewers, body, importance, expires_in_seconds, metadata)
+        return await self._request("POST", "/v1/approvals", json=payload, safe=False)
+
+    async def get_approval(self, approval_id: str) -> JSON:
+        return await self._request("GET", f"/v1/approvals/{_segment(approval_id)}", safe=True)
 
 
 def _segment(value: str) -> str:

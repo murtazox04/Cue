@@ -42,6 +42,10 @@ person would want now, pick `importance` honestly and set an expiry on anything 
 goes stale. If your key belongs to an agent, you also have a per-person budget
 (`suppressed` with reason `agent_budget` means you used it up) and some messages wait
 for a human (`pending_approval`): do not retry those, they are not lost.
+
+Before an action with consequences a person should own (deleting data, spending money,
+contacting many people), call `request_approval` and wait: check `get_approval` until its
+`status` is `approved`, `rejected` or `expired`, and treat anything but `approved` as no.
 """
 
 type F = Callable[..., Any]
@@ -183,6 +187,34 @@ def create_server(client: httpx.AsyncClient) -> MCPServer:
         return _result(
             await client.post(f"/v1/messages/{_id(message_id)}/reject", json={"reason": reason})
         )
+
+    @_tool(server, SENDS)
+    async def request_approval(  # pyright: ignore[reportUnusedFunction]
+        title: str,
+        reviewers: list[str],
+        body: str = "",
+        importance: Literal["low", "normal", "high", "critical"] = "high",
+        expires_in_minutes: int = 60,
+        metadata: dict[str, Any] | None = None,
+    ) -> Any:
+        """Ask people (`reviewers`, by external id) to approve or reject an action before you
+        take it. Each reviewer is notified with a one-time link. Returns the request;
+        poll `get_approval` with its `id`. Undecided requests expire: treat that as no."""
+        payload = {
+            "title": title,
+            "body": body,
+            "reviewers": reviewers,
+            "importance": importance,
+            "expires_in_seconds": max(60, expires_in_minutes * 60),
+            "metadata": metadata or {},
+        }
+        return _result(await client.post("/v1/approvals", json=payload))
+
+    @_tool(server, READ_ONLY)
+    async def get_approval(approval_id: str) -> Any:  # pyright: ignore[reportUnusedFunction]
+        """An approval request: `status` is `pending`, `approved`, `rejected` or `expired`,
+        with the reviewer's `comment`."""
+        return _result(await client.get(f"/v1/approvals/{_id(approval_id)}"))
 
     @_tool(server, READ_ONLY)
     async def get_event(event_id: str) -> Any:  # pyright: ignore[reportUnusedFunction]

@@ -17,6 +17,7 @@ from cue_notify.api.deps import RuntimeDep
 from cue_notify.api.routers import (
     agents,
     api_keys,
+    approvals,
     broadcasts,
     categories,
     digests,
@@ -135,6 +136,7 @@ def create_app(settings: Settings | None = None, runtime: Runtime | None = None)
         categories,
         broadcasts,
         agents,
+        approvals,
         api_keys,
     ):
         v1.include_router(module.router)

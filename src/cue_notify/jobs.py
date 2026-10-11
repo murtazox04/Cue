@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from cue_notify.queue import DeadHandler, Handler, Worker
 from cue_notify.runtime import Runtime
-from cue_notify.services import agents, broadcasts, delivery, digests, events
+from cue_notify.services import agents, approvals, broadcasts, delivery, digests, events
 from cue_notify.services.composer import DELIVER_JOB, REVIEW_JOB
 
 HANDLERS: dict[str, Handler] = {
@@ -13,6 +13,9 @@ HANDLERS: dict[str, Handler] = {
     broadcasts.BATCH_JOB: broadcasts.run_batch,
     digests.FLUSH_JOB: digests.flush,
     REVIEW_JOB: agents.request_review,
+    approvals.REQUEST_JOB: approvals.request,
+    approvals.EXPIRE_JOB: approvals.expire,
+    approvals.CALLBACK_JOB: approvals.callback,
 }
 
 ON_DEAD: dict[str, DeadHandler] = {

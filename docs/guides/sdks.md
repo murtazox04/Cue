@@ -17,6 +17,8 @@ Both offer the same operations:
 | Send a template directly | `send_message(recipient, template, channels, data, importance=, expires_at=)` | `sendMessage({ … })` |
 | Create or update a profile | `upsert_recipient(id, timezone=, addresses=)` | `upsertRecipient(id, { … })` |
 | Read messages | `get_message(id)`, `list_messages(**filters)` | `getMessage(id)`, `listMessages(filters)` |
+| Ask a person to approve | `request_approval(title, reviewers, body, metadata=)` | `requestApproval({ title, reviewers, … })` |
+| Read a decision | `get_approval(id)` | `getApproval(id)` |
 | Verify a webhook | `verify_webhook(body, header, secret)` | `await verifyWebhook(body, header, secret)` |
 
 ## Behaviour
@@ -30,6 +32,9 @@ Both offer the same operations:
 - **Path safety.** Ids are escaped in paths, so a value like `../api-keys` cannot reach
   another endpoint.
 - **Async.** Python has `AsyncCue` with the same methods.
+- **Agent frameworks.** The Python client ships `cue_client.crewai` (a CrewAI Flows
+  feedback provider) and `cue_client.dapr` (Dapr Agents approval events); neither needs
+  the framework installed until it is used. See [approval requests](../concepts/approvals.md).
 
 ## Verifying webhooks
 

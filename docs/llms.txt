@@ -15,6 +15,7 @@ Key facts for integrating Cue:
 - Direct sends use `POST /v1/messages` with `template`, `channels`, `importance` and `expires_at`.
 - Every outcome is recorded: messages carry `status` and `status_reason`.
 - AI agents get their own keys, bound to an agent with a per-person budget and optional human approval.
+- Approval requests: agents ask people before risky actions (`POST /v1/approvals`, MCP `request_approval`); decisions come back by signed callback; CrewAI and Dapr bridges in the Python SDK.
 - Optional screening: a decision model (TypeSafe Jev) reads agent messages before delivery, holds risky ones for a person and lowers overstated importance.
 - The MCP server runs with `uvx cue-notify mcp` (env `CUE_URL`, `CUE_API_KEY`).
 
@@ -27,6 +28,7 @@ Key facts for integrating Cue:
 - [Importance and expiry](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/importance.md): importance levels, critical breakthrough, expiry, action buttons
 - [Digests](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/digests.md): grouping bursts of events into one message, daily or weekly summaries at local time, AI summaries, thread grouping
 - [Preference centre](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/preferences.md): hosted page, JSON API, RFC 8058 one-click unsubscribe, consent ledger
+- [Approval requests](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/approvals.md): ask people to approve an agent's action; callbacks, CrewAI and Dapr
 - [Agents](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/agents.md): attention budgets, importance ceilings, approval and screening for AI agents
 - [Channels and connectors](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/channels.md): webhook payload and signature, FCM, Twilio, SMTP, Telegram
 - [AI personalisation](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/ai.md): rewording with any Pydantic AI model under guardrails and a token budget
