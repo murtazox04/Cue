@@ -20,3 +20,4 @@ jobs:
       - run: uv run pytest tests/live -v -s
         env:
           TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+          TYPESAFE_BASE_URL: ${{ secrets.TYPESAFE_BASE_URL }}

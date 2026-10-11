@@ -1,6 +1,7 @@
 """Live checks against TypeSafe's API. Skipped unless ``TYPESAFE_API_KEY`` is set.
 
 Run by hand through the "Live checks" workflow; each run costs well under a cent.
+``TYPESAFE_BASE_URL`` points it at a compatible endpoint other than TypeSafe's own.
 """
 
 from __future__ import annotations
@@ -30,7 +31,9 @@ def _request(title: str, body: str, importance: Importance) -> ScreeningRequest:
 
 
 async def test_jev_screens_real_messages() -> None:
-    settings = ScreeningSettings(enabled=True, timeout=20)
+    settings = ScreeningSettings(enabled=True, timeout=30)
+    if base_url := os.environ.get("TYPESAFE_BASE_URL"):
+        settings.base_url = base_url
     async with httpx.AsyncClient() as http:
         screener = TypeSafeScreener(settings, http)
         routine = await screener.screen(
