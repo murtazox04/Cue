@@ -17,6 +17,10 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --frozen
+      - name: Check that the key reached the job
+        run: test -n "$TYPESAFE_API_KEY" || { echo "::error::TYPESAFE_API_KEY is not a repository Actions secret"; exit 1; }
+        env:
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
       - run: uv run pytest tests/live -v -s
         env:
           TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
