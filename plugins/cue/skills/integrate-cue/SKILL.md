@@ -120,7 +120,9 @@ Register each agent (`POST /v1/agents` with `frequency_caps`, `max_importance`,
 `categories`, `approval`) and create its key with `"agent": "<key>"`. Give that key to
 the agent, ideally through the MCP server (`uvx cue-notify mcp` with `CUE_URL` and
 `CUE_API_KEY`). Messages matching the approval policy wait in `pending_approval` until
-someone calls `POST /v1/messages/{id}/approve` or `/reject`.
+someone calls `POST /v1/messages/{id}/approve` or `/reject`. For agents that write their
+own copy, turn on `[screening]` (needs `TYPESAFE_API_KEY`): a decision model holds
+messages that pressure, deceive or leak secrets, and lowers overstated importance.
 
 ## Rules of thumb
 

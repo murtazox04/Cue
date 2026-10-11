@@ -19,6 +19,9 @@ same policy, in this order:
 10. **Rendering**: the template is rendered for the recipient's locale.
 11. **Approval**: for agents, messages that match their approval policy wait for a
     reviewer.
+12. **Screening** (at delivery, optional): a decision model reads an agent's message;
+    risky ones wait for a reviewer and overstated importance is lowered. See
+    [agents](agents.md#screening).
 
 A message that stops at any step is stored with `status: suppressed` (or `failed` for
 template errors) and a `status_reason`, so you can always explain the outcome.

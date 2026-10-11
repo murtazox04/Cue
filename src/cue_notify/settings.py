@@ -20,7 +20,15 @@ from pathlib import Path
 from typing import Any, Literal, Self
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AnyHttpUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -146,6 +154,43 @@ class AISettings(BaseModel):
         return self
 
 
+class ScreeningSettings(BaseModel):
+    """Screen messages from agents with a decision model before they are delivered."""
+
+    enabled: bool = False
+    provider: Literal["typesafe"] = "typesafe"
+    api_key: SecretStr | None = Field(
+        default=None, description="Defaults to the TYPESAFE_API_KEY environment variable."
+    )
+    base_url: str = "https://api.typesafe.ai"
+    model: str = "jev-latest"
+    timeout: float = Field(default=5.0, gt=0)
+    hold_above: float = Field(
+        default=0.5,
+        gt=0,
+        le=1,
+        description="Hold a message for approval when any risk is at least this likely.",
+    )
+    min_confidence: float = Field(
+        default=0.6,
+        ge=0,
+        le=1,
+        description="Lower a message's importance only when the urgency judgement is this sure.",
+    )
+    on_error: Literal["hold", "send"] = Field(
+        default="hold",
+        description="What to do with a message when the screening backend fails.",
+    )
+
+    @model_validator(mode="after")
+    def _key_from_environment(self) -> Self:
+        if self.enabled and self.api_key is None and os.environ.get("TYPESAFE_API_KEY"):
+            self.api_key = SecretStr(os.environ["TYPESAFE_API_KEY"])
+        if self.enabled and self.api_key is None:
+            raise ValueError("screening.api_key (or TYPESAFE_API_KEY) is required when enabled")
+        return self
+
+
 class ChannelSpec(BaseModel):
     """Configuration of one delivery channel.
 
@@ -183,6 +228,7 @@ class Settings(BaseSettings):
     worker: WorkerSettings = Field(default_factory=WorkerSettings)
     policy: PolicySettings = Field(default_factory=PolicySettings)
     ai: AISettings = Field(default_factory=AISettings)
+    screening: ScreeningSettings = Field(default_factory=ScreeningSettings)
     channels: dict[str, ChannelSpec] = Field(
         default_factory=dict,
         description="Delivery channels keyed by the name used in rules and addresses.",

@@ -75,3 +75,20 @@ letters, digits, `-` and `_`.
 | `max_output_tokens` | `512` | |
 | `timeout` | `20` | Seconds per request. |
 | `daily_token_budget` | — | Tokens per UTC day; afterwards template text is used. |
+
+## `screening`
+
+Screens [agents'](../concepts/agents.md#screening) messages before delivery.
+
+| Key | Default | |
+|---|---|---|
+| `enabled` | `false` | |
+| `provider` | `typesafe` | TypeSafe's Jev decision model. |
+| `api_key` | `TYPESAFE_API_KEY` | Required when enabled. |
+| `base_url` | `https://api.typesafe.ai` | |
+| `model` | `jev-latest` | |
+| `timeout` | `5` | Seconds per request. |
+| `hold_above` | `0.5` | Hold a message when any risk is at least this likely. |
+| `min_confidence` | `0.6` | Lower importance only when the urgency answer is this sure. |
+| `on_error` | `hold` | `hold` or `send` a message when screening fails. |
+

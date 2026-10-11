@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from cue_notify import __version__
 from cue_notify.ai import ContentGenerator, create_generator
+from cue_notify.ai.screening import Screener, create_screener
 from cue_notify.channels.registry import AnyChannel, ChannelRegistry
 from cue_notify.db.session import SessionFactory, create_engine, create_session_factory
 from cue_notify.observability import Metrics
@@ -26,6 +27,7 @@ class Runtime:
     channels: ChannelRegistry
     generator: ContentGenerator | None
     metrics: Metrics
+    screener: Screener | None = None
 
     @classmethod
     def create(
@@ -34,11 +36,12 @@ class Runtime:
         *,
         channels: dict[str, AnyChannel] | None = None,
         generator: ContentGenerator | None = None,
+        screener: Screener | None = None,
         http: httpx.AsyncClient | None = None,
     ) -> Runtime:
         """Build the runtime.
 
-        ``channels`` and ``generator`` override configuration (tests, embedding).
+        ``channels``, ``generator`` and ``screener`` override configuration (tests, embedding).
         """
         # Each running job holds a connection; a smaller pool would open and close
         # connections constantly under load.
@@ -61,6 +64,9 @@ class Runtime:
             channels=registry,
             generator=generator if generator is not None else create_generator(settings.ai),
             metrics=Metrics(settings.metrics),
+            screener=screener
+            if screener is not None
+            else create_screener(settings.screening, client),
         )
 
     @asynccontextmanager

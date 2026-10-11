@@ -23,6 +23,8 @@ for a change in priorities.
 
 ## 0.2: Agents and compliance (October 2026)
 
+- [x] Screening agents' messages with a decision model (TypeSafe Jev): hold risky ones,
+      lower overstated importance
 - [ ] Signed, expiring approval links, so a reviewer can approve from the notification itself
 - [ ] Adapters for agent frameworks: Pydantic AI, LangGraph, CrewAI, OpenHands, Dapr Agents
 - [ ] Message class on every rule (transactional or marketing) with policy presets
@@ -31,6 +33,8 @@ for a change in priorities.
 - [ ] Consent records with provenance (where and how consent was given)
 - [ ] Deploy kits: Helm chart, Railway and Render templates
 - [ ] Django and FastAPI integration packages
+- [ ] SDKs for Go, Java, PHP and Ruby when a user asks for one (the HTTP API and the
+      webhook signature are small enough to port in a day)
 
 ## 0.3: Visibility (November 2026)
 

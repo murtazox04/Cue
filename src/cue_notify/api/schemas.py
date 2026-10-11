@@ -394,6 +394,7 @@ class MessageOut(Model):
     agent: str | None = Field(validation_alias="agent_key")
     reviewed_by: str | None
     reviewed_at: datetime | None
+    screening: dict[str, Any] | None
     attempts: int
     provider_message_id: str | None
     send_at: datetime

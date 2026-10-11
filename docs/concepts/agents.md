@@ -111,3 +111,57 @@ and `expires_at`:
        "body": "To {{ data.recipient }}: {{ data.body }}",
        "url": "https://admin.example.com/review/{{ data.message_id }}"}
 ```
+
+## Screening
+
+Approval rules see the category and the importance an agent claims, not what its message
+says. Screening reads the words. When it is on, every agent message is checked just
+before delivery by a decision model, [Jev](https://docs.typesafe.ai) from TypeSafe AI. It
+returns calibrated probabilities instead of text, typically in 70–500 ms, at
+$0.042 per million input tokens. Cue asks four narrow questions:
+
+| Question | Kind | Used for |
+|---|---|---|
+| How urgent is this for the reader, from its content? | score, 4 levels (low → critical) | the real importance |
+| Does it pressure or manipulate the reader? | yes/no probability | holding it |
+| Does it look deceptive (impersonation, credential or payment requests)? | yes/no probability | holding it |
+| Does it expose a password, API key or other credential? | yes/no probability | holding it |
+
+Cue's code, not the model, decides what happens:
+
+- **Held:** any risk at or above `hold_above` puts the message in `pending_approval`
+  with `status_reason: "screening: pressure"` (or whichever risks were found).
+  Reviewers are told, and the approval TTL applies, as with
+  [approval](#approval).
+- **Critical not confirmed:** a `critical` claim the model does not confirm with
+  `min_confidence` is held too. Critical has already skipped quiet hours and caps.
+- **Lowered:** when the model is at least `min_confidence` sure that the message is
+  less urgent than claimed, it is sent with the lower importance. Importance is never
+  raised.
+- **Passed:** otherwise, it is sent as is.
+
+The model sees the sender (agent key and `description`), the category, the claimed
+importance and the rendered text, links and actions. It never sees the recipient's
+profile or the message's `data`. What it answered and what Cue did are stored in
+`screening` on the message:
+
+```json
+"screening": {"model": "jev-1.13.0", "outcome": "lowered", "lowered_from": "high",
+              "risks": {"pressure": 0.04, "deception": 0.01, "secret": 0.0},
+              "urgency": {"importance": "normal", "confidence": 0.82}}
+```
+
+Each message is screened once. Retries reuse the stored verdict, and a message a person
+approved is not screened again. Your own backend's messages are never screened.
+
+```toml
+[screening]
+enabled = true          # key from TYPESAFE_API_KEY or CUE_SCREENING__API_KEY
+hold_above = 0.5
+min_confidence = 0.6
+on_error = "hold"       # or "send": what to do when the screening API is unavailable
+```
+
+Screening runs in the worker, after the API has accepted the message, so it adds no
+latency to sends. The answers are a second opinion, not a guarantee: keep budgets and
+approval rules for the cases that must never slip through.

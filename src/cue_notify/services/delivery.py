@@ -4,12 +4,14 @@ Order of operations for one ``deliver`` job:
 
 1. Re-check the message is still queued and the recipient still wants it.
 2. Optionally personalise the copy with AI (stored, so retries reuse it).
-3. Try each planned channel in order. Within a channel the message goes to every
+3. Screen an agent's message, if screening is on: it may be held for approval or sent
+   with a lower importance (the verdict is stored, so retries reuse it).
+4. Try each planned channel in order. Within a channel the message goes to every
    enabled address (all of a user's devices); one success is enough.
    * dead addresses are disabled;
    * transient errors retry the job with backoff before falling back;
    * permanent errors fall through to the next channel.
-4. Record the outcome.
+5. Record the outcome.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import Any
 from uuid import UUID
 
@@ -24,14 +27,15 @@ from sqlalchemy import select, update
 
 from cue_notify import queue
 from cue_notify.ai import GenerationError, PersonalizationRequest
+from cue_notify.ai.screening import ScreeningError, ScreeningRequest, Verdict
 from cue_notify.channels.base import Delivery, DeliveryError, InvalidAddressError, Receipt
 from cue_notify.core.content import DEFAULT_VARIANT, Content
 from cue_notify.core.enums import MessageStatus, SuppressionReason
 from cue_notify.core.time import utcnow
 from cue_notify.db.dml import upsert_increment
-from cue_notify.db.models import AiUsage, Category, Message, Recipient, Template
+from cue_notify.db.models import Agent, AiUsage, Category, Message, Recipient, Template
 from cue_notify.runtime import Runtime
-from cue_notify.services import preferences
+from cue_notify.services import composer, preferences
 from cue_notify.services import recipients as recipient_service
 
 logger = logging.getLogger(__name__)
@@ -177,6 +181,68 @@ async def _personalize(runtime: Runtime, message: Message, recipient: Recipient)
     message.generated_by = f"ai:{result.model}"
 
 
+async def _screen(runtime: Runtime, message: Message) -> bool:
+    """Screen an agent's message once. Returns ``True`` when delivery must stop here."""
+    screener = runtime.screener
+    if (
+        screener is None
+        or message.agent_key is None
+        or message.reviewed_at is not None  # a person already approved it
+        or message.screening is not None
+    ):
+        return False
+    async with runtime.session() as session:
+        agent = await session.get(Agent, message.agent_key)
+    request = ScreeningRequest(
+        agent=message.agent_key,
+        agent_description=agent.description if agent else None,
+        category=message.category_key,
+        importance=message.importance,
+        content=message.content,
+    )
+    try:
+        verdict = await screener.screen(request)
+    except Exception as exc:  # a broken screener must not silently wave messages through
+        if not isinstance(exc, ScreeningError):
+            logger.exception("screening raised", extra={"message_id": str(message.id)})
+        else:
+            logger.warning("screening failed: %s", exc, extra={"message_id": str(message.id)})
+        record = {"error": f"{exc}"[:300]}
+        hold = runtime.settings.screening.on_error == "hold"
+        verdict = Verdict(hold="screening unavailable" if hold else None, record=record)
+
+    outcome = "held" if verdict.hold else "lowered" if verdict.importance else "passed"
+    async with runtime.transaction() as session:
+        stored = await session.get(Message, message.id, with_for_update=True)
+        if stored is None or stored.status is not MessageStatus.SENDING:
+            return True
+        stored.screening = {**verdict.record, "outcome": outcome}
+        message.screening = stored.screening
+        if verdict.hold:
+            stored.status = MessageStatus.PENDING_APPROVAL
+            stored.status_reason = f"screening: {verdict.hold}"[:500]
+            if agent is not None:
+                deadline = utcnow() + timedelta(seconds=agent.approval_ttl_seconds)
+                expires = stored.expires_at
+                stored.expires_at = deadline if expires is None else min(expires, deadline)
+                if agent.reviewers:
+                    await queue.enqueue(
+                        session,
+                        composer.REVIEW_JOB,
+                        {"message_id": str(message.id)},
+                        key=f"{composer.REVIEW_JOB}:{message.id}",
+                        max_attempts=runtime.settings.worker.max_attempts,
+                    )
+            logger.info(
+                "message held by screening: %s", verdict.hold, extra={"message_id": str(message.id)}
+            )
+            return True
+        if verdict.importance is not None:
+            stored.importance = verdict.importance
+            message.importance = verdict.importance
+    return False
+
+
 def _content_for(message: Message, channel: str) -> Content:
     variant = message.content.get(channel) or message.content[DEFAULT_VARIANT]
     return Content.model_validate(variant)
@@ -225,6 +291,8 @@ async def deliver(ctx: queue.JobContext) -> None:
         }
 
     await _personalize(runtime, message, recipient)
+    if await _screen(runtime, message):
+        return
 
     errors: list[str] = []
     invalid: list[tuple[str, str, str]] = []

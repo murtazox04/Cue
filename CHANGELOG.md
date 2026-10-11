@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Screening for agents' messages (`[screening]`): before delivery, TypeSafe's Jev
+  decision model judges urgency and whether a message pressures, deceives or leaks a
+  secret. Risky messages wait for approval, overstated importance is lowered, and the
+  answers are stored on the message (`screening`).
 - A throughput benchmark (`benchmarks/throughput.py`) and a performance guide.
 - Agent `reviewers`: Cue reports a `cue.approval_requested` event for each reviewer when
   a message waits for approval, so your own rules and templates notify them.

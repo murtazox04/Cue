@@ -229,6 +229,8 @@ class Message(IdMixin, TimestampMixin, Base):
     personalize: Mapped[bool] = mapped_column(Boolean, default=False)
     ai_context: Mapped[dict[str, Any] | None]
     generated_by: Mapped[str] = mapped_column(String(128), default="template")
+    screening: Mapped[dict[str, Any] | None]
+    """What the screening model answered about an agent's message, and what Cue did."""
     ai_tokens: Mapped[int] = mapped_column(Integer, default=0)
 
     status: Mapped[MessageStatus] = mapped_column(enum_type(MessageStatus), index=True)
