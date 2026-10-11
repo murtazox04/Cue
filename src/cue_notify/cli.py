@@ -314,16 +314,15 @@ def jobs_retry_dead(
     kind: Annotated[str | None, typer.Option(help="Only this kind.")] = None,
 ) -> None:
     """Requeue jobs that exhausted their retries."""
-    from cue_notify.db.models import Job
+    from cue_notify import jobs
+    from cue_notify.queue import Revival
 
-    async def main(runtime: Runtime) -> int:
-        stmt = update(Job).where(Job.dead.is_(True)).values(dead=False, attempts=0, run_at=utcnow())
-        if kind:
-            stmt = stmt.where(Job.kind == kind)
+    async def main(runtime: Runtime) -> Revival:
         async with runtime.transaction() as session:
-            return int(getattr(await session.execute(stmt), "rowcount", 0))
+            return await jobs.revive(session, kind)
 
-    typer.echo(f"requeued {_with_runtime(main)} job(s)")
+    revival = _with_runtime(main)
+    typer.echo(f"requeued {revival.jobs} job(s), reopened {revival.rows} row(s)")
 
 
 @app.command()

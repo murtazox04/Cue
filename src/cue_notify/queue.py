@@ -120,12 +120,49 @@ def backoff(attempt: int, base: float, ceiling: float) -> float:
 
 
 type DeadHandler = Callable[[JobContext, str], Awaitable[None]]
+type ReviveHandler = Callable[[AsyncSession, Job], Awaitable[bool]]
 
 
 def database_clock(session: AsyncSession, offset: timedelta | None = None) -> ColumnElement[Any]:
     if session.get_bind().dialect.name == "postgresql":
         return func.now() if offset is None else func.now() + offset
     return literal(utcnow() + (offset or timedelta()), UTCDateTime())
+
+
+@dataclass(frozen=True, slots=True)
+class Revival:
+    jobs: int
+    rows: int
+
+
+async def revive_dead(
+    session: AsyncSession, hooks: Mapping[str, ReviveHandler], *, kind: str | None = None
+) -> Revival:
+    stmt = select(Job).where(Job.dead.is_(True)).order_by(Job.created_at).with_for_update()
+    if kind:
+        stmt = stmt.where(Job.kind == kind)
+    jobs = list((await session.scalars(stmt)).all())
+    restored = 0
+    for job in jobs:
+        hook = hooks.get(job.kind)
+        if hook is not None and await hook(session, job):
+            restored += 1
+        job.dead = False
+        job.attempts = 0
+        job.deferred_since = None
+        job.locked_until = None
+        job.locked_by = None
+        job.run_at = utcnow()
+    await session.flush()
+    return Revival(jobs=len(jobs), rows=restored)
+
+
+async def restore_key(session: AsyncSession, job: Job, key: str) -> bool:
+    holder = await session.scalar(select(Job.id).where(Job.key == key, Job.id != job.id))
+    if holder is not None:
+        return False
+    job.key = key
+    return True
 
 
 class Worker:

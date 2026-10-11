@@ -6,14 +6,18 @@ import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import UUID
 
 import httpx
 import pytest
-from sqlalchemy import update
+from sqlalchemy import select, update
 
+from cue_notify import queue
 from cue_notify.api.app import create_app
 from cue_notify.channels.webhook import sign
+from cue_notify.core.enums import ApprovalStatus
 from cue_notify.db.models import Approval, Job
+from cue_notify.jobs import HANDLERS, ON_DEAD
 from cue_notify.runtime import Runtime
 from cue_notify.services import approvals
 from cue_notify.settings import (
@@ -295,3 +299,47 @@ async def test_agents_have_a_limit_on_open_requests(
     assert refused.status_code == 429
     # Your own backend is not bound by an agent's limit.
     assert (await client.post("/v1/approvals", json=body)).status_code == 201
+
+
+async def explode(_: queue.JobContext) -> None:
+    raise RuntimeError("database on fire")
+
+
+async def test_lapsed_requests_read_as_expired_before_the_expiry_job_runs(
+    client: httpx.AsyncClient, agent: httpx.AsyncClient, runtime: Runtime
+) -> None:
+    asked = await _ask(agent)
+    await drain(runtime)
+    async with runtime.transaction() as session:
+        await session.execute(
+            update(Approval).values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
+        )
+
+    read = (await agent.get(f"/v1/approvals/{asked['id']}")).json()
+    assert (read["status"], read["decided_by"]) == ("expired", None)
+    async with runtime.session() as session:
+        stored = await session.get(Approval, UUID(asked["id"]))
+    assert stored is not None and stored.status is ApprovalStatus.PENDING
+    assert (await client.post(f"/v1/approvals/{asked['id']}/approve")).status_code == 409
+
+
+async def test_a_dead_expiry_job_still_expires_the_request(
+    agent: httpx.AsyncClient, runtime: Runtime, callbacks: list[httpx.Request]
+) -> None:
+    asked = await _ask(agent)
+    await drain(runtime)
+    past = datetime.now(UTC) - timedelta(seconds=1)
+    async with runtime.transaction() as session:
+        await session.execute(update(Approval).values(expires_at=past))
+        await session.execute(
+            update(Job).where(Job.kind == approvals.EXPIRE_JOB).values(run_at=past, max_attempts=1)
+        )
+    handlers = {**HANDLERS, approvals.EXPIRE_JOB: explode}
+    await queue.Worker(runtime, handlers, on_dead=ON_DEAD).run_until_idle()
+
+    async with runtime.session() as session:
+        stored = await session.get(Approval, UUID(asked["id"]))
+        dead = (await session.scalars(select(Job).where(Job.dead.is_(True)))).all()
+    assert stored is not None and stored.status is ApprovalStatus.EXPIRED
+    assert [job.kind for job in dead] == [approvals.EXPIRE_JOB]
+    assert [json.loads(r.content)["status"] for r in callbacks] == ["expired"]
