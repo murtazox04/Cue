@@ -25,7 +25,8 @@ for a change in priorities.
 
 - [x] Screening agents' messages with a decision model (TypeSafe Jev): hold risky ones,
       lower overstated importance
-- [ ] Signed, expiring approval links, so a reviewer can approve from the notification itself
+- [x] One-time, expiring approval links, so a reviewer can approve from the notification itself
+- [x] Daily and weekly digests at a local time of day (`deliver_at`)
 - [ ] Adapters for agent frameworks: Pydantic AI, LangGraph, CrewAI, OpenHands, Dapr Agents
 - [ ] Message class on every rule (transactional or marketing) with policy presets
 - [ ] Jurisdiction-aware quiet hours (US TCPA 8:00–21:00, Florida 8:00–20:00)

@@ -12,7 +12,7 @@ from fastapi import APIRouter, FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from cue_notify import __version__
-from cue_notify.api import pages, problems
+from cue_notify.api import pages, problems, review
 from cue_notify.api.deps import RuntimeDep
 from cue_notify.api.routers import (
     agents,
@@ -142,6 +142,7 @@ def create_app(settings: Settings | None = None, runtime: Runtime | None = None)
     app.include_router(v1)
     app.include_router(health.router)
     app.include_router(pages.router)
+    app.include_router(review.router)
 
     if settings.metrics:
 

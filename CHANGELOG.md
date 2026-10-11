@@ -9,7 +9,15 @@ All notable changes to this project are documented here. The format follows
 ### Added
 - Digests at a time of day in each recipient's time zone: `deliver_at: "08:00"`, with
   optional `days` (`["mon"]`) for weekly summaries.
+- One-time review links: each reviewer of a held agent message gets `review_url` in the
+  `cue.approval_requested` event, opening a hosted page to approve or reject it. Links
+  expire with the message, close after the first decision, and are stored only as hashes.
 - A CI job that brings up Docker Compose and walks through the getting-started guide.
+
+### Security
+- Agent keys now see only the messages and events they sent themselves, and cannot read
+  or send digests. Before, an agent key with `messages:read` could read every message
+  and event, including other senders' content.
 
 ### Fixed
 - The getting-started guide configured only the push channel, so its push-then-SMS rule

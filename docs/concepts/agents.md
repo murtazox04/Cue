@@ -103,14 +103,32 @@ POST /v1/rules
 ```
 
 The event's `data` holds `message_id`, `agent`, `agent_name`, `recipient` (whom the agent
-wants to message), `category`, `importance`, `title`, `body` (the first 500 characters)
-and `expires_at`:
+wants to message), `category`, `importance`, `title`, `body` (the first 500 characters),
+`expires_at` and `review_url`:
 
 ```json
 "en": {"title": "{{ data.agent_name }} needs your OK",
        "body": "To {{ data.recipient }}: {{ data.body }}",
-       "url": "https://admin.example.com/review/{{ data.message_id }}"}
+       "url": "{{ data.review_url }}"}
 ```
+
+### Deciding from the notification
+
+`review_url` (set when `api.public_url` is configured) opens a hosted page that shows the
+message with **Approve and send** and **Reject** buttons, so a reviewer can decide from
+their phone without an API key. Each reviewer gets their own link:
+
+- **One-time:** the first decision, through any link or the API, closes every link for
+  that message. Later visits say who already decided.
+- **Expiring:** a link lives as long as the held message (`approval_ttl_seconds`).
+- **Safe to preview:** opening the link changes nothing (mail scanners prefetch links);
+  only the buttons, which `POST`, act.
+- **Recorded:** the message's `reviewed_by` is `link:<reviewer>`.
+- **Unguessable and not stored:** the token has 256 bits of randomness, and Cue keeps
+  only its SHA-256 hash.
+
+Agent keys see only the messages and events they sent themselves, and no digests, so an
+agent can never read its own review link.
 
 ## Screening
 

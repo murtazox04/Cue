@@ -38,3 +38,8 @@ class UnprocessableError(ServiceError):
 class ForbiddenError(ServiceError):
     status_code = 403
     title = "Forbidden"
+
+
+class GoneError(ServiceError):
+    status_code = 410
+    title = "Gone"

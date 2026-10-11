@@ -20,6 +20,7 @@ from cue_notify.db.models import Event
 from cue_notify.services import agents
 from cue_notify.services import events as event_service
 from cue_notify.services import recipients as recipient_service
+from cue_notify.services.errors import NotFoundError
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -61,7 +62,7 @@ async def ingest_event(
 
 @router.get("", summary="List events")
 async def list_events(
-    _: MessagesReader,
+    key: MessagesReader,
     session: SessionDep,
     page: PageDep,
     recipient: Annotated[str | None, Query(description="Filter by external id.")] = None,
@@ -73,10 +74,15 @@ async def list_events(
         stmt = stmt.where(Event.recipient_id == found.id)
     if name is not None:
         stmt = stmt.where(Event.name == name)
+    if key.agent_key is not None:  # agents see only what they reported
+        stmt = stmt.where(Event.agent_key == key.agent_key)
     items, cursor = await paginate(session, stmt, Event.id, page)
     return Page(items=[EventOut.model_validate(item) for item in items], next_cursor=cursor)
 
 
 @router.get("/{event_id}", summary="Get an event and its rule outcomes")
-async def get_event(event_id: UUID, _: MessagesReader, session: SessionDep) -> EventOut:
-    return EventOut.model_validate(await event_service.get(session, event_id))
+async def get_event(event_id: UUID, key: MessagesReader, session: SessionDep) -> EventOut:
+    event = await event_service.get(session, event_id)
+    if key.agent_key is not None and event.agent_key != key.agent_key:
+        raise NotFoundError("event", event_id)
+    return EventOut.model_validate(event)

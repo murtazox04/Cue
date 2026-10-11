@@ -10,6 +10,7 @@ from cue_notify.api.deps import MessagesReader, MessagesWriter, PageDep, Session
 from cue_notify.api.schemas import DigestOut, Page
 from cue_notify.core.enums import DigestStatus
 from cue_notify.db.models import Digest
+from cue_notify.services import agents
 from cue_notify.services import digests as digest_service
 from cue_notify.services import recipients as recipient_service
 
@@ -18,12 +19,13 @@ router = APIRouter(prefix="/digests", tags=["digests"])
 
 @router.get("", summary="List digests")
 async def list_digests(
-    _: MessagesReader,
+    key: MessagesReader,
     session: SessionDep,
     page: PageDep,
     recipient: Annotated[str | None, Query(description="Filter by external id.")] = None,
     status: DigestStatus | None = None,
 ) -> Page[DigestOut]:
+    agents.check_not_agent(key, "read digests")
     stmt = select(Digest)
     if recipient is not None:
         found = await recipient_service.get(session, recipient)
@@ -35,11 +37,13 @@ async def list_digests(
 
 
 @router.get("/{digest_id}", summary="Get a digest and its grouped events")
-async def get_digest(digest_id: UUID, _: MessagesReader, session: SessionDep) -> DigestOut:
+async def get_digest(digest_id: UUID, key: MessagesReader, session: SessionDep) -> DigestOut:
+    agents.check_not_agent(key, "read digests")
     return DigestOut.model_validate(await digest_service.get(session, digest_id))
 
 
 @router.post("/{digest_id}/send", summary="Send an open digest now instead of at window end")
-async def send_digest(digest_id: UUID, _: MessagesWriter, session: SessionDep) -> DigestOut:
+async def send_digest(digest_id: UUID, key: MessagesWriter, session: SessionDep) -> DigestOut:
+    agents.check_not_agent(key, "send digests")
     digest = await digest_service.get(session, digest_id)
     return DigestOut.model_validate(await digest_service.send_now(session, digest))

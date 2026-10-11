@@ -14,6 +14,7 @@ from urllib.parse import parse_qs
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from jinja2 import Environment
+from markupsafe import Markup
 
 from cue_notify.api.deps import RuntimeDep, SessionDep
 from cue_notify.services import preferences
@@ -45,23 +46,7 @@ def _label(key: str) -> str:
     return key.replace("-", " ").replace("_", " ").capitalize()
 
 
-ENV = Environment(autoescape=True)
-ENV.filters["label"] = _label
-
-
-def _channel(name: str) -> str:
-    return CHANNEL_LABELS.get(name) or _label(name)
-
-
-ENV.filters["channel"] = _channel
-PAGE = ENV.from_string("""<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex">
-<title>{{ heading }}</title>
-<style>
+STYLE = Markup("""<style>
 :root { color-scheme: light dark; --fg:#1d1d1f; --muted:#6e6e73; --line:#d2d2d7;
   --bg:#fff; --card:#f5f5f7; --accent:#0a66c2; --on-accent:#fff; --ok:#1a7f37; }
 @media (prefers-color-scheme: dark) { :root { --fg:#f5f5f7; --muted:#a1a1a6; --line:#3a3a3c;
@@ -86,7 +71,24 @@ button { font:inherit; border-radius:10px; padding:10px 18px; cursor:pointer;
   border:1px solid var(--accent); background:var(--accent); color:var(--on-accent); }
 button.secondary { background:transparent; color:var(--accent); }
 a { color:var(--accent); }
-</style>
+</style>""")
+ENV = Environment(autoescape=True)
+ENV.filters["label"] = _label
+
+
+def _channel(name: str) -> str:
+    return CHANNEL_LABELS.get(name) or _label(name)
+
+
+ENV.filters["channel"] = _channel
+PAGE = ENV.from_string("""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>{{ heading }}</title>
+{{ style }}
 </head>
 <body><main>
 <h1>{{ heading }}</h1>
@@ -140,7 +142,7 @@ Unsubscribe from all optional messages</button>
 def _render(request: Request, status_code: int = 200, **context: Any) -> HTMLResponse:
     product = request.app.state.runtime.settings.api.product_name
     heading = f"{product} notification preferences" if product else "Notification preferences"
-    html = PAGE.render(heading=heading, **context)
+    html = PAGE.render(heading=heading, style=STYLE, **context)
     return HTMLResponse(html, status_code=status_code, headers=HEADERS)
 
 
@@ -160,7 +162,7 @@ class _BadFormError(ServiceError):
     title = "Bad request"
 
 
-async def _form(request: Request) -> dict[str, list[str]]:
+async def form_fields(request: Request) -> dict[str, list[str]]:
     """Parse a small urlencoded form without ever buffering more than the limit."""
     body = bytearray()
     async for chunk in request.stream():
@@ -189,7 +191,7 @@ async def page(
 async def save(token: str, request: Request, session: SessionDep, runtime: RuntimeDep) -> Response:
     try:
         recipient = await preferences.by_token(session, token)
-        form = await _form(request)
+        form = await form_fields(request)
     except ServiceError as exc:
         return _error(request, exc)
     if form.get("action") == ["unsubscribe_all"]:

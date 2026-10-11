@@ -324,6 +324,25 @@ class PreferenceChange(IdMixin, Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
+class ReviewLink(Base):
+    """A one-time link that lets a reviewer approve or reject a held message.
+
+    Only a hash of the token is stored, so the table cannot be used to act on messages.
+    """
+
+    __tablename__ = "review_links"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    message_id: Mapped[UUID] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"), index=True
+    )
+    reviewer: Mapped[str] = mapped_column(String(255))
+    """External id of the recipient the link was sent to."""
+    expires_at: Mapped[datetime]
+    used_at: Mapped[datetime | None]
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
 class Job(IdMixin, Base):
     """A unit of background work. See :mod:`cue_notify.queue`."""
 

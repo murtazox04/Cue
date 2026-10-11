@@ -131,13 +131,18 @@ async def list_messages(
         stmt = stmt.where(Message.broadcast_id == broadcast_id)
     if agent is not None:
         stmt = stmt.where(Message.agent_key == agent)
+    if key.agent_key is not None:  # agents see only what they sent
+        stmt = stmt.where(Message.agent_key == key.agent_key)
     items, cursor = await paginate(session, stmt, Message.id, page)
     return Page(items=await _views(session, key, items), next_cursor=cursor)
 
 
 @router.get("/{message_id}", summary="Get a message")
 async def get_message(message_id: UUID, key: MessagesReader, session: SessionDep) -> MessageOut:
-    return (await _views(session, key, [await _get(session, message_id)]))[0]
+    message = await _get(session, message_id)
+    if key.agent_key is not None and message.agent_key != key.agent_key:
+        raise NotFoundError("message", message_id)
+    return (await _views(session, key, [message]))[0]
 
 
 @router.post("/{message_id}/approve", summary="Approve a message held for review")
