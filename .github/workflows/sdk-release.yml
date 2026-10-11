@@ -34,15 +34,21 @@ jobs:
       run:
         working-directory: sdks/python
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          enable-cache: false # nothing cached may reach what we publish
       - name: Check the tag matches the version
         run: |
           version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/cue_client/__init__.py)
           test "python-sdk-v$version" = "$TAG"
       - run: uv sync --frozen && uv run pytest
       - run: uv build
-      - run: uv publish
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: sdks/python/dist
 
   typescript:
     name: Publish cue-client to npm
@@ -55,12 +61,15 @@ jobs:
       run:
         working-directory: sdks/typescript
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          package-manager-cache: false # nothing cached may reach what we publish
           node-version: 22
           registry-url: https://registry.npmjs.org
-      - run: npm install -g npm@11 # trusted publishing needs npm 11.5 or later
+      - run: npm install -g npm@11 # zizmor: ignore[adhoc-packages] trusted publishing needs npm 11.5+
       - name: Check the tag matches the version
         run: test "typescript-sdk-v$(node -p "require('./package.json').version")" = "$TAG"
       - run: npm ci
@@ -80,7 +89,11 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          # Inputs go through the environment, never into the script itself.
+          SDK: ${{ inputs.sdk }}
+          VERSION: ${{ inputs.version }}
+          PACKAGE: ${{ inputs.sdk == 'python' && 'cue-notify-client' || 'cue-client' }}
         run: |
           gh release create "$TAG" --target "$GITHUB_SHA" --latest=false \
-            --title "${{ inputs.sdk }} SDK ${{ inputs.version }}" \
-            --notes "${{ inputs.sdk == 'python' && 'cue-notify-client' || 'cue-client' }} ${{ inputs.version }} for ${{ inputs.sdk }}. See [SDKs](https://github.com/murtazox04/Cue/blob/main/docs/guides/sdks.md)."
+            --title "$SDK SDK $VERSION" \
+            --notes "$PACKAGE $VERSION for $SDK. See [SDKs](https://github.com/murtazox04/Cue/blob/main/docs/guides/sdks.md)."

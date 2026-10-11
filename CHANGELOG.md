@@ -48,6 +48,15 @@ All notable changes to this project are documented here. The format follows
   pages and docs (not `/metrics`), and an optional NetworkPolicy.
 - Python SDK: a non-ASCII signature header is rejected instead of raising `TypeError`.
 
+### Supply chain
+- Every GitHub Action is pinned to a commit SHA; checkouts don't keep credentials;
+  release jobs don't use caches; `mcp-publisher` is pinned and checksum-verified.
+- Container images get signed build provenance (`gh attestation verify`) and an SBOM;
+  PyPI uploads carry PEP 740 attestations. Base images are pinned by digest.
+- CodeQL, OpenSSF Scorecard, `pip-audit`, `npm audit` and zizmor run in CI; Dependabot
+  covers both SDKs and Compose.
+- `SECURITY.md` describes the trust model and how to verify releases.
+
 ## [0.3.0] — 2026-10-11
 
 ### Added

@@ -1,11 +1,9 @@
 name: MCP registry
 
-# Lists (or updates) Cue in the official MCP registry from server.json. Runs after a
-# release, once the package is on PyPI; can also be started by hand.
+# Lists (or updates) Cue in the official MCP registry from server.json. The release
+# workflow calls it once the package is on PyPI; it can also be started by hand.
 on:
-  workflow_run:
-    workflows: [Release]
-    types: [completed]
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -13,19 +11,23 @@ permissions:
 
 jobs:
   publish:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     permissions:
       id-token: write # GitHub OIDC login to the registry; no token stored
       contents: read
     steps:
-      - uses: actions/checkout@v7
-      - name: Install mcp-publisher
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install mcp-publisher (pinned and checksummed)
+        env:
+          VERSION: v1.8.1
+          SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
         run: |
-          os=$(uname -s | tr '[:upper:]' '[:lower:]')
-          arch=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
-          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_${os}_${arch}.tar.gz" \
-            | tar xz mcp-publisher
+          curl -fsSLo mcp-publisher.tar.gz \
+            "https://github.com/modelcontextprotocol/registry/releases/download/$VERSION/mcp-publisher_linux_amd64.tar.gz"
+          echo "$SHA256  mcp-publisher.tar.gz" | sha256sum -c -
+          tar xzf mcp-publisher.tar.gz mcp-publisher
       - name: Check server.json matches the released version
         run: |
           version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/cue_notify/__init__.py)

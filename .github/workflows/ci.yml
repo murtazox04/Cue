@@ -24,8 +24,10 @@ jobs:
       run:
         working-directory: sdks/python
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           enable-cache: true
       - run: uv sync --frozen --python ${{ matrix.python }}
@@ -39,8 +41,10 @@ jobs:
       run:
         working-directory: sdks/typescript
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -48,12 +52,40 @@ jobs:
       - run: npm ci
       - run: npm test
 
+  audit:
+    name: Dependency & workflow audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+      - name: Known vulnerabilities in the server's locked dependencies
+        run: |
+          uv export --frozen --all-extras --no-hashes --no-emit-project -q > server.txt
+          uvx pip-audit@2.10.1 -r server.txt --no-deps --disable-pip --progress-spinner off
+      - name: Known vulnerabilities in the Python SDK's locked dependencies
+        working-directory: sdks/python
+        run: |
+          # Its dev tools include the server from this checkout, audited above.
+          uv export --frozen --all-extras --no-hashes --no-emit-project -q | grep -v '^-e ' > sdk.txt
+          uvx pip-audit@2.10.1 -r sdk.txt --no-deps --disable-pip --progress-spinner off
+      - name: Known vulnerabilities in the TypeScript SDK
+        working-directory: sdks/typescript
+        run: npm audit --audit-level=moderate
+      - name: Workflow security (zizmor)
+        run: uvx zizmor@1.30.1 --format github .github/workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   lint:
     name: Lint & types
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           enable-cache: true
       - run: uv sync --frozen --all-extras
@@ -69,14 +101,16 @@ jobs:
       matrix:
         python: ["3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           enable-cache: true
           python-version: ${{ matrix.python }}
       - run: uv sync --frozen --all-extras
       - run: uv run pytest --cov --cov-report=term --cov-report=xml
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: matrix.python == '3.13'
         with:
           name: coverage-sqlite
@@ -101,8 +135,10 @@ jobs:
     env:
       CUE_TEST_DATABASE_URL: postgresql+asyncpg://cue:cue@localhost:5432/cue_test
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           enable-cache: true
           python-version: "3.13"
@@ -113,9 +149,11 @@ jobs:
     name: Docker image
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           push: false
@@ -127,7 +165,9 @@ jobs:
     name: Quick start (Docker Compose)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - run: docker compose up --build -d
       - name: Wait for the API
         run: timeout 120 bash -c 'until curl -fs localhost:8000/healthz; do sleep 2; done'
@@ -142,10 +182,12 @@ jobs:
     name: Helm chart (kind)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: azure/setup-helm@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
       - run: helm lint --strict deploy/helm/cue --set database.url=postgresql+asyncpg://x
-      - uses: helm/kind-action@v1
+      - uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
       - name: Build the image into the cluster
         run: |
           docker build -t cue:ci .

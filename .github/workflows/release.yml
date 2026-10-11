@@ -22,8 +22,9 @@ jobs:
     name: Check the tag matches the version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: Compare tag and package version
         run: |
@@ -48,10 +49,15 @@ jobs:
     permissions:
       id-token: write # trusted publishing — no API token stored in the repo
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          enable-cache: false # nothing cached may reach what we publish
       - run: uv build
-      - run: uv publish
+      # Publishes with PEP 740 attestations, so installers can check where it was built.
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
 
   image:
     name: Publish container image
@@ -60,31 +66,44 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write # signs the build provenance (Sigstore)
+      attestations: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=semver,pattern={{version}},value=${{ env.TAG }}
             type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }}
-      - uses: docker/build-push-action@v7
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           push: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      # Verify with: gh attestation verify oci://ghcr.io/murtazox04/cue:<version> -R murtazox04/Cue
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/murtazox04/cue # registry names are lowercase
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
 
   github-release:
     name: Create GitHub release
@@ -93,7 +112,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Release notes from CHANGELOG.md
         run: |
           version="${TAG#v}"
@@ -119,3 +140,11 @@ jobs:
             # Creates the tag at the released commit when run by hand.
             gh release create "$TAG" --target "$GITHUB_SHA" --title "Cue $TAG" --notes-file notes.md
           fi
+
+  mcp-registry:
+    name: Update the MCP registry
+    needs: pypi
+    permissions:
+      id-token: write # GitHub OIDC login to the registry
+      contents: read
+    uses: ./.github/workflows/mcp-registry.yml

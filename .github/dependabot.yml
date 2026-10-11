@@ -7,11 +7,30 @@ updates:
     groups:
       python:
         patterns: ["*"]
+  - package-ecosystem: uv
+    directory: /sdks/python
+    schedule:
+      interval: weekly
+    groups:
+      python-sdk:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /sdks/typescript
+    schedule:
+      interval: weekly
+    groups:
+      typescript-sdk:
+        patterns: ["*"]
+  # Actions are pinned to commit SHAs; Dependabot updates the SHA and its version comment.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
   - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: monthly
+  - package-ecosystem: docker-compose
     directory: /
     schedule:
       interval: monthly

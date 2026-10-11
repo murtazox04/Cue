@@ -4,13 +4,13 @@
 #   docker build -t cue .
 #   docker run --rm -p 8000:8000 -e CUE_DATABASE__URL=... cuectl serve
 
-ARG PYTHON_VERSION=3.13
 # Optional features to install. Drop "ai" for a ~40% smaller image.
 ARG EXTRAS="postgres fcm metrics ai"
 
-FROM python:${PYTHON_VERSION}-slim AS build
+# Base images are pinned by digest; Dependabot keeps them current.
+FROM python:3.13-slim@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f AS build
 ARG EXTRAS
-COPY --from=ghcr.io/astral-sh/uv:0.11 /uv /bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.11@sha256:77280f2f771df71f90786c314fe1bbc1e023feac652969bbf139c280babf2eb7 /uv /bin/uv
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never \
@@ -28,7 +28,7 @@ COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-editable $(printf -- '--extra %s ' $EXTRAS)
 
-FROM python:${PYTHON_VERSION}-slim AS runtime
+FROM python:3.13-slim@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f AS runtime
 LABEL org.opencontainers.image.source="https://github.com/murtazox04/Cue" \
       org.opencontainers.image.description="Self-hosted notification decision engine" \
       org.opencontainers.image.licenses="MIT"
