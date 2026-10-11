@@ -62,7 +62,7 @@ def version() -> None:
 @app.command()
 def serve(
     host: Annotated[str, typer.Option(help="Bind address.")] = "0.0.0.0",  # noqa: S104
-    port: Annotated[int, typer.Option(help="Port.")] = 8000,
+    port: Annotated[int, typer.Option(help="Port.", envvar="PORT")] = 8000,
     workers: Annotated[int, typer.Option(help="Worker processes.")] = 1,
     reload: Annotated[bool, typer.Option(help="Reload on code changes (development).")] = False,
     migrate: Annotated[

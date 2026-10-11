@@ -1,0 +1,50 @@
+# Deploy Cue on Render: an API, a worker and a PostgreSQL database.
+# Render: New → Blueprint → this repository. Then create an admin key from the API
+# service's Shell tab: `cuectl keys create admin`.
+services:
+  - type: web
+    name: cue-api
+    runtime: image
+    image:
+      url: ghcr.io/murtazox04/cue:0.2.0
+    # The image's entrypoint is `cuectl`; this replaces its arguments. The port comes
+    # from Render's PORT variable. Migrations take a lock, so several instances are safe.
+    dockerCommand: serve --migrate
+    healthCheckPath: /readyz
+    envVars:
+      - key: CUE_DATABASE__URL
+        fromDatabase:
+          name: cue-db
+          property: connectionString
+      - key: CUE_API__PUBLIC_URL
+        sync: false # e.g. https://cue-api.onrender.com, for preference and review links
+      - fromGroup: cue-channels
+
+  - type: worker
+    name: cue-worker
+    runtime: image
+    image:
+      url: ghcr.io/murtazox04/cue:0.2.0
+    dockerCommand: worker
+    envVars:
+      - key: CUE_DATABASE__URL
+        fromDatabase:
+          name: cue-db
+          property: connectionString
+      - key: CUE_API__PUBLIC_URL
+        sync: false
+      - fromGroup: cue-channels
+
+databases:
+  - name: cue-db
+    databaseName: cue
+
+envVarGroups:
+  # Console channels only log. Replace them with real connectors, for example
+  # CUE_CHANNELS__EMAIL__PROVIDER=webhook and CUE_CHANNELS__EMAIL__URL=…
+  - name: cue-channels
+    envVars:
+      - key: CUE_CHANNELS__PUSH__PROVIDER
+        value: console
+      - key: CUE_CHANNELS__SMS__PROVIDER
+        value: console

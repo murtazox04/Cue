@@ -37,7 +37,7 @@ for a change in priorities.
 - [ ] "Revoke all" opt-out propagation, ahead of the FCC rule taking effect on 31 Jan 2027
 - [ ] Consent records with provenance (where and how consent was given)
 - [ ] Adapters for more agent frameworks: Pydantic AI, LangGraph, OpenHands
-- [ ] Deploy kits: Helm chart, Railway and Render templates
+- [x] Deploy kits: Helm chart, Render Blueprint, Railway and Heroku conventions
 - [ ] Django and FastAPI integration packages
 - [ ] SDKs for Go, Java, PHP and Ruby when a user asks for one (the HTTP API and the
       webhook signature are small enough to port in a day)

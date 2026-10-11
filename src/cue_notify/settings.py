@@ -58,6 +58,15 @@ class DatabaseSettings(BaseModel):
     max_overflow: int = Field(default=10, ge=0)
     echo: bool = False
 
+    @field_validator("url")
+    @classmethod
+    def _async_driver(cls, value: str) -> str:
+        """Accept the plain ``postgres://`` URLs hosting platforms hand out."""
+        for prefix in ("postgres://", "postgresql://"):
+            if value.startswith(prefix):
+                return "postgresql+asyncpg://" + value.removeprefix(prefix)
+        return value
+
     @property
     def is_sqlite(self) -> bool:
         return self.url.startswith("sqlite")
@@ -254,6 +263,20 @@ class Settings(BaseSettings):
         description="Delivery channels keyed by the name used in rules and addresses.",
     )
     metrics: bool = Field(default=False, description="Expose Prometheus metrics at /metrics.")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _platform_database_url(cls, data: Any) -> Any:
+        """Use ``DATABASE_URL`` (set by Heroku, Railway, Render…) when no URL is configured."""
+        url = os.environ.get("DATABASE_URL")
+        if not url or not isinstance(data, dict):
+            return data
+        database: Any = data.get("database")  # pyright: ignore[reportUnknownMemberType]
+        if isinstance(database, DatabaseSettings) or (
+            isinstance(database, dict) and "url" in database
+        ):
+            return data
+        return {**data, "database": {**(database or {}), "url": url}}  # pyright: ignore[reportUnknownArgumentType]
 
     @field_validator("channels")
     @classmethod

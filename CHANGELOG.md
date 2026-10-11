@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- A Helm chart (`deploy/helm/cue`), tested on a kind cluster in CI, and a Render
+  Blueprint (`render.yaml`).
+- `DATABASE_URL` is used when `CUE_DATABASE__URL` is not set, plain `postgres://` URLs
+  are accepted, and `cuectl serve` listens on `PORT`, as hosting platforms expect.
+
+### Fixed
+- Migrations take a PostgreSQL advisory lock, so replicas that start together (and all
+  run `db upgrade` or `serve --migrate`) wait for each other instead of failing on
+  duplicate keys.
+
 ## [0.2.0] — 2026-10-11
 
 ### Added

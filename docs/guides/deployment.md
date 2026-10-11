@@ -41,38 +41,47 @@ state, but if a worker dies after a provider accepted a message and before recor
 the message can be sent again. Webhook deliveries carry an `Idempotency-Key` header so
 receivers can deduplicate.
 
-## Kubernetes sketch
+## Kubernetes (Helm)
 
-```yaml
-apiVersion: batch/v1
-kind: Job
-metadata: { name: cue-migrate }
-spec:
-  template:
-    spec:
-      restartPolicy: OnFailure
-      containers:
-        - name: migrate
-          image: ghcr.io/murtazox04/cue:0.1
-          args: ["db", "upgrade"]
-          envFrom: [{ secretRef: { name: cue } }]
----
-apiVersion: apps/v1
-kind: Deployment
-metadata: { name: cue-worker }
-spec:
-  replicas: 2
-  selector: { matchLabels: { app: cue-worker } }
-  template:
-    metadata: { labels: { app: cue-worker } }
-    spec:
-      terminationGracePeriodSeconds: 60
-      containers:
-        - name: worker
-          image: ghcr.io/murtazox04/cue:0.1
-          args: ["worker"]
-          envFrom: [{ secretRef: { name: cue } }]
+The chart in [`deploy/helm/cue`](https://github.com/murtazox04/Cue/tree/main/deploy/helm/cue)
+runs the API and the worker against your PostgreSQL:
+
+```bash
+helm install cue ./deploy/helm/cue \
+  --set database.existingSecret=cue-db \
+  --set env.CUE_API__PUBLIC_URL=https://cue.example.com \
+  --set ingress.enabled=true --set ingress.host=cue.example.com
+kubectl exec deploy/cue-api -- cuectl keys create admin
 ```
 
-The API deployment is the same with `args: ["serve", "--host", "0.0.0.0"]`, a
-`containerPort: 8000` and the probes above.
+- **Configuration:** structure (channels, quiet hours) goes in `config`, which becomes
+  `cue.toml` in a ConfigMap. Secrets go in `secretEnv` or `envFrom`, from your own
+  Secrets.
+- **Migrations:** every pod runs `cuectl db upgrade` in an init container. Migrations take
+  a PostgreSQL advisory lock, so replicas starting together wait for each other.
+- **Security:** pods run as a non-root user with a read-only root filesystem, and drop
+  all capabilities.
+- **Tested in CI:** the chart is installed on a kind cluster on every change, and the
+  getting-started guide runs against it.
+
+## Render
+
+[`render.yaml`](https://github.com/murtazox04/Cue/blob/main/render.yaml) is a Blueprint:
+**New → Blueprint →** this repository. It creates the API (migrating on start), a worker
+and a PostgreSQL database from the published image. Set `CUE_API__PUBLIC_URL` when Render
+asks, then create a key in the API service's shell: `cuectl keys create admin`.
+
+## Railway, Heroku and similar platforms
+
+Cue reads the platform's conventions:
+
+- **Database:** `DATABASE_URL` is used when `CUE_DATABASE__URL` is not set, and plain
+  `postgres://` URLs are accepted.
+- **Port:** `cuectl serve` listens on `PORT` when it is set.
+
+On Railway:
+
+1. Create a project from the image `ghcr.io/murtazox04/cue:0.2.0` (or this repository).
+2. Add PostgreSQL, and give the service `DATABASE_URL=${{Postgres.DATABASE_URL}}`.
+3. Set the start command to `cuectl serve --migrate`.
+4. Add a second service from the same image with the start command `cuectl worker`.

@@ -39,7 +39,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
   valueFrom:
     secretKeyRef:
       name: {{ include "cue.databaseSecret" . }}
-      key: {{ .Values.database.existingSecret | ternary .Values.database.existingSecretKey "url" }}
+      key: {{ ternary .Values.database.existingSecretKey "url" (not (empty .Values.database.existingSecret)) }}
 - name: CUE_METRICS
   value: {{ .Values.metrics.enabled | quote }}
 {{- range $name, $value := .Values.env }}
