@@ -20,6 +20,7 @@ Errors are classified so the delivery engine can react correctly:
 
 from __future__ import annotations
 
+import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -63,11 +64,23 @@ class Receipt:
     provider_message_id: str | None = None
 
 
+def finite_delay(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
+        return None
+    try:
+        seconds = float(value)
+    except (ValueError, OverflowError):
+        return None
+    if not math.isfinite(seconds):
+        return None
+    return max(seconds, 0.0)
+
+
 class DeliveryError(Exception):
     def __init__(self, message: str, *, retryable: bool = False, retry_after: float | None = None):
         super().__init__(message)
         self.retryable = retryable
-        self.retry_after = retry_after
+        self.retry_after = finite_delay(retry_after)
 
 
 class InvalidAddressError(DeliveryError):
@@ -118,13 +131,7 @@ def raise_for_http(
 
 
 def _retry_after(response: httpx.Response) -> float | None:
-    header = response.headers.get("retry-after")
-    if header is None:
-        return None
-    try:
-        return max(float(header), 0.0)
-    except ValueError:
-        return None
+    return finite_delay(response.headers.get("retry-after"))
 
 
 def transport_error(exc: httpx.HTTPError) -> DeliveryError:

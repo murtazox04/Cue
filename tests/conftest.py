@@ -18,6 +18,7 @@ import pytest
 from alembic import command
 from sqlalchemy import insert, select, text
 from sqlalchemy.ext.asyncio import create_async_engine
+from typer.testing import CliRunner
 
 from cue_notify.api.app import create_app
 from cue_notify.core.enums import Scope
@@ -31,6 +32,7 @@ from cue_notify.settings import (
     PolicySettings,
     Settings,
     WorkerSettings,
+    get_settings,
 )
 from tests.helpers import TEST_SECRET_KEY, FakeChannel
 
@@ -140,6 +142,17 @@ async def runtime(
         yield rt
     finally:
         await rt.aclose()
+
+
+@pytest.fixture
+def cli_runner(
+    runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[CliRunner]:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CUE_DATABASE__URL", runtime.settings.database.url)
+    get_settings.cache_clear()
+    yield CliRunner()
+    get_settings.cache_clear()
 
 
 @pytest.fixture

@@ -55,7 +55,8 @@ is a complete reference stack.
   consent ledger is proof of consent, so it is kept unless you add
   `--ledger-older-than DAYS`.
 - **Dead jobs.** `cuectl jobs stats` shows jobs that exhausted retries;
-  `cuectl jobs retry-dead` requeues them after you fix the cause.
+  `cuectl jobs retry-dead` requeues them after you fix the cause, and reopens the
+  events, messages, broadcasts and digests they had marked failed.
 
 ## Delivery guarantees
 

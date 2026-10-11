@@ -42,9 +42,12 @@ async def list_approvals(
 ) -> Page[ApprovalOut]:
     stmt = approvals.visible_to(key)
     if status_ is not None:
-        stmt = stmt.where(Approval.status == status_)
+        stmt = approvals.with_status(stmt, status_)
     items, cursor = await paginate(session, stmt, Approval.id, page)
-    return Page(items=[ApprovalOut.model_validate(item) for item in items], next_cursor=cursor)
+    return Page(
+        items=[ApprovalOut.model_validate(approvals.as_read(session, item)) for item in items],
+        next_cursor=cursor,
+    )
 
 
 @router.get("/{approval_id}", summary="Get an approval request and its decision")

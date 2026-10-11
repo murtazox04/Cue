@@ -21,7 +21,7 @@ from cue_notify import queue
 from cue_notify.core import logic
 from cue_notify.core.enums import BroadcastStatus, MessageStatus
 from cue_notify.core.time import ensure_utc, utcnow
-from cue_notify.db.models import Broadcast, Category, Message, Recipient, Template
+from cue_notify.db.models import Broadcast, Category, Job, Message, Recipient, Template
 from cue_notify.runtime import Runtime
 from cue_notify.services import composer
 from cue_notify.services import recipients as recipient_service
@@ -232,3 +232,20 @@ async def run_batch_dead(ctx: queue.JobContext, error: str) -> None:
         ):
             broadcast.status = BroadcastStatus.FAILED
             broadcast.error = error[:2000]
+
+
+async def run_batch_revive(session: AsyncSession, job: Job) -> bool:
+    broadcast = await session.get(
+        Broadcast, UUID(job.payload["broadcast_id"]), with_for_update=True
+    )
+    if (
+        broadcast is None
+        or broadcast.status is not BroadcastStatus.FAILED
+        or broadcast.error != (job.last_error or "")[:2000]
+    ):
+        return False
+    broadcast.status = (
+        BroadcastStatus.RUNNING if broadcast.started_at is not None else BroadcastStatus.SCHEDULED
+    )
+    broadcast.error = None
+    return True

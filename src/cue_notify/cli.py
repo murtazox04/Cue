@@ -8,11 +8,12 @@ import os
 import signal
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 from uuid import UUID
 
 import typer
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import ColumnElement, and_, delete, func, select, update
+from sqlalchemy.orm import InstrumentedAttribute
 
 from cue_notify import __version__
 from cue_notify.core.enums import Scope
@@ -21,6 +22,9 @@ from cue_notify.observability import configure_logging
 from cue_notify.runtime import Runtime
 from cue_notify.services.errors import ServiceError
 from cue_notify.settings import get_settings, is_loopback_host
+
+if TYPE_CHECKING:
+    from cue_notify.db.base import Base
 
 app = typer.Typer(
     name="cuectl",
@@ -56,6 +60,27 @@ def _with_runtime[T](fn: Callable[[Runtime], Awaitable[T]], *, quiet: bool = Tru
     except ServiceError as exc:
         typer.echo(f"error: {exc.detail}", err=True)
         raise typer.Exit(1) from exc
+
+
+def print_version(requested: bool) -> None:
+    if requested:
+        typer.echo(__version__)
+        raise typer.Exit
+
+
+@app.callback()
+def options(
+    show_version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            callback=print_version,
+            is_eager=True,
+            help="Print the version and exit.",
+        ),
+    ] = False,
+) -> None:
+    pass
 
 
 @app.command()
@@ -344,16 +369,15 @@ def jobs_retry_dead(
     kind: Annotated[str | None, typer.Option(help="Only this kind.")] = None,
 ) -> None:
     """Requeue jobs that exhausted their retries."""
-    from cue_notify.db.models import Job
+    from cue_notify import jobs
+    from cue_notify.queue import Revival
 
-    async def main(runtime: Runtime) -> int:
-        stmt = update(Job).where(Job.dead.is_(True)).values(dead=False, attempts=0, run_at=utcnow())
-        if kind:
-            stmt = stmt.where(Job.kind == kind)
+    async def main(runtime: Runtime) -> Revival:
         async with runtime.transaction() as session:
-            return int(getattr(await session.execute(stmt), "rowcount", 0))
+            return await jobs.revive(session, kind)
 
-    typer.echo(f"requeued {_with_runtime(main)} job(s)")
+    revival = _with_runtime(main)
+    typer.echo(f"requeued {revival.jobs} job(s), reopened {revival.rows} row(s)")
 
 
 @app.command()
@@ -366,6 +390,9 @@ def prune(
             "proof of consent, so they are kept unless you ask (US claims run for 4 years)."
         ),
     ] = None,
+    batch_size: Annotated[
+        int, typer.Option(min=1, help="Rows deleted per transaction, so locks stay short.")
+    ] = 1000,
 ) -> None:
     """Delete events, final messages, closed digests, decided approval requests and dead
     jobs older than the retention period."""
@@ -382,38 +409,66 @@ def prune(
 
     async def main(runtime: Runtime) -> dict[str, int]:
         cutoff = utcnow() - timedelta(days=older_than)
-        statements = {
-            "message": delete(Message).where(
-                Message.created_at < cutoff,
-                Message.status.not_in((MessageStatus.QUEUED, MessageStatus.SENDING)),
+        targets: dict[str, tuple[type[Base], InstrumentedAttribute[Any], ColumnElement[bool]]] = {
+            "message": (
+                Message,
+                Message.id,
+                and_(
+                    Message.created_at < cutoff,
+                    Message.status.not_in((MessageStatus.QUEUED, MessageStatus.SENDING)),
+                ),
             ),
-            "event": delete(Event).where(
-                Event.received_at < cutoff, Event.status != EventStatus.PENDING
+            "event": (
+                Event,
+                Event.id,
+                and_(Event.received_at < cutoff, Event.status != EventStatus.PENDING),
             ),
-            "digest": delete(Digest).where(
-                Digest.created_at < cutoff, Digest.status != DigestStatus.OPEN
+            "digest": (
+                Digest,
+                Digest.id,
+                and_(Digest.created_at < cutoff, Digest.status != DigestStatus.OPEN),
             ),
             # Titles, bodies and metadata of requests can hold personal data too.
-            "approval request": delete(Approval).where(
-                Approval.created_at < cutoff, Approval.status != ApprovalStatus.PENDING
+            "approval request": (
+                Approval,
+                Approval.id,
+                and_(Approval.created_at < cutoff, Approval.status != ApprovalStatus.PENDING),
             ),
-            "review link": delete(ReviewLink).where(ReviewLink.expires_at < cutoff),
+            "review link": (ReviewLink, ReviewLink.token_hash, ReviewLink.expires_at < cutoff),
             # Payloads and errors of jobs that gave up.
-            "dead job": delete(Job).where(Job.dead.is_(True), Job.created_at < cutoff),
+            "dead job": (Job, Job.id, and_(Job.dead.is_(True), Job.created_at < cutoff)),
         }
         if ledger_older_than is not None:
-            statements["consent-ledger entry"] = delete(PreferenceChange).where(
-                PreferenceChange.created_at < utcnow() - timedelta(days=ledger_older_than)
+            targets["consent-ledger entry"] = (
+                PreferenceChange,
+                PreferenceChange.id,
+                PreferenceChange.created_at < utcnow() - timedelta(days=ledger_older_than),
             )
-        counts: dict[str, int] = {}
-        async with runtime.transaction() as session:
-            for name, statement in statements.items():
-                result = await session.execute(statement)
-                counts[name] = int(getattr(result, "rowcount", 0))
-        return counts
+        return {
+            name: await delete_in_batches(runtime, model, key, condition, batch_size)
+            for name, (model, key, condition) in targets.items()
+        }
 
     counts = _with_runtime(main)
     typer.echo("deleted " + ", ".join(f"{n} {name}(s)" for name, n in counts.items()))
+
+
+async def delete_in_batches(
+    runtime: Runtime,
+    model: type[Base],
+    key: InstrumentedAttribute[Any],
+    condition: ColumnElement[bool],
+    batch_size: int,
+) -> int:
+    deleted = 0
+    while True:
+        batch = select(key).where(condition).limit(batch_size).scalar_subquery()
+        async with runtime.transaction() as session:
+            result = await session.execute(delete(model).where(key.in_(batch)))
+        removed = int(getattr(result, "rowcount", 0))
+        deleted += removed
+        if removed < batch_size:
+            return deleted
 
 
 def main() -> None:

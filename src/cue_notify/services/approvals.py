@@ -15,6 +15,7 @@ A request nobody decides on before ``expires_at`` becomes ``expired``: treat it 
 from __future__ import annotations
 
 import json
+import logging
 import time
 from datetime import timedelta
 from typing import Annotated, Any
@@ -22,7 +23,7 @@ from uuid import UUID
 
 import httpx
 from pydantic import AfterValidator, BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cue_notify import queue
@@ -40,6 +41,8 @@ from cue_notify.services.errors import (
     NotFoundError,
     TooManyRequestsError,
 )
+
+logger = logging.getLogger(__name__)
 
 REQUEST_JOB = "request_approval"
 EXPIRE_JOB = "expire_approval"
@@ -123,6 +126,31 @@ async def get(session: AsyncSession, approval_id: UUID, key: ApiKey) -> Approval
     approval = await session.get(Approval, approval_id)
     if approval is None or (key.agent_key is not None and approval.agent_key != key.agent_key):
         raise NotFoundError("approval", approval_id)
+    return as_read(session, approval)
+
+
+def lapsed(approval: Approval) -> bool:
+    return approval.status is ApprovalStatus.PENDING and approval.expires_at <= utcnow()
+
+
+def with_status(stmt: Any, status: ApprovalStatus) -> Any:
+    now = utcnow()
+    if status is ApprovalStatus.PENDING:
+        return stmt.where(Approval.status == status, Approval.expires_at > now)
+    if status is ApprovalStatus.EXPIRED:
+        return stmt.where(
+            or_(
+                Approval.status == status,
+                and_(Approval.status == ApprovalStatus.PENDING, Approval.expires_at <= now),
+            )
+        )
+    return stmt.where(Approval.status == status)
+
+
+def as_read(session: AsyncSession, approval: Approval) -> Approval:
+    if lapsed(approval):
+        session.expunge(approval)
+        approval.status = ApprovalStatus.EXPIRED
     return approval
 
 
@@ -194,6 +222,8 @@ async def by_review_link(session: AsyncSession, link: ReviewLink, *, lock: bool 
     already = f"This request was already decided{who}; it is now {approval.status}."
     if approval.status is not ApprovalStatus.PENDING:
         raise GoneError(already)
+    if lapsed(approval):
+        raise GoneError("This request has expired.")
     review_links.check_open(link, utcnow(), already)
     return approval
 
@@ -262,7 +292,9 @@ async def expire(ctx: queue.JobContext) -> None:
         if approval is None or approval.status is not ApprovalStatus.PENDING:
             return
         if approval.expires_at > utcnow():
-            raise queue.RetryLater((approval.expires_at - utcnow()).total_seconds())
+            raise queue.RetryLater(
+                (approval.expires_at - utcnow()).total_seconds(), "waiting for expiry", planned=True
+            )
         await _decide(
             session, runtime, approval, status=ApprovalStatus.EXPIRED, by=None, comment=None
         )
@@ -312,3 +344,44 @@ async def callback(ctx: queue.JobContext) -> None:
         raise RuntimeError(f"approval callback returned {response.status_code}")
     if response.status_code >= 400:
         raise queue.PermanentJobError(f"approval callback returned {response.status_code}")
+
+
+async def expire_dead(ctx: queue.JobContext, error: str) -> None:
+    async with ctx.runtime.transaction() as session:
+        approval = await session.get(
+            Approval, UUID(ctx.payload["approval_id"]), with_for_update=True
+        )
+        if approval is None or approval.status is not ApprovalStatus.PENDING:
+            return
+        await _decide(
+            session, ctx.runtime, approval, status=ApprovalStatus.EXPIRED, by=None, comment=None
+        )
+    logger.error(
+        "approval marked expired because its expiry job gave up: %s",
+        error,
+        extra={"approval_id": ctx.payload["approval_id"]},
+    )
+
+
+async def request_dead(ctx: queue.JobContext, error: str) -> None:
+    logger.error(
+        "reviewers were not told about an approval request: %s",
+        error,
+        extra={"approval_id": ctx.payload["approval_id"]},
+    )
+
+
+async def callback_dead(ctx: queue.JobContext, error: str) -> None:
+    logger.error(
+        "the approval callback was not delivered: %s",
+        error,
+        extra={"approval_id": ctx.payload["approval_id"]},
+    )
+
+
+async def review_dead(ctx: queue.JobContext, error: str) -> None:
+    logger.error(
+        "reviewers were not told about a held message: %s",
+        error,
+        extra={"message_id": ctx.payload["message_id"]},
+    )

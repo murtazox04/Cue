@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from cue_notify import __version__
 from cue_notify.cli import app
 from cue_notify.settings import get_settings
 from tests.helpers import TEST_SECRET_KEY
@@ -171,3 +172,10 @@ def test_secrets_on_the_mcp_command_line_are_warned_about(
     assert "--api-key on the command line" in result.stderr
     assert "--auth-token on the command line" in result.stderr
     assert len(mcp_serve) == 1
+
+
+def test_version_flag_and_command_agree() -> None:
+    flag = runner.invoke(app, ["--version"])
+    command = runner.invoke(app, ["version"])
+    assert flag.exit_code == command.exit_code == 0
+    assert flag.output.strip() == command.output.strip() == __version__

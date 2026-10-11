@@ -236,6 +236,19 @@ class WorkerSettings(BaseModel):
     retry_base_seconds: float = Field(default=5.0, gt=0)
     retry_max_seconds: float = Field(default=3600.0, gt=0)
     shutdown_timeout: float = Field(default=30.0, ge=0)
+    job_timeout: float = Field(
+        default=120.0,
+        gt=0,
+        description="Seconds a job may run before it is cancelled and retried like a failure.",
+    )
+    max_defer_seconds: float = Field(
+        default=86_400.0,
+        gt=0,
+        description=(
+            "How long a job may keep asking to run later (rate limits, Retry-After) before it "
+            "is marked dead. Deferrals do not count towards max_attempts."
+        ),
+    )
 
 
 class PolicySettings(BaseModel):

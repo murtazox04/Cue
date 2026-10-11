@@ -17,11 +17,14 @@ cuectl keys list
 cuectl keys revoke KEY_ID
 cuectl jobs stats                 queued and dead jobs by kind
 cuectl jobs retry-dead [--kind K]
-cuectl prune [--older-than DAYS] [--ledger-older-than DAYS]
+                                  requeue dead jobs and reopen the events, messages,
+                                  broadcasts and digests they gave up on
+cuectl prune [--older-than DAYS] [--ledger-older-than DAYS] [--batch-size N]
                                   delete old events, finished messages, closed digests,
                                   decided approval requests, expired review links and
-                                  dead jobs; the consent ledger only when asked
-cuectl version
+                                  dead jobs; the consent ledger only when asked.
+                                  Deletes N rows (1000) per transaction
+cuectl version                    (or cuectl --version)
 ```
 
 `serve` binds to `127.0.0.1`; pass `--host 0.0.0.0` to listen on every interface (the
