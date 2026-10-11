@@ -1,0 +1,14 @@
+Cue {{ .Chart.AppVersion }} is starting ({{ .Values.api.replicas }} API, {{ .Values.worker.replicas }} worker).
+
+Create an admin API key:
+
+  kubectl exec -n {{ .Release.Namespace }} deploy/{{ include "cue.fullname" . }}-api -- cuectl keys create admin
+
+Then open the API docs:
+
+{{- if .Values.ingress.enabled }}
+  https://{{ .Values.ingress.host }}/docs
+{{- else }}
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "cue.fullname" . }} 8000:{{ .Values.service.port }}
+  http://localhost:8000/docs
+{{- end }}

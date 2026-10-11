@@ -47,9 +47,16 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+MIGRATION_LOCK = 0x43756521  # any constant shared by every Cue process
+
+
 def _run(connection: Connection) -> None:
     _configure(connection=connection, render_as_batch=connection.dialect.name == "sqlite")
     with context.begin_transaction():
+        if connection.dialect.name == "postgresql":
+            # Several replicas may start at once (Kubernetes, `serve --migrate`); the lock
+            # makes the others wait and then find the schema already at head.
+            connection.exec_driver_sql(f"SELECT pg_advisory_xact_lock({MIGRATION_LOCK})")
         context.run_migrations()
 
 

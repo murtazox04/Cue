@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cue.fullname" . }}-worker
+  labels:
+    {{- include "cue.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  selector:
+    matchLabels:
+      {{- include "cue.selector" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        {{- include "cue.selector" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+      annotations:
+        checksum/config: {{ .Values.config | sha256sum }}
+    spec:
+      # Jobs are leased in the database; give a running job time to finish on shutdown.
+      terminationGracePeriodSeconds: 45
+      {{- include "cue.podCommon" . | nindent 6 }}
+      containers:
+        - name: worker
+          image: {{ include "cue.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["worker"]
+          env:
+            {{- include "cue.env" . | nindent 12 }}
+            - name: CUE_WORKER__CONCURRENCY
+              value: {{ .Values.worker.concurrency | quote }}
+          {{- with .Values.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - {name: config, mountPath: /etc/cue, readOnly: true}
+            - {name: tmp, mountPath: /tmp}

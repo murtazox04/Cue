@@ -1,0 +1,78 @@
+# Cue: API and worker on Kubernetes, backed by your PostgreSQL.
+image:
+  repository: ghcr.io/murtazox04/cue
+  tag: ""          # defaults to the chart's appVersion
+  pullPolicy: IfNotPresent
+
+# PostgreSQL connection. Give either a URL (stored in a Secret by the chart) or the name
+# of an existing Secret holding it.
+database:
+  url: ""          # postgresql+asyncpg://user:password@host:5432/cue
+  existingSecret: ""
+  existingSecretKey: url
+
+# Structure goes in cue.toml (channels, categories policy, quiet hours…). Secrets do not:
+# pass them through `secretEnv` or `envFrom`.
+# The console channels only log; replace them with real connectors.
+config: |
+  [channels.push]
+  provider = "console"
+
+  [channels.sms]
+  provider = "console"
+
+# Extra plain environment variables, e.g. CUE_API__PUBLIC_URL.
+env: {}
+#  CUE_API__PUBLIC_URL: https://cue.example.com
+
+# Environment variables from Secrets: {NAME: {secretName: …, key: …}}.
+secretEnv: {}
+#  CUE_CHANNELS__EMAIL__SECRET: {secretName: cue-secrets, key: email-webhook-secret}
+
+envFrom: []
+
+api:
+  replicas: 2
+  resources:
+    requests: {cpu: 100m, memory: 192Mi}
+    limits: {memory: 512Mi}
+
+worker:
+  replicas: 1
+  concurrency: 8
+  resources:
+    requests: {cpu: 100m, memory: 192Mi}
+    limits: {memory: 512Mi}
+
+# Run `cuectl db upgrade` before the API and worker start. Safe with many replicas:
+# migrations take a PostgreSQL advisory lock.
+migrate: true
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: cue.example.com
+  tls: []          # [{secretName: cue-tls, hosts: [cue.example.com]}]
+
+metrics:
+  enabled: false   # exposes /metrics for Prometheus
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  fsGroup: 10001
+  seccompProfile: {type: RuntimeDefault}
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: {drop: [ALL]}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

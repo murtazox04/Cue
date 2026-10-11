@@ -138,3 +138,38 @@ jobs:
       - if: failure()
         run: docker compose logs
 
+  helm:
+    name: Helm chart (kind)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v4
+      - run: helm lint --strict deploy/helm/cue --set database.url=postgresql+asyncpg://x
+      - uses: helm/kind-action@v1
+      - name: Build the image into the cluster
+        run: |
+          docker build -t cue:ci .
+          kind load docker-image cue:ci --name chart-testing
+      - name: Start PostgreSQL
+        run: |
+          kubectl create deployment postgres --image=postgres:17-alpine --port=5432
+          kubectl set env deployment/postgres POSTGRES_USER=cue POSTGRES_PASSWORD=cue POSTGRES_DB=cue
+          kubectl expose deployment postgres --port=5432
+          kubectl rollout status deployment/postgres --timeout=180s
+      - name: Install the chart
+        run: |
+          helm install cue deploy/helm/cue --wait --timeout 5m \
+            --set image.repository=cue --set image.tag=ci --set image.pullPolicy=Never \
+            --set database.url=postgresql+asyncpg://cue:cue@postgres:5432/cue
+      - name: Walk through the getting-started guide
+        run: |
+          key=$(kubectl exec deploy/cue-api -- cuectl keys create admin | grep -o 'ck_[A-Za-z0-9_-]*')
+          kubectl port-forward svc/cue 8000:80 &
+          timeout 60 bash -c 'until curl -fs localhost:8000/healthz; do sleep 2; done'
+          CUE_KEY="$key" scripts/smoke.sh
+      - if: failure()
+        run: |
+          kubectl get pods -A
+          kubectl logs deploy/cue-api --all-containers --tail=100 || true
+          kubectl logs deploy/cue-worker --all-containers --tail=100 || true
+

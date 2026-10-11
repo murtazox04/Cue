@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import os
+import subprocess
+import sys
 from pathlib import Path
 
+import asyncpg
+import pytest
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
@@ -55,3 +61,32 @@ def test_preference_tokens_are_backfilled_for_existing_recipients(tmp_path: Path
     engine.dispose()
     assert len(tokens) == len(set(tokens)) == 3
     assert all(token and len(token) >= 32 for token in tokens)
+
+
+def test_concurrent_upgrades_wait_for_each_other() -> None:
+    """Replicas that all run `cuectl db upgrade` at start-up must not trip over each other."""
+    base = os.environ.get("CUE_TEST_DATABASE_URL")
+    if not base:
+        pytest.skip("needs CUE_TEST_DATABASE_URL (PostgreSQL)")
+
+    async def recreate() -> None:
+        connection = await asyncpg.connect(base.replace("postgresql+asyncpg", "postgresql"))
+        try:
+            await connection.execute("DROP DATABASE IF EXISTS cue_migration_race")
+            await connection.execute("CREATE DATABASE cue_migration_race")
+        finally:
+            await connection.close()
+
+    asyncio.run(recreate())
+    env = {**os.environ, "CUE_DATABASE__URL": base.rsplit("/", 1)[0] + "/cue_migration_race"}
+    runs = [
+        subprocess.Popen(
+            [sys.executable, "-m", "cue_notify", "db", "upgrade"],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        for _ in range(4)
+    ]
+    outputs = [run.communicate(timeout=120)[0].decode() for run in runs]
+    assert [run.returncode for run in runs] == [0, 0, 0, 0], outputs
