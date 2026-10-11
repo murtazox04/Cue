@@ -6,40 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-10-11
+
 ### Added
 - Screening for agents' messages (`[screening]`): before delivery, TypeSafe's Jev
   decision model judges urgency and whether a message pressures, deceives or leaks a
   secret. Risky messages wait for approval, overstated importance is lowered, and the
   answers are stored on the message (`screening`).
-- A throughput benchmark (`benchmarks/throughput.py`) and a performance guide.
-- Agent `reviewers`: Cue reports a `cue.approval_requested` event for each reviewer when
-  a message waits for approval, so your own rules and templates notify them.
-- Python (`cue-notify-client`, httpx only) and TypeScript (`cue-client`, no dependencies) SDKs
-  with webhook signature verification, tested in CI and released by tag.
-
-### Fixed
-- Test coverage now measures `cue_notify` (it pointed at a package name from before
-  the rename).
-- The database pool now defaults to the worker's concurrency plus 4 connections. With
-  the old fixed default of 10, a busy worker opened and closed connections constantly;
-  end-to-end throughput roughly doubled with four workers.
-
-### Security
-- Agent keys can no longer review messages (also not another agent's), hold the
-  `admin` scope, change people's preferences or rotate preference tokens.
-- The hosted preference form is read with a size limit, and the unsubscribe
-  confirmation page only names categories that exist.
-- Agent keys cannot see preference tokens (redacted from recipients and message
-  content), delete recipients, send inline profiles, cancel or report engagement on
-  other senders' messages; events they report follow the agent's categories, budget and
-  approval.
-- A `send_at` in the past counts as now, so backdated sends cannot slip past frequency
-  caps or agent budgets.
-- Event and message `data` is limited to 16 KB.
-- The MCP server refuses ids that are not UUIDs instead of resolving them into other API
-  paths.
-- Line breaks in e-mail subjects are collapsed, and messages that cannot be built as
-  e-mail fail over instead of retrying.
+- A manual "Live checks" workflow that tests screening against TypeSafe's API.
+- The SDKs are published: `pip install cue-notify-client` and `npm install cue-client`.
 
 ## [0.1.0] — 2026-10-10
 
@@ -98,6 +73,29 @@ First public release of Cue, the attention layer between software, AI agents and
 - `cuectl` CLI: `serve`, `worker`, `db`, `keys`, `jobs`, `prune`, `check`, `mcp`.
 - A Model Context Protocol server so AI agents can send notifications and inspect
   delivery with scoped API keys.
+- A throughput benchmark (`benchmarks/throughput.py`) and a performance guide.
+- Agent `reviewers`: Cue reports a `cue.approval_requested` event for each reviewer when
+  a message waits for approval, so your own rules and templates notify them.
+- Python (`cue-notify-client`, httpx only) and TypeScript (`cue-client`, no dependencies) SDKs
+  with webhook signature verification, tested in CI and released by tag.
 
-[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.1.0...HEAD
+### Security
+- Agent keys can no longer review messages (also not another agent's), hold the
+  `admin` scope, change people's preferences or rotate preference tokens.
+- The hosted preference form is read with a size limit, and the unsubscribe
+  confirmation page only names categories that exist.
+- Agent keys cannot see preference tokens (redacted from recipients and message
+  content), delete recipients, send inline profiles, cancel or report engagement on
+  other senders' messages; events they report follow the agent's categories, budget and
+  approval.
+- A `send_at` in the past counts as now, so backdated sends cannot slip past frequency
+  caps or agent budgets.
+- Event and message `data` is limited to 16 KB.
+- The MCP server refuses ids that are not UUIDs instead of resolving them into other API
+  paths.
+- Line breaks in e-mail subjects are collapsed, and messages that cannot be built as
+  e-mail fail over instead of retrying.
+
+[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/murtazox04/Cue/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/murtazox04/Cue/releases/tag/v0.1.0

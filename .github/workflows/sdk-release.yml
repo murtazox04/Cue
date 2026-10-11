@@ -45,7 +45,7 @@ jobs:
       - run: uv publish
 
   typescript:
-    name: Publish cue-notify-client to npm
+    name: Publish cue-client to npm
     if: startsWith(github.ref_name, 'typescript-sdk-v') || inputs.sdk == 'typescript'
     runs-on: ubuntu-latest
     environment: npm
@@ -83,4 +83,4 @@ jobs:
         run: |
           gh release create "$TAG" --target "$GITHUB_SHA" --latest=false \
             --title "${{ inputs.sdk }} SDK ${{ inputs.version }}" \
-            --notes "cue-notify-client ${{ inputs.version }} for ${{ inputs.sdk }}. See [SDKs](https://github.com/murtazox04/Cue/blob/main/docs/guides/sdks.md)."
+            --notes "${{ inputs.sdk == 'python' && 'cue-notify-client' || 'cue-client' }} ${{ inputs.version }} for ${{ inputs.sdk }}. See [SDKs](https://github.com/murtazox04/Cue/blob/main/docs/guides/sdks.md)."
