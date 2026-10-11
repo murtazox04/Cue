@@ -7,6 +7,18 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- Quiet hours and US texting hours are checked again right before sending. A message
+  that comes due at a time no longer allowed (preferences changed, a retry backoff, a
+  slow queue) waits for the next allowed moment instead of going out.
+- Approving a held message schedules it for the next allowed moment; it could be sent
+  during quiet hours or outside legal texting hours before.
+- Legal texting hours could move a marketing text into the recipient's quiet hours.
+  Both are now applied together until neither moves the send time.
+- Frequency caps, cooldowns, agent budgets and the state texting caps counted every
+  message scheduled for later, so one send planned for next week could suppress
+  today's. They now count the messages within the period around the send time.
+- Quiet hours ending inside the repeated hour on the night clocks go back could resume
+  before the message was due, sending it during the second pass of quiet hours.
 - A daily digest opened during the repeated hour on the night clocks go back could be
   scheduled in the past.
 - An address disabled by delivery (an unregistered push token, a blocked bot) came back

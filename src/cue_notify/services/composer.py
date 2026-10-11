@@ -7,12 +7,13 @@ frequency caps, quiet hours) is applied uniformly and every decision is recorded
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cue_notify import queue
@@ -125,16 +126,90 @@ def template_context(intent: Intent, settings: Settings) -> dict[str, Any]:
     }
 
 
-async def _count_recent(
+def breaks_through(importance: Importance, category: Category) -> bool:
+    return importance is Importance.CRITICAL and not category.allow_unsubscribe
+
+
+def texting_window(
+    recipient: Recipient, category: Category, channels: Sequence[str], settings: Settings
+) -> legal.Window | None:
+    compliance = settings.compliance
+    if not (
+        compliance.us_texting_rules
+        and category.marketing
+        and any(channel in compliance.sms_channels for channel in channels)
+    ):
+        return None
+    phone = next(
+        (a.value for a in recipient.addresses if a.channel in compliance.sms_channels),
+        None,
+    )
+    return legal.window_for(recipient.region, phone, unknown_state=compliance.unknown_state)
+
+
+SEND_TIME_ROUNDS = 32
+
+
+def allowed_send_time(
+    when: datetime,
+    recipient: Recipient,
+    category: Category,
+    importance: Importance,
+    channels: Sequence[str],
+    settings: Settings,
+) -> datetime:
+    defaults = settings.policy
+    tz = policy.zone(recipient.timezone, defaults.default_timezone)
+    quiet = None
+    if category.respect_quiet_hours and not breaks_through(importance, category):
+        prefs = recipient_service.preferences(recipient)
+        quiet = prefs.quiet_hours if prefs.quiet_hours is not None else defaults.quiet_hours
+    window = texting_window(recipient, category, channels, settings)
+    earliest = when
+    for _ in range(SEND_TIME_ROUNDS):
+        moved = policy.defer_past_quiet_hours(when, tz, quiet)
+        if window is not None:
+            moved = legal.next_allowed(moved, tz, window)
+        if moved == when:
+            return when
+        when = moved
+    return when if window is None else legal.next_allowed(earliest, tz, window)
+
+
+def usable_channels(message: Message, recipient: Recipient, runtime: Runtime) -> list[str]:
+    muted = recipient_service.preferences(recipient).muted_channels
+    return [
+        channel
+        for channel in message.channels
+        if channel in runtime.channels
+        and channel not in muted
+        and any(a.channel == channel and a.enabled for a in recipient.addresses)
+    ]
+
+
+def message_send_time(
+    when: datetime, message: Message, recipient: Recipient, category: Category, runtime: Runtime
+) -> datetime:
+    channels = usable_channels(message, recipient, runtime)
+    return allowed_send_time(
+        when, recipient, category, message.importance, channels, runtime.settings
+    )
+
+
+async def rolling_count(
     session: AsyncSession,
     *conditions: Any,
-    since: datetime,
+    at: datetime,
+    period: timedelta,
     statuses: tuple[MessageStatus, ...] = COUNTED_STATUSES,
 ) -> int:
-    stmt = select(func.count(Message.id)).where(
-        *conditions, Message.status.in_(statuses), Message.send_at > since
+    stmt = select(Message.send_at).where(
+        *conditions,
+        Message.status.in_(statuses),
+        Message.send_at > at - period,
+        Message.send_at < at + period,
     )
-    return int(await session.scalar(stmt) or 0)
+    return policy.rolling_peak((await session.scalars(stmt)).all(), at, period)
 
 
 async def _fatigued(
@@ -174,11 +249,12 @@ async def _agent_budget_exceeded(
     """
     for raw_cap in agent.frequency_caps:
         cap = FrequencyCap.model_validate(raw_cap)
-        recent = await _count_recent(
+        recent = await rolling_count(
             session,
             Message.recipient_id == recipient.id,
             Message.agent_key == agent.key,
-            since=send_at - cap.period,
+            at=send_at,
+            period=cap.period,
             statuses=(*COUNTED_STATUSES, MessageStatus.PENDING_APPROVAL),
         )
         if recent >= cap.limit:
@@ -220,52 +296,39 @@ async def decide(session: AsyncSession, runtime: Runtime, intent: Intent) -> Dec
         return Decision(MessageStatus.SUPPRESSED, SuppressionReason.NO_REACHABLE_CHANNEL)
 
     importance = effective_importance(intent)
-    breaks_through = importance is Importance.CRITICAL
     now = utcnow()
     # A time in the past means "now": counting caps from a backdated time would let a
     # sender spread messages over windows that have already closed.
     send_at = max(intent.send_at, now) if intent.send_at else now + intent.delay
-    if category.respect_quiet_hours and not breaks_through:
-        window = prefs.quiet_hours if prefs.quiet_hours is not None else defaults.quiet_hours
-        tz = policy.zone(recipient.timezone, defaults.default_timezone)
-        send_at = policy.defer_past_quiet_hours(send_at, tz, window)
+    send_at = allowed_send_time(
+        send_at, recipient, category, importance, channels, runtime.settings
+    )
 
-    compliance = runtime.settings.compliance
-    if (
-        compliance.us_texting_rules
-        and category.marketing
-        and any(channel in compliance.sms_channels for channel in channels)
-    ):
-        phone = next(
-            (a.value for a in recipient.addresses if a.channel in compliance.sms_channels),
-            None,
+    window = texting_window(recipient, category, channels, runtime.settings)
+    if window is not None and window.daily_cap is not None:
+        marketing = select(Category.key).where(Category.marketing.is_(True))
+        recent = await rolling_count(
+            session,
+            Message.recipient_id == recipient.id,
+            Message.category_key.in_(marketing),
+            at=send_at,
+            period=timedelta(days=1),
         )
-        window = legal.window_for(recipient.region, phone, unknown_state=compliance.unknown_state)
-        if window is not None:
-            tz = policy.zone(recipient.timezone, defaults.default_timezone)
-            send_at = legal.next_allowed(send_at, tz, window)
-            if window.daily_cap is not None:
-                marketing = select(Category.key).where(Category.marketing.is_(True))
-                recent = await _count_recent(
-                    session,
-                    Message.recipient_id == recipient.id,
-                    Message.category_key.in_(marketing),
-                    since=send_at - timedelta(days=1),
-                )
-                if recent >= window.daily_cap:
-                    return Decision(
-                        MessageStatus.SUPPRESSED,
-                        f"{SuppressionReason.COMPLIANCE}: {window.daily_cap} marketing "
-                        f"texts per 24 hours ({window.source})",
-                        send_at=send_at,
-                    )
+        if recent >= window.daily_cap:
+            return Decision(
+                MessageStatus.SUPPRESSED,
+                f"{SuppressionReason.COMPLIANCE}: {window.daily_cap} marketing "
+                f"texts per 24 hours ({window.source})",
+                send_at=send_at,
+            )
 
     if intent.rule is not None and intent.cooldown:
-        recent = await _count_recent(
+        recent = await rolling_count(
             session,
             Message.recipient_id == recipient.id,
             Message.rule_id == intent.rule.id,
-            since=send_at - intent.cooldown,
+            at=send_at,
+            period=intent.cooldown,
         )
         if recent:
             return Decision(MessageStatus.SUPPRESSED, SuppressionReason.COOLDOWN, send_at=send_at)
@@ -273,13 +336,14 @@ async def decide(session: AsyncSession, runtime: Runtime, intent: Intent) -> Dec
     if intent.expires_at is not None and send_at >= intent.expires_at:
         return Decision(MessageStatus.SUPPRESSED, SuppressionReason.EXPIRED, send_at=send_at)
 
-    for raw_cap in [] if breaks_through else category.frequency_caps:
+    for raw_cap in [] if breaks_through(importance, category) else category.frequency_caps:
         cap = FrequencyCap.model_validate(raw_cap)
-        recent = await _count_recent(
+        recent = await rolling_count(
             session,
             Message.recipient_id == recipient.id,
             Message.category_key == category.key,
-            since=send_at - cap.period,
+            at=send_at,
+            period=cap.period,
         )
         if recent >= cap.limit:
             return Decision(

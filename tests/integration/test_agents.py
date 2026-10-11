@@ -397,3 +397,39 @@ async def test_reviewers_are_told_through_your_own_rules(
     events = (await client.get("/v1/events", params={"name": "cue.approval_requested"})).json()
     assert events["items"][0]["data"]["message_id"] == held["id"]
     assert events["items"][0]["source"] == "cue"
+
+
+def quiet_around_now() -> dict[str, str]:
+    now = datetime.now(UTC)
+    start = (now - timedelta(hours=1)).time().replace(second=0, microsecond=0)
+    end = (now + timedelta(hours=2)).time().replace(second=0, microsecond=0)
+    return {"start": start.isoformat(), "end": end.isoformat()}
+
+
+async def test_approved_messages_wait_for_quiet_hours_to_end(
+    client: httpx.AsyncClient, runtime: Runtime, push: FakeChannel, bot: Any
+) -> None:
+    await _agent(client, approval=True)
+    agent = await bot()
+    held = (await _send(agent, category="marketing")).json()
+    assert held["status"] == "pending_approval"
+    await client.put("/v1/recipients/user-1/preferences", json={"quiet_hours": quiet_around_now()})
+
+    approved = (await client.post(f"/v1/messages/{held['id']}/approve")).json()
+    assert approved["status"] == "queued"
+    assert datetime.fromisoformat(approved["send_at"]) > datetime.now(UTC) + timedelta(minutes=90)
+    await drain(runtime)
+    assert push.sent == []
+
+
+async def test_approval_that_quiet_hours_would_push_past_expiry_drops_the_message(
+    client: httpx.AsyncClient, runtime: Runtime, push: FakeChannel, bot: Any
+) -> None:
+    await _agent(client, approval=True, approval_ttl_seconds=600)
+    agent = await bot()
+    held = (await _send(agent, category="marketing")).json()
+    await client.put("/v1/recipients/user-1/preferences", json={"quiet_hours": quiet_around_now()})
+    late = (await client.post(f"/v1/messages/{held['id']}/approve")).json()
+    assert (late["status"], late["status_reason"]) == ("suppressed", "expired")
+    await drain(runtime)
+    assert push.sent == []

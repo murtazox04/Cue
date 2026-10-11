@@ -10,7 +10,12 @@ same policy, in this order:
 3. **Reachability**: keep the planned channels that are configured, not muted by the
    recipient, and have at least one enabled address.
 4. **Send time**: now, plus the rule's delay, moved past quiet hours when the category
-   respects them. [`critical`](importance.md) messages are not delayed.
+   respects them, and into legal hours for [US marketing texts](../guides/compliance.md).
+   The two are applied together until neither moves the time, so legal hours never
+   push a message back into quiet hours. [`critical`](importance.md) messages are not
+   delayed by quiet hours. The same check runs again right before sending: a message
+   that comes due at a time no longer allowed (preferences changed, a retry, a late
+   approval) waits for the next allowed moment instead.
 5. **Expiry**: a message that would arrive after its `expires_at` is dropped.
 6. **Cooldown**: the rule already messaged this recipient within `cooldown_seconds`.
 7. **Frequency caps**: the category's rolling limits (`critical` messages are exempt).
@@ -49,7 +54,11 @@ POST /v1/categories
 ```
 
 Periods are ISO 8601 durations (`PT1H`, `P1D`, `P7D`) or seconds. Caps are rolling
-windows counted over queued, sent and delivered messages of the category.
+windows counted over queued, sent and delivered messages of the category: a message is
+suppressed when some `period`-long window around its send time already holds `limit`
+messages. Messages scheduled for later count only near their own send time, so next
+week's scheduled send does not use up today's cap. Cooldowns work the same way, with a
+limit of one.
 
 ## Fatigue
 

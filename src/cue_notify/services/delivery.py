@@ -277,8 +277,22 @@ async def deliver(ctx: queue.JobContext) -> None:
             message.status = MessageStatus.SUPPRESSED
             message.status_reason = SuppressionReason.EXPIRED
             return
-        message.status = MessageStatus.SENDING
-        message.attempts += 1
+        now = utcnow()
+        allowed = (
+            now
+            if category is None
+            else composer.message_send_time(now, message, recipient, category, runtime)
+        )
+        if allowed <= now:
+            message.status = MessageStatus.SENDING
+            message.attempts += 1
+        elif message.expires_at is not None and allowed >= message.expires_at:
+            message.status = MessageStatus.SUPPRESSED
+            message.status_reason = SuppressionReason.EXPIRED
+            return
+        else:
+            message.status = MessageStatus.QUEUED
+            message.send_at = allowed
         links = preferences.links(runtime.settings, recipient, category)
         targets = {
             channel: [
@@ -289,6 +303,10 @@ async def deliver(ctx: queue.JobContext) -> None:
             for channel in message.channels
             if channel in runtime.channels and channel not in prefs.muted_channels
         }
+    if allowed > now:
+        raise queue.RetryLater(
+            (allowed - utcnow()).total_seconds(), f"outside allowed hours until {allowed}"
+        )
 
     await _personalize(runtime, message, recipient)
     if await _screen(runtime, message):
