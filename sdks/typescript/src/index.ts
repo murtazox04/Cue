@@ -5,7 +5,7 @@
  * Cloudflare Workers and in browsers (keep API keys on the server).
  */
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.1.1";
 export const SIGNATURE_HEADER = "Cue-Signature";
 
 export type Importance = "low" | "normal" | "high" | "critical";
@@ -167,7 +167,7 @@ export class Cue {
   #send(method: string, path: string, body: Json | undefined): Promise<Response> {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.#apiKey}`,
-      "User-Agent": `cue-notify-client-js/${VERSION}`,
+      "User-Agent": `cue-client-js/${VERSION}`,
     };
     if (body !== undefined) headers["Content-Type"] = "application/json";
     return this.#fetch(`${this.#baseUrl}${path}`, {

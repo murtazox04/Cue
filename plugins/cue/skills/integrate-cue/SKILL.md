@@ -64,7 +64,7 @@ Check a rule before relying on it: `POST /v1/rules/evaluate` with an example eve
 ## 4. Call Cue from the app
 
 Prefer the official clients when the app is Python (`pip install cue-notify-client`) or
-TypeScript/JavaScript (`npm install cue-notify-client`); they retry safely and verify webhook
+TypeScript/JavaScript (`npm install cue-client`); they retry safely and verify webhook
 signatures (`verify_webhook` / `verifyWebhook`). The raw HTTP calls look like this:
 
 Keep profiles in sync and emit events where things happen. Always send an

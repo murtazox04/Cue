@@ -7,7 +7,7 @@ verify the signature on webhooks Cue sends to your service.
 | Language | Package | Dependencies | Source |
 |---|---|---|---|
 | Python 3.10+ | `cue-notify-client` (import `cue_client`) | `httpx` | [`sdks/python`](https://github.com/murtazox04/Cue/tree/main/sdks/python) |
-| TypeScript / JavaScript | `cue-notify-client` | none (Node 18+, Deno, Bun, edge runtimes) | [`sdks/typescript`](https://github.com/murtazox04/Cue/tree/main/sdks/typescript) |
+| TypeScript / JavaScript | `cue-client` | none (Node 18+, Deno, Bun, edge runtimes) | [`sdks/typescript`](https://github.com/murtazox04/Cue/tree/main/sdks/typescript) |
 
 Both offer the same operations:
 
