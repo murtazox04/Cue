@@ -15,11 +15,12 @@ cuectl keys list
 cuectl keys revoke KEY_ID
 cuectl jobs stats                 queued and dead jobs by kind
 cuectl jobs retry-dead [--kind K]
-cuectl prune [--older-than DAYS] [--ledger-older-than DAYS]
+cuectl prune [--older-than DAYS] [--ledger-older-than DAYS] [--batch-size N]
                                   delete old events, finished messages, closed digests,
                                   decided approval requests, expired review links and
-                                  dead jobs; the consent ledger only when asked
-cuectl version
+                                  dead jobs; the consent ledger only when asked.
+                                  Deletes N rows (1000) per transaction
+cuectl version                    (or cuectl --version)
 ```
 
 `worker --once` processes every job that is due and exits — useful for cron-style

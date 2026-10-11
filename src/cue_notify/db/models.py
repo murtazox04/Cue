@@ -195,7 +195,7 @@ class Event(IdMixin, Base):
     occurred_at: Mapped[datetime]
     agent_key: Mapped[str | None] = mapped_column(String(64))
     """The agent whose key reported the event; its policy applies to what rules send."""
-    received_at: Mapped[datetime]
+    received_at: Mapped[datetime] = mapped_column(index=True)
     status: Mapped[EventStatus] = mapped_column(enum_type(EventStatus), default=EventStatus.PENDING)
     outcome: Mapped[list[dict[str, Any]] | None]
     error: Mapped[str | None] = mapped_column(Text)
@@ -207,6 +207,7 @@ class Message(IdMixin, TimestampMixin, Base):
         Index("ix_messages_caps", "recipient_id", "category_key", "send_at"),
         Index("ix_messages_cooldown", "recipient_id", "rule_id", "send_at"),
         Index("ix_messages_agent", "recipient_id", "agent_key", "send_at"),
+        Index("ix_messages_created_at", "created_at"),
     )
 
     recipient_id: Mapped[UUID] = mapped_column(ForeignKey("recipients.id", ondelete="CASCADE"))
@@ -311,7 +312,9 @@ class Digest(IdMixin, TimestampMixin, Base):
     count: Mapped[int] = mapped_column(Integer, default=0)
     closes_at: Mapped[datetime]
     sent_at: Mapped[datetime | None]
-    message_id: Mapped[UUID | None] = mapped_column(ForeignKey("messages.id", ondelete="SET NULL"))
+    message_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL"), index=True
+    )
 
 
 class PreferenceChange(IdMixin, Base):
