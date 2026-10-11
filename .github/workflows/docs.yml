@@ -17,8 +17,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # gh-deploy pushes with these credentials; this job uploads no artifacts.
-          persist-credentials: true # zizmor: ignore[artipacked]
+          persist-credentials: false
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
       - run: uv sync --frozen --group docs
-      - run: uv run mkdocs gh-deploy --force --strict
+      - name: Publish to the gh-pages branch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          uv run mkdocs gh-deploy --force --strict
