@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- A daily digest opened during the repeated hour on the night clocks go back could be
+  scheduled in the past.
 - An address disabled by delivery (an unregistered push token, a blocked bot) came back
   to life whenever your app sent the same value inline with an event or message, or in
   a profile update. Only `POST /v1/recipients/{id}/addresses` re-enables it now.

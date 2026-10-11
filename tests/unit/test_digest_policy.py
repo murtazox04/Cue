@@ -44,3 +44,11 @@ def test_local_time_follows_daylight_saving() -> None:
     assert policy.closes_at(datetime(2026, 10, 23, 12, 0, tzinfo=UTC), BERLIN) == datetime(
         2026, 10, 24, 6, 0, tzinfo=UTC
     )
+
+
+def test_the_repeated_hour_when_clocks_go_back_never_closes_in_the_past() -> None:
+    policy = DigestPolicy.model_validate({"deliver_at": "02:30"})
+    second_ten_past_two = datetime(2026, 10, 25, 1, 10, tzinfo=UTC)
+    closes = policy.closes_at(second_ten_past_two, BERLIN)
+    assert closes > second_ten_past_two
+    assert closes == datetime(2026, 10, 26, 1, 30, tzinfo=UTC)
