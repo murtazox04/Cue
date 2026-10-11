@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Digests at a time of day in each recipient's time zone: `deliver_at: "08:00"`, with
+  optional `days` (`["mon"]`) for weekly summaries.
+- A CI job that brings up Docker Compose and walks through the getting-started guide.
+
+### Fixed
+- The getting-started guide configured only the push channel, so its push-then-SMS rule
+  was rejected; the clone instructions also used the wrong directory name.
+
 ## [0.1.1] — 2026-10-11
 
 ### Added

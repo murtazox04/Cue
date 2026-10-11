@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, time, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
@@ -208,6 +210,10 @@ async def test_policy_still_applies_to_the_digest_message(
         ({"window": "PT10M", "key": "{{ event.data.post_id "}, "key"),
         ({"window": "P8D"}, "window"),
         ({"window": "PT10M", "send_after": 1}, "send_after"),
+        ({"key": "x"}, "window or deliver_at"),
+        ({"window": "PT10M", "deliver_at": "08:00"}, "window or deliver_at"),
+        ({"window": "PT10M", "days": ["mon"]}, "days needs deliver_at"),
+        ({"deliver_at": "08:00", "days": ["monday"]}, "days"),
     ],
 )
 async def test_invalid_digest_policies_are_rejected(
@@ -280,3 +286,22 @@ async def test_smart_digest_shares_only_summary_fields_with_the_model(
     [delivered] = push.sent
     assert delivered.content.body == "there, Ann, Bo commented on Post 1"
     assert delivered.content.thread == "post-1"
+
+
+async def test_daily_digest_closes_at_the_recipients_morning(
+    client: httpx.AsyncClient, runtime: Runtime, push: FakeChannel
+) -> None:
+    await _setup(client, window=None, deliver_at="08:00")
+    await client.put("/v1/recipients/user-1", json={"timezone": "Asia/Tashkent"})
+    await _comment(client, "Ann")
+    await _comment(client, "Bo")
+    await drain(runtime)
+    assert push.sent == []
+
+    [digest] = await _digests(client)
+    closes_at = datetime.fromisoformat(digest["closes_at"])
+    now = datetime.now(UTC)
+    # 08:00 in Tashkent is 03:00 UTC (no daylight saving); the next one after now.
+    assert closes_at.astimezone(ZoneInfo("Asia/Tashkent")).time() == time(8, 0)
+    assert now < closes_at <= now + timedelta(days=1)
+    assert digest["count"] == 2

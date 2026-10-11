@@ -25,7 +25,7 @@ Key facts for integrating Cue:
 - [Templates](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/templates.md): localised Jinja2 content, channel overrides, variables, actions
 - [Delivery policy](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/policy.md): the order of checks, categories, caps, quiet hours, fatigue
 - [Importance and expiry](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/importance.md): importance levels, critical breakthrough, expiry, action buttons
-- [Digests](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/digests.md): grouping bursts of events into one message, AI summaries, thread grouping
+- [Digests](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/digests.md): grouping bursts of events into one message, daily or weekly summaries at local time, AI summaries, thread grouping
 - [Preference centre](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/preferences.md): hosted page, JSON API, RFC 8058 one-click unsubscribe, consent ledger
 - [Agents](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/agents.md): attention budgets, importance ceilings, approval and screening for AI agents
 - [Channels and connectors](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/channels.md): webhook payload and signature, FCM, Twilio, SMTP, Telegram

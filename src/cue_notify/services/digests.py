@@ -3,8 +3,9 @@
 Lifecycle of a digest:
 
 1. The first event matching a digest rule opens a digest (per rule, recipient and
-   grouping key) and schedules a ``flush_digest`` job for the end of the window.
-2. Later events within the window are appended; reaching ``send_after`` moves the flush
+   grouping key) and schedules a ``flush_digest`` job for when it closes: the end of
+   the window, or the next ``deliver_at`` time in the recipient's time zone.
+2. Later events are appended until then; reaching ``send_after`` moves the flush
    job to now.
 3. The flush composes one message through the regular composer, so preferences, caps,
    cooldowns and quiet hours still apply, and the digest is marked sent.
@@ -27,6 +28,7 @@ from cue_notify import queue
 from cue_notify.core import templating
 from cue_notify.core.digest import DigestPolicy
 from cue_notify.core.enums import DigestStatus
+from cue_notify.core.policy import zone
 from cue_notify.core.time import utcnow
 from cue_notify.db.models import Category, Digest, Event, Recipient, Rule, Template
 from cue_notify.runtime import Runtime
@@ -95,7 +97,10 @@ async def add(
             status=DigestStatus.OPEN,
             items=[item],
             count=1,
-            closes_at=now + policy.window,
+            closes_at=policy.closes_at(
+                now,
+                zone(recipient.timezone, runtime.settings.policy.default_timezone),
+            ),
         )
         session.add(digest)
         await session.flush()

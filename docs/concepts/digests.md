@@ -29,11 +29,29 @@ POST /v1/rules
 | Field | Default | Meaning |
 |---|---|---|
 | `window` | — | How long to collect after the first event: ISO 8601 (`PT10M`) or seconds. 1 s – 7 days. |
+| `deliver_at` | — | Instead of `window`: send at this time of day in the **recipient's** time zone, e.g. `"08:00"`. |
+| `days` | every day | With `deliver_at`: the days to send on, e.g. `["mon"]` for a weekly summary (`mon` … `sun`). |
 | `key` | one group per rule | Template rendered per event. Events with different keys form separate digests (one per post, per project…). |
 | `send_after` | none | Send as soon as this many events are grouped, without waiting for the window to end. |
 | `max_items` | 50 | Most recent events kept for the template; older ones are still counted. |
 | `summarize` | `false` | Smart mode: let the [AI layer](ai.md) write the summary (see below). |
 | `summary_fields` | `[]` | Event `data` keys the AI may see. Required with `summarize`. |
+
+Set exactly one of `window` and `deliver_at`.
+
+### Daily and weekly summaries
+
+A morning summary at 08:00 wherever each person lives, and a Monday report:
+
+```json
+"digest": {"deliver_at": "08:00"}
+"digest": {"deliver_at": "09:00", "days": ["mon"]}
+```
+
+The time comes from `recipient.timezone` (falling back to `policy.default_timezone`) and
+follows daylight saving. A digest that opens at 08:30 goes out at 08:00 the next day.
+Quiet hours still apply, so a `deliver_at` inside someone's quiet window is held until
+it ends.
 
 ## Writing the template
 
@@ -70,9 +88,9 @@ A digest's template receives the group as `data`:
 ## Lifecycle
 
 1. The first matching event **opens** a digest for *(rule, recipient, key)* and schedules
-   its send for the end of the window. The event's outcome is `digested`, with the
-   `digest_id`.
-2. Later events within the window join it. Reaching `send_after` moves the send to now.
+   its send for the end of the window (or the next `deliver_at`). The event's outcome is
+   `digested`, with the `digest_id`.
+2. Later events join it until then. Reaching `send_after` moves the send to now.
 3. When it is sent, the digest composes one message through the **regular
    [policy](policy.md)**. Unsubscribes, frequency caps, cooldowns and quiet hours apply
    to the digest message just as to any other message, and a message suppressed by policy

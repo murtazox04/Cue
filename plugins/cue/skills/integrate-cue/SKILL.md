@@ -57,7 +57,8 @@ All with the admin key, `Authorization: Bearer ck_…`:
 3. **Rules** map events to templates: `POST /v1/rules` with `{"key", "name", "event",
    "template", "category", "channels": ["push", "email"], "condition"?, "importance"?,
    "expires_after_seconds"?, "cooldown_seconds"?, "digest"?}`. Use `digest` (`{"window":
-   "PT10M", "key": "{{ event.data.post_id }}"}`) for bursty events like comments.
+   "PT10M", "key": "{{ event.data.post_id }}"}`) for bursty events like comments, or
+   `{"deliver_at": "08:00"}` for a daily summary in each person's time zone.
 
 Check a rule before relying on it: `POST /v1/rules/evaluate` with an example event.
 
