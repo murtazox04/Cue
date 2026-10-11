@@ -132,6 +132,11 @@ agent can never read its own review link.
 
 ## Screening
 
+!!! warning "Experimental"
+    Screening is built and tested against TypeSafe's published request and response
+    format, but has not yet been proven against the live service in production. Try it
+    on a staging agent first, and tell us how it behaves.
+
 Approval rules see the category and the importance an agent claims, not what its message
 says. Screening reads the words. When it is on, every agent message is checked just
 before delivery by a decision model, [Jev](https://docs.typesafe.ai) from TypeSafe AI. It

@@ -85,10 +85,10 @@ Your delivery endpoint then receives a signed, fully rendered message:
 - **Agents as first-class senders.** Each agent gets its own key with a per-person
   attention budget, an importance ceiling and, where you want it, human approval before
   anything goes out. See [agents](https://github.com/murtazox04/Cue/blob/main/docs/concepts/agents.md).
-- **Screening.** Optionally, a decision model ([Jev](https://docs.typesafe.ai)) reads each
-  agent message before it is sent: pressure, deception or leaked secrets hold it for a
-  person, and overstated importance is lowered. It costs under a cent per hundred
-  messages and adds no latency to sends.
+- **Screening (experimental).** Optionally, a decision model ([Jev](https://docs.typesafe.ai))
+  reads each agent message before it is sent: pressure, deception or leaked secrets hold
+  it for a person, and overstated importance is lowered. Built against TypeSafe's
+  published API; not yet proven in production.
 - **MCP built in.** `uvx cue-notify mcp` gives Claude, Cursor or your own agent tools to
   notify people and inspect delivery, with the same policy and audit trail.
 - **Claude Code plugin.** `/plugin marketplace add murtazox04/Cue`, then
