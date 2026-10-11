@@ -23,9 +23,11 @@ All notable changes to this project are documented here. The format follows
   Unauthenticated clients could make the server read 64 MiB per request before.
 - Per-client rate limits (token buckets, in each process) on the routes reachable
   without a key — `/preferences/…`, `/review/…`, `/v1/preferences/…`, `/v1/track/…`,
-  `/v1/inbound/…` — and on failed authentication: a client with too many `401`s on `/v1`
-  gets `429` with `Retry-After` until its budget refills. Configure with
-  `api.rate_limit`; `X-Forwarded-For` is believed only from `api.trusted_proxies`.
+  `/v1/inbound/…` — and on failed authentication: after too many `401`s on `/v1`, requests
+  from that address get `429` with `Retry-After` until its budget refills, unless they
+  carry a valid key, so guessing cannot lock out a legitimate client sharing the address.
+  Configure with `api.rate_limit`; `X-Forwarded-For` is believed only from
+  `api.trusted_proxies`.
 - `cuectl mcp --transport streamable-http` refuses a non-loopback `--host` unless a bearer
   token is set (`CUE_MCP_AUTH_TOKEN` or `--auth-token`, at least 32 characters), and then
   requires `Authorization: Bearer <token>` on every request. Before, anyone who could

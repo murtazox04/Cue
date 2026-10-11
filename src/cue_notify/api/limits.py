@@ -7,14 +7,18 @@ over the limit get ``413`` whether they announce their size or stream it.
 
 from __future__ import annotations
 
+from typing import Any
+
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from cue_notify.api.problems import MEDIA_TYPE
 from cue_notify.core.enums import Scope as KeyScope
+from cue_notify.db.models import ApiKey
 from cue_notify.runtime import Runtime
 from cue_notify.services import api_keys
 
 BROADCASTS = "/v1/broadcasts"
+PRESENTED_KEY = "cue_presented_key"
 
 
 def app_path(scope: Scope) -> str:
@@ -39,14 +43,23 @@ def bearer_token(scope: Scope) -> str | None:
     return None
 
 
-async def holds_admin_key(scope: Scope) -> bool:
+async def presented_key(scope: Scope) -> ApiKey | None:
+    state: dict[str, Any] = scope.setdefault("state", {})
+    if PRESENTED_KEY in state:
+        return state[PRESENTED_KEY]
+    key: ApiKey | None = None
     token = bearer_token(scope)
-    if token is None:
-        return False
-    runtime: Runtime = scope["app"].state.runtime
-    async with runtime.transaction() as session:
-        key = await api_keys.authenticate(session, token)
-        return key is not None and api_keys.allows(key, KeyScope.ADMIN)
+    if token is not None:
+        runtime: Runtime = scope["app"].state.runtime
+        async with runtime.transaction() as session:
+            key = await api_keys.authenticate(session, token)
+    state[PRESENTED_KEY] = key
+    return key
+
+
+async def holds_admin_key(scope: Scope) -> bool:
+    key = await presented_key(scope)
+    return key is not None and api_keys.allows(key, KeyScope.ADMIN)
 
 
 class BodyLimit:

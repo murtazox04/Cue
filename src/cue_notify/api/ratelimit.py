@@ -7,7 +7,7 @@ from collections.abc import Callable, Sequence
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from cue_notify.api.limits import app_path
+from cue_notify.api.limits import app_path, presented_key
 from cue_notify.api.problems import problem
 from cue_notify.settings import RateLimitSettings, TokenBucketSettings
 
@@ -131,7 +131,7 @@ class RateLimit:
             await self.app(scope, receive, send)
             return
         wait = self.failed_auth.check(client)
-        if wait:
+        if wait and await presented_key(scope) is None:
             await refuse(scope, receive, send, wait)
             return
 

@@ -53,7 +53,7 @@ Per client address, in each process. Requests over a limit get `429` with `Retry
 | `pages` | `{per_minute = 60, burst = 30}` | `/preferences/…`, `/review/…` and `/v1/preferences/…`. |
 | `tracking` | `{per_minute = 600, burst = 300}` | `/v1/track/…`. |
 | `inbound` | `{per_minute = 600, burst = 300}` | `/v1/inbound/…`. |
-| `failed_auth` | `{per_minute = 10, burst = 20}` | Responses `401` on `/v1`; once used up, the client gets `429` on all of `/v1` until it refills. |
+| `failed_auth` | `{per_minute = 10, burst = 20}` | Responses `401` on `/v1`; once used up, requests from that address without a valid key get `429` on `/v1` until it refills. Valid keys are never blocked by it. |
 | `max_clients` | `100000` | Addresses remembered; the least recently seen are forgotten first. |
 
 ## `worker`

@@ -38,7 +38,8 @@ is a complete reference stack.
   `api.max_broadcast_body_bytes`. Set a similar limit at your proxy as well.
 - **Rate limits.** The routes reachable without a key (`/preferences/…`, `/review/…`,
   `/v1/track/…`, `/v1/inbound/…`) are limited per client address, and so are failed
-  logins: a client with too many `401`s on `/v1` gets `429` for a while. See
+  logins: after too many `401`s on `/v1`, requests from that address without a valid
+  key get `429` for a while (valid keys keep working). See
   [`api.rate_limit`](../reference/configuration.md#apirate_limit). Behind a proxy, list it
   in `api.trusted_proxies`, or every client shares the proxy's address. The limits are
   kept **in each process**: with several replicas or `--workers`, a client gets the limit

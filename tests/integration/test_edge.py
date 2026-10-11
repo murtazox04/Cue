@@ -4,9 +4,13 @@ from collections.abc import AsyncIterator
 
 import httpx
 import pytest
+from sqlalchemy import update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from cue_notify.api.app import create_app
 from cue_notify.core.enums import Scope
+from cue_notify.core.time import utcnow
+from cue_notify.db.models import ApiKey
 from cue_notify.runtime import Runtime
 from cue_notify.services import api_keys
 from cue_notify.settings import FailedAuthRateLimit, PageRateLimit, RateLimitSettings
@@ -78,17 +82,55 @@ async def test_failed_authentication_is_limited_per_address(
     runtime.settings.api.rate_limit = RateLimitSettings(
         failed_auth=FailedAuthRateLimit(per_minute=1, burst=3)
     )
+    async with runtime.transaction() as session:
+        _, reader_key = await api_keys.create(session, "reader", [Scope.MESSAGES_READ])
+        _, revoked_key = await api_keys.create(session, "old", [Scope.MESSAGES_READ])
+    async with runtime.transaction() as session:
+        await session.execute(
+            update(ApiKey).where(ApiKey.name == "old").values(revoked_at=utcnow())
+        )
+
+    def bearer(key: str) -> dict[str, str]:
+        return {"Authorization": f"Bearer {key}"}
+
     async with connect(runtime, "ck_000000000000_guess") as guesser:
         for _ in range(3):
             assert (await guesser.get("/v1/messages")).status_code == 401
         blocked = await guesser.get("/v1/messages")
         assert blocked.status_code == 429
         assert int(blocked.headers["retry-after"]) >= 1
-        valid = await guesser.get("/v1/messages", headers={"Authorization": f"Bearer {admin_key}"})
-        assert valid.status_code == 429
+        for key in (admin_key, reader_key):
+            for _ in range(3):
+                valid = await guesser.get("/v1/messages", headers=bearer(key))
+                assert valid.status_code == 200
+        assert await post_broadcast(guesser, admin_key, stream=False) == 422
+        assert (await guesser.get("/v1/messages")).status_code == 429
+        assert (await guesser.get("/v1/messages", headers=bearer(revoked_key))).status_code == 429
+        anonymous = await guesser.get("/v1/messages", headers={"Authorization": ""})
+        assert anonymous.status_code == 429
     async with connect(runtime, admin_key, address="10.1.2.3") as other:
         for _ in range(5):
             assert (await other.get("/v1/messages")).status_code == 200
+
+
+async def test_the_middleware_key_lookup_is_shared(
+    runtime: Runtime, admin_key: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime.settings.api.rate_limit = RateLimitSettings(
+        failed_auth=FailedAuthRateLimit(per_minute=1, burst=1)
+    )
+    lookups: list[str] = []
+    authenticate = api_keys.authenticate
+
+    async def counting(session: AsyncSession, raw: str) -> ApiKey | None:
+        lookups.append(raw)
+        return await authenticate(session, raw)
+
+    async with connect(runtime, "ck_000000000000_guess") as http:
+        assert (await http.get("/v1/messages")).status_code == 401
+        monkeypatch.setattr(api_keys, "authenticate", counting)
+        assert await post_broadcast(http, admin_key, stream=False) == 422
+    assert lookups == [admin_key]
 
 
 @pytest.mark.parametrize(
