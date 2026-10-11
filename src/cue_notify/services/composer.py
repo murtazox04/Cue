@@ -16,6 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cue_notify import queue
+from cue_notify.core import compliance as legal
 from cue_notify.core import logic, policy
 from cue_notify.core.content import DEFAULT_VARIANT, LocalizedTemplate
 from cue_notify.core.enums import COUNTED_STATUSES, Importance, MessageStatus, SuppressionReason
@@ -225,6 +226,36 @@ async def decide(session: AsyncSession, runtime: Runtime, intent: Intent) -> Dec
         window = prefs.quiet_hours if prefs.quiet_hours is not None else defaults.quiet_hours
         tz = policy.zone(recipient.timezone, defaults.default_timezone)
         send_at = policy.defer_past_quiet_hours(send_at, tz, window)
+
+    compliance = runtime.settings.compliance
+    if (
+        compliance.us_texting_rules
+        and category.marketing
+        and any(channel in compliance.sms_channels for channel in channels)
+    ):
+        phone = next(
+            (a.value for a in recipient.addresses if a.channel in compliance.sms_channels),
+            None,
+        )
+        window = legal.window_for(recipient.region, phone, unknown_state=compliance.unknown_state)
+        if window is not None:
+            tz = policy.zone(recipient.timezone, defaults.default_timezone)
+            send_at = legal.next_allowed(send_at, tz, window)
+            if window.daily_cap is not None:
+                marketing = select(Category.key).where(Category.marketing.is_(True))
+                recent = await _count_recent(
+                    session,
+                    Message.recipient_id == recipient.id,
+                    Message.category_key.in_(marketing),
+                    since=send_at - timedelta(days=1),
+                )
+                if recent >= window.daily_cap:
+                    return Decision(
+                        MessageStatus.SUPPRESSED,
+                        f"{SuppressionReason.COMPLIANCE}: {window.daily_cap} marketing "
+                        f"texts per 24 hours ({window.source})",
+                        send_at=send_at,
+                    )
 
     if intent.rule is not None and intent.cooldown:
         recent = await _count_recent(

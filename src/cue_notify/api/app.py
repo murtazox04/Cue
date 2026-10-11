@@ -23,6 +23,7 @@ from cue_notify.api.routers import (
     digests,
     events,
     health,
+    inbound,
     messages,
     preferences,
     recipients,
@@ -137,6 +138,7 @@ def create_app(settings: Settings | None = None, runtime: Runtime | None = None)
         broadcasts,
         agents,
         approvals,
+        inbound,
         api_keys,
     ):
         v1.include_router(module.router)

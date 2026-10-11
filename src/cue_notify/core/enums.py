@@ -94,6 +94,8 @@ class PreferenceSource(StrEnum):
     """The person, through the hosted page or your UI calling ``/v1/preferences/{token}``."""
     ONE_CLICK = "one_click"
     """The person's mail client, through an RFC 8058 one-click unsubscribe."""
+    SMS_KEYWORD = "sms_keyword"
+    """The person replied STOP (or START) to a text message."""
 
 
 class DigestStatus(StrEnum):
@@ -115,6 +117,7 @@ class SuppressionReason(StrEnum):
     EXPIRED = "expired"
     AGENT_BUDGET = "agent_budget"
     FATIGUE = "fatigue"
+    COMPLIANCE = "compliance"
 
 
 class Scope(StrEnum):

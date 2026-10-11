@@ -6,9 +6,10 @@ unsubscribe link. Build your own preference UI on them, or use the hosted page.
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from cue_notify.api.deps import RuntimeDep, SessionDep
+from cue_notify.api.pages import provenance
 from cue_notify.services import preferences
 
 router = APIRouter(prefix="/preferences", tags=["preferences"])
@@ -28,10 +29,13 @@ async def get_preferences(
 async def update_preferences(
     token: str,
     body: preferences.PreferenceCenterUpdate,
+    request: Request,
     session: SessionDep,
     runtime: RuntimeDep,
 ) -> preferences.PreferenceCenter:
     """Recorded in the consent ledger with source `self_service`. Categories that do not
     allow unsubscribing (such as `transactional`) are refused with 422."""
     recipient = await preferences.by_token(session, token)
-    return await preferences.update(session, runtime, recipient, body)
+    return await preferences.update(
+        session, runtime, recipient, body, provenance=provenance(request, "preference_api")
+    )

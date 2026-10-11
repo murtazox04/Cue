@@ -78,13 +78,16 @@ async def apply(
     recipient: Recipient,
     new: RecipientPreferences,
     source: PreferenceSource,
+    provenance: dict[str, Any] | None = None,
 ) -> PreferenceChange | None:
     """Store ``new`` and record what changed. The caller holds the recipient's row lock."""
     changes = diff(recipient_service.preferences(recipient), new)
     recipient_service.set_preferences(recipient, new)
     if not changes:
         return None
-    change = PreferenceChange(recipient_id=recipient.id, source=source, changes=changes)
+    change = PreferenceChange(
+        recipient_id=recipient.id, source=source, changes=changes, provenance=provenance
+    )
     session.add(change)
     await session.flush()
     return change
@@ -183,6 +186,7 @@ async def update(
     recipient: Recipient,
     body: PreferenceCenterUpdate,
     source: PreferenceSource = PreferenceSource.SELF_SERVICE,
+    provenance: dict[str, Any] | None = None,
 ) -> PreferenceCenter:
     prefs = recipient_service.preferences(recipient)
     changes: dict[str, Any] = {}
@@ -202,7 +206,7 @@ async def update(
         changes["muted_channels"] = body.muted_channels
     if "quiet_hours" in body.model_fields_set:
         changes["quiet_hours"] = body.quiet_hours
-    await apply(session, recipient, prefs.model_copy(update=changes), source)
+    await apply(session, recipient, prefs.model_copy(update=changes), source, provenance)
     return await center(session, runtime, recipient)
 
 
@@ -221,13 +225,14 @@ async def unsubscribe(
     recipient: Recipient,
     category_key: str,
     source: PreferenceSource = PreferenceSource.ONE_CLICK,
+    provenance: dict[str, Any] | None = None,
 ) -> Category:
     category = await unsubscribable(session, category_key)
     prefs = recipient_service.preferences(recipient)
     updated = prefs.model_copy(
         update={"unsubscribed_categories": prefs.unsubscribed_categories | {category_key}}
     )
-    await apply(session, recipient, updated, source)
+    await apply(session, recipient, updated, source, provenance)
     return category
 
 
@@ -235,6 +240,7 @@ async def unsubscribe_all(
     session: AsyncSession,
     recipient: Recipient,
     source: PreferenceSource = PreferenceSource.SELF_SERVICE,
+    provenance: dict[str, Any] | None = None,
 ) -> None:
     """Opt out of every category that allows it (transactional messages still arrive)."""
     keys = {c.key for c in await _categories(session) if c.allow_unsubscribe}
@@ -242,7 +248,7 @@ async def unsubscribe_all(
     updated = prefs.model_copy(
         update={"unsubscribed_categories": prefs.unsubscribed_categories | keys}
     )
-    await apply(session, recipient, updated, source)
+    await apply(session, recipient, updated, source, provenance)
 
 
 async def save_choices(
@@ -251,6 +257,7 @@ async def save_choices(
     recipient: Recipient,
     subscribed: set[str],
     enabled_channels: set[str],
+    provenance: dict[str, Any] | None = None,
 ) -> None:
     """Apply a submitted preference form: the boxes left ticked.
 
@@ -267,4 +274,4 @@ async def save_choices(
             "muted_channels": (prefs.muted_channels - shown) | (shown - enabled_channels),
         }
     )
-    await apply(session, recipient, updated, PreferenceSource.SELF_SERVICE)
+    await apply(session, recipient, updated, PreferenceSource.SELF_SERVICE, provenance)

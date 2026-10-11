@@ -102,3 +102,13 @@ Where decisions on [approval requests](../concepts/approvals.md) are reported.
 | `callback_secret` | — | Signs callbacks (`Cue-Signature`). Required with `callback_url`. |
 | `timeout` | `10` | Seconds per callback request. |
 
+## `compliance`
+
+Legal safety nets for marketing text messages; see [Compliance](../guides/compliance.md).
+
+| Key | Default | |
+|---|---|---|
+| `us_texting_rules` | `false` | Hold marketing texts to US legal hours and state caps. |
+| `sms_channels` | `["sms"]` | Channels that send text messages. |
+| `unknown_state` | `strict` | Rules for US recipients without a region: `strict` or `federal`. |
+

@@ -28,6 +28,12 @@ class RecipientIn(BaseModel):
     external_id: str = Field(min_length=1, max_length=255, examples=["user_42"])
     locale: str | None = Field(default=None, max_length=35, examples=["uz-Latn"])
     timezone: str | None = Field(default=None, max_length=64, examples=["Asia/Tashkent"])
+    region: str | None = Field(
+        default=None,
+        pattern=r"^[A-Z]{2}(-[A-Z0-9]{1,3})?$",
+        description="ISO 3166 country or subdivision whose messaging laws apply, e.g. US-FL.",
+        examples=["US-FL"],
+    )
     attributes: dict[str, Any] | None = Field(
         default=None, description="Merged (shallowly) into the stored attributes."
     )
@@ -93,6 +99,8 @@ async def upsert(session: AsyncSession, data: RecipientIn) -> Recipient:
         recipient.locale = data.locale
     if data.timezone is not None:
         recipient.timezone = data.timezone
+    if data.region is not None:
+        recipient.region = data.region
     if data.attributes:
         recipient.attributes = {**recipient.attributes, **data.attributes}
     for address in data.addresses or []:
@@ -143,5 +151,6 @@ def profile(recipient: Recipient) -> dict[str, Any]:
         "external_id": recipient.external_id,
         "locale": recipient.locale,
         "timezone": recipient.timezone,
+        "region": recipient.region,
         "attributes": recipient.attributes,
     }

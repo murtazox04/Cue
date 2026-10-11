@@ -96,7 +96,9 @@ async def set_preferences(
     agents.check_not_agent(key, "change people's preferences")
     await recipient_service.get(session, external_id)  # 404 rather than create
     recipient = await recipient_service.lock(session, external_id)
-    await preferences.apply(session, recipient, body, PreferenceSource.API)
+    await preferences.apply(
+        session, recipient, body, PreferenceSource.API, {"method": "api", "api_key": key.name}
+    )
     return RecipientOut.model_validate(recipient)
 
 

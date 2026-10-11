@@ -90,6 +90,8 @@ class Recipient(IdMixin, TimestampMixin, Base):
     external_id: Mapped[str] = mapped_column(String(255), unique=True)
     locale: Mapped[str | None] = mapped_column(String(35))
     timezone: Mapped[str | None] = mapped_column(String(64))
+    region: Mapped[str | None] = mapped_column(String(8))
+    """ISO 3166 country or subdivision (``US``, ``US-FL``) whose messaging laws apply."""
     attributes: Mapped[dict[str, Any]] = mapped_column(default=dict)
     preferences: Mapped[dict[str, Any]] = mapped_column(default=dict)
     preference_token: Mapped[str] = mapped_column(String(64), unique=True, default=token)
@@ -132,6 +134,8 @@ class Category(TimestampMixin, Base):
     frequency_caps: Mapped[list[dict[str, Any]]] = mapped_column(default=list)
     respect_quiet_hours: Mapped[bool] = mapped_column(Boolean, default=True)
     allow_unsubscribe: Mapped[bool] = mapped_column(Boolean, default=True)
+    marketing: Mapped[bool] = mapped_column(Boolean, default=False)
+    """Marketing messages get the stricter legal treatment (US texting hours and caps)."""
     fatigue: Mapped[dict[str, Any] | None]
 
 
@@ -322,6 +326,8 @@ class PreferenceChange(IdMixin, Base):
     changes: Mapped[dict[str, Any]]
     """``{"unsubscribed": [...], "resubscribed": [...], "muted": [...], "unmuted": [...],
     "quiet_hours": {...}}`` — only the keys that changed."""
+    provenance: Mapped[dict[str, Any] | None]
+    """How the change was made: IP, user agent, page, keyword, API key… (proof of consent)."""
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 

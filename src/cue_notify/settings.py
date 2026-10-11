@@ -200,6 +200,26 @@ class ScreeningSettings(BaseModel):
         return self
 
 
+class ComplianceSettings(BaseModel):
+    """Legal safety nets for marketing text messages. See the compliance guide."""
+
+    us_texting_rules: bool = Field(
+        default=False,
+        description=(
+            "Hold marketing texts to US recipients to legal hours (federal and state) and "
+            "the 3-per-day state caps."
+        ),
+    )
+    sms_channels: list[str] = Field(
+        default_factory=lambda: ["sms"],
+        description="Channels that send text messages.",
+    )
+    unknown_state: Literal["strict", "federal"] = Field(
+        default="strict",
+        description="Rules for US recipients without a region: the strictest state, or federal.",
+    )
+
+
 class ApprovalSettings(BaseModel):
     """Where Cue reports decisions on approval requests (``POST /v1/approvals``)."""
 
@@ -258,6 +278,7 @@ class Settings(BaseSettings):
     ai: AISettings = Field(default_factory=AISettings)
     screening: ScreeningSettings = Field(default_factory=ScreeningSettings)
     approvals: ApprovalSettings = Field(default_factory=ApprovalSettings)
+    compliance: ComplianceSettings = Field(default_factory=ComplianceSettings)
     channels: dict[str, ChannelSpec] = Field(
         default_factory=dict,
         description="Delivery channels keyed by the name used in rules and addresses.",

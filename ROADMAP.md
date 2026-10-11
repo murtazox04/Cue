@@ -32,10 +32,10 @@ for a change in priorities.
 
 ## 0.3: Compliance and integrations (October 2026)
 
-- [ ] Message class on every rule (transactional or marketing) with policy presets
-- [ ] Jurisdiction-aware quiet hours (US TCPA 8:00–21:00, Florida 8:00–20:00)
-- [ ] "Revoke all" opt-out propagation, ahead of the FCC rule taking effect on 31 Jan 2027
-- [ ] Consent records with provenance (where and how consent was given)
+- [x] Marketing categories with US federal and state texting hours and caps
+- [x] STOP and START replies (FCC keywords), stricter than both the 2024 revoke-all rule and its replacement, FCC 26-67
+- [x] Consent records with provenance (where and how consent was given)
+- [ ] Recording opt-ins with the exact disclosure shown (versioned), and consent expiry
 - [ ] Adapters for more agent frameworks: Pydantic AI, LangGraph, OpenHands
 - [x] Deploy kits: Helm chart, Render Blueprint, Railway and Heroku conventions
 - [ ] Django and FastAPI integration packages

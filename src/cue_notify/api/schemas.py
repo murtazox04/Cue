@@ -66,6 +66,7 @@ class RecipientOut(Model):
     external_id: str
     locale: str | None
     timezone: str | None
+    region: str | None
     attributes: dict[str, Any]
     preferences: RecipientPreferences
     preference_token: str | None = Field(
@@ -86,12 +87,21 @@ class PreferenceChangeOut(Model):
         examples=[{"unsubscribed": ["marketing"], "muted": ["sms"]}],
         description="Only what changed: unsubscribed, resubscribed, muted, unmuted, quiet_hours.",
     )
+    provenance: dict[str, Any] | None = Field(
+        description="How the change was made: IP address, user agent, page, keyword, API key."
+    )
     created_at: datetime
 
 
 class RecipientUpsert(BaseModel):
     locale: str | None = Field(default=None, max_length=35)
     timezone: str | None = Field(default=None, max_length=64)
+    region: str | None = Field(
+        default=None,
+        pattern=r"^[A-Z]{2}(-[A-Z0-9]{1,3})?$",
+        description="ISO 3166 country or subdivision whose messaging laws apply, e.g. US-FL.",
+        examples=["US-FL"],
+    )
     attributes: dict[str, Any] | None = None
     addresses: list[AddressIn] | None = None
 
@@ -129,6 +139,10 @@ class CategoryFields(BaseModel):
     )
     respect_quiet_hours: bool = True
     allow_unsubscribe: bool = True
+    marketing: bool = Field(
+        default=False,
+        description="Marketing messages follow the stricter legal rules (see compliance).",
+    )
     fatigue: Fatigue | None = Field(
         default=None,
         description="Pause low and normal messages to people who ignore this category.",
@@ -145,6 +159,7 @@ class CategoryUpdate(BaseModel):
     frequency_caps: list[FrequencyCap] | None = None
     respect_quiet_hours: bool | None = None
     allow_unsubscribe: bool | None = None
+    marketing: bool | None = None
     fatigue: Fatigue | None = Field(default=None, description="Set to null to turn off.")
 
 

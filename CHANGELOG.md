@@ -7,6 +7,15 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- US texting rules (`[compliance] us_texting_rules`): marketing texts wait for federal
+  and state legal hours in the recipient's time zone, and state caps of 3 a day apply.
+  Categories have a `marketing` flag; recipients a `region` (ISO 3166, e.g. `US-FL`).
+- STOP and START replies: `POST /v1/inbound/sms` for any provider and a verified Twilio
+  webhook. STOP mutes texts and unsubscribes from optional categories; START restores
+  texts.
+- Consent provenance: every preference change records how it was made (IP address and
+  user agent for the hosted page and one-click unsubscribe, keyword and number for
+  replies, API key for your backend).
 - A Helm chart (`deploy/helm/cue`), tested on a kind cluster in CI, and a Render
   Blueprint (`render.yaml`).
 - `DATABASE_URL` is used when `CUE_DATABASE__URL` is not set, plain `postgres://` URLs

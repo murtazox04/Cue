@@ -155,6 +155,15 @@ def _error(request: Request, exc: ServiceError) -> HTMLResponse:
     return _render(request, exc.status_code, view="error", message=message)
 
 
+def provenance(request: Request, method: str) -> dict[str, Any]:
+    """What the consent ledger keeps about a change a person made themselves."""
+    return {
+        "method": method,
+        "ip": request.client.host if request.client else None,
+        "user_agent": (request.headers.get("user-agent") or "")[:300] or None,
+    }
+
+
 MAX_FORM_BYTES = 16_384
 
 
@@ -195,7 +204,9 @@ async def save(token: str, request: Request, session: SessionDep, runtime: Runti
     except ServiceError as exc:
         return _error(request, exc)
     if form.get("action") == ["unsubscribe_all"]:
-        await preferences.unsubscribe_all(session, recipient)
+        await preferences.unsubscribe_all(
+            session, recipient, provenance=provenance(request, "hosted_page")
+        )
     else:
         await preferences.save_choices(
             session,
@@ -203,6 +214,7 @@ async def save(token: str, request: Request, session: SessionDep, runtime: Runti
             recipient,
             subscribed=set(form.get("category", [])),
             enabled_channels=set(form.get("channel", [])),
+            provenance=provenance(request, "hosted_page"),
         )
     # Relative, so it stays correct behind proxies that rewrite the host.
     return RedirectResponse("?saved=true", status_code=303)
@@ -228,7 +240,9 @@ async def one_click_unsubscribe(
     The confirmation page's button posts here too."""
     try:
         recipient = await preferences.by_token(session, token)
-        unsubscribed = await preferences.unsubscribe(session, recipient, category)
+        unsubscribed = await preferences.unsubscribe(
+            session, recipient, category, provenance=provenance(request, "one_click")
+        )
     except ServiceError as exc:
         return _error(request, exc)
     return _render(request, view="done", category=unsubscribed.key, center_url=f"../{token}")
