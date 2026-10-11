@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Iterator
 from pathlib import Path
@@ -9,6 +10,8 @@ from typer.testing import CliRunner
 
 from cue_notify import __version__
 from cue_notify.cli import app
+from cue_notify.db.models import Agent
+from cue_notify.runtime import Runtime
 from cue_notify.settings import get_settings
 from tests.helpers import TEST_SECRET_KEY
 
@@ -58,6 +61,35 @@ def test_cli_lifecycle() -> None:
     key_id = listed.split()[0]
     _run("keys", "revoke", key_id)
     assert runner.invoke(app, ["keys", "revoke", key_id]).exit_code == 1  # already revoked
+
+
+async def register_agent(key: str) -> None:
+    runtime = Runtime.create(get_settings())
+    try:
+        async with runtime.transaction() as session:
+            session.add(Agent(key=key, name=key))
+    finally:
+        await runtime.aclose()
+
+
+@pytest.mark.usefixtures("cli_env")
+def test_agent_keys_default_to_the_scopes_an_agent_may_hold() -> None:
+    _run("db", "upgrade")
+    asyncio.run(register_agent("helper"))
+
+    _run("keys", "create", "helper-key", "--agent", "helper")
+    _run("keys", "create", "helper-reader", "--agent", "helper", "-s", "messages:read")
+    _run("keys", "create", "operator")
+    rows = {line.split()[2]: line.split()[4] for line in _run("keys", "list").splitlines()}
+
+    assert rows == {
+        "helper-key": "events:write,messages:read,messages:write",
+        "helper-reader": "messages:read",
+        "operator": "admin",
+    }
+    refused = runner.invoke(app, ["keys", "create", "x", "--agent", "helper", "-s", "admin"])
+    assert refused.exit_code == 1
+    assert "cannot have the admin scope" in refused.output
 
 
 @pytest.mark.usefixtures("cli_env")

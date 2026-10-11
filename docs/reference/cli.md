@@ -12,7 +12,9 @@ cuectl db upgrade [REVISION]      apply migrations (default: head)
 cuectl db downgrade REVISION
 cuectl db current
 cuectl keys create NAME [-s SCOPE]... [--agent AGENT]
-                                  print a new API key once (bound to an agent)
+                                  print a new API key once, optionally bound to an
+                                  agent; without -s: admin, or with --agent:
+                                  events:write, messages:write, messages:read
 cuectl keys list
 cuectl keys revoke KEY_ID
 cuectl jobs stats                 queued and dead jobs by kind
@@ -29,6 +31,13 @@ cuectl version                    (or cuectl --version)
 
 `serve` binds to `127.0.0.1`; pass `--host 0.0.0.0` to listen on every interface (the
 container image, Compose file, Helm chart and Render Blueprint do).
+
+`keys create` without `-s` gives the key `admin`. With `--agent` it gives the key every
+scope an agent key may hold instead: `events:write`, `messages:write` and
+`messages:read`. Pass `-s` to narrow it further, for example
+`cuectl keys create helper-key --agent helper -s events:write -s messages:read`. Agent
+keys cannot hold `admin`, `recipients:read`, `recipients:write` or `approvals:decide`;
+asking for one of them fails. See [API key scopes](#api-key-scopes).
 
 `worker --once` processes every job that is due and exits — useful for cron-style
 deployments and debugging. All commands read the same [configuration](configuration.md).

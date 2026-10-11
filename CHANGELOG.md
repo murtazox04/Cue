@@ -95,6 +95,9 @@ All notable changes to this project are documented here. The format follows
   `events.received_at` and `digests.message_id` for it (migration `0014`).
 
 ### Changed
+- `cuectl keys create NAME --agent X` without `-s` gives the key `events:write`,
+  `messages:write` and `messages:read`, the scopes an agent key may hold. It defaulted to
+  `admin` before and was then refused. Keys without `--agent` still default to `admin`.
 - `cuectl serve` binds to `127.0.0.1` by default (see Upgrading).
 - `cuectl check` lists configuration warnings and exits with status 1 when there are any.
 - The body limit and rate limiter honour `api.root_path` only when the request path

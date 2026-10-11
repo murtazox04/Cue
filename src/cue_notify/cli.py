@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 app = typer.Typer(
     name="cuectl",
-    help="Cue — the attention layer between software, AI agents and people.",
+    help="Cue: a self-hosted notification decision engine.",
     no_args_is_help=True,
     pretty_exceptions_show_locals=False,
 )
@@ -42,6 +42,7 @@ app.add_typer(jobs_app, name="jobs")
 API_KEY_ENV = "CUE_API_KEY"
 MCP_BEARER_ENV = "CUE_MCP_AUTH_TOKEN"
 MIN_MCP_TOKEN_LENGTH = 32
+AGENT_DEFAULT_SCOPES = (Scope.EVENTS_WRITE, Scope.MESSAGES_WRITE, Scope.MESSAGES_READ)
 
 
 def _with_runtime[T](fn: Callable[[Runtime], Awaitable[T]], *, quiet: bool = True) -> T:
@@ -289,8 +290,15 @@ def db_current() -> None:
 def keys_create(
     name: Annotated[str, typer.Argument(help="Who uses the key, e.g. 'backend'.")],
     scope: Annotated[
-        list[Scope], typer.Option("--scope", "-s", help="Repeatable. Default: admin.")
-    ] = [Scope.ADMIN],  # noqa: B006 — Typer requires a literal default
+        list[Scope] | None,
+        typer.Option(
+            "--scope",
+            "-s",
+            help="Repeatable. Default: admin, or with --agent: "
+            + ", ".join(AGENT_DEFAULT_SCOPES)
+            + ".",
+        ),
+    ] = None,
     agent: Annotated[
         str | None, typer.Option(help="Bind the key to an agent (its budget and approval apply).")
     ] = None,
@@ -298,11 +306,13 @@ def keys_create(
     """Create an API key and print it once."""
     from cue_notify.services import agents, api_keys
 
+    granted = scope or (list(AGENT_DEFAULT_SCOPES) if agent is not None else [Scope.ADMIN])
+
     async def main(runtime: Runtime) -> str:
         async with runtime.transaction() as session:
             if agent is not None:
                 await agents.get(session, agent)
-            _, raw = await api_keys.create(session, name, scope, agent_key=agent)
+            _, raw = await api_keys.create(session, name, granted, agent_key=agent)
         return raw
 
     raw = _with_runtime(main)
