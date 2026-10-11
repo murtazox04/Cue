@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-10-11
+
 ### Added
 - Digests at a time of day in each recipient's time zone: `deliver_at: "08:00"`, with
   optional `days` (`["mon"]`) for weekly summaries.
@@ -113,6 +115,7 @@ First public release of Cue, the attention layer between software, AI agents and
 - Line breaks in e-mail subjects are collapsed, and messages that cannot be built as
   e-mail fail over instead of retrying.
 
-[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/murtazox04/Cue/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/murtazox04/Cue/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/murtazox04/Cue/releases/tag/v0.1.0
