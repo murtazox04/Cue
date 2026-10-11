@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-10-11
+
 ### Added
 - Approval requests (`POST /v1/approvals`): an agent or service asks people to approve
   an action outside Cue. Reviewers are told through the `cue.approval_requested` event
@@ -125,7 +127,8 @@ First public release of Cue, the attention layer between software, AI agents and
 - Line breaks in e-mail subjects are collapsed, and messages that cannot be built as
   e-mail fail over instead of retrying.
 
-[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/murtazox04/Cue/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/murtazox04/Cue/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/murtazox04/Cue/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/murtazox04/Cue/releases/tag/v0.1.0

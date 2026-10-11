@@ -21,24 +21,28 @@ for a change in priorities.
 - [x] Benchmark tool and performance guide
 - [x] Published on PyPI and GHCR; MCP registry listing
 
-## 0.2: Agents and compliance (October 2026)
+## 0.2: Agents ask before they act (released 11 Oct 2026)
 
-- [x] Screening agents' messages with a decision model (TypeSafe Jev): hold risky ones,
-      lower overstated importance
-- [x] One-time, expiring approval links, so a reviewer can approve from the notification itself
+- [x] Approval requests for agents' actions, with CrewAI Flows and Dapr Agents bridges,
+      MCP tools and signed decision callbacks
+- [x] One-time, expiring approval links, so a reviewer can decide from the notification
 - [x] Daily and weekly digests at a local time of day (`deliver_at`)
-- [x] Approval requests for agents' actions, with CrewAI Flows and Dapr Agents bridges
-- [ ] Adapters for more agent frameworks: Pydantic AI, LangGraph, OpenHands
+- [x] Agent keys see only what they sent
+- [x] Screening agents' messages with a decision model (TypeSafe Jev), experimental
+
+## 0.3: Compliance and integrations (October 2026)
+
 - [ ] Message class on every rule (transactional or marketing) with policy presets
 - [ ] Jurisdiction-aware quiet hours (US TCPA 8:00–21:00, Florida 8:00–20:00)
 - [ ] "Revoke all" opt-out propagation, ahead of the FCC rule taking effect on 31 Jan 2027
 - [ ] Consent records with provenance (where and how consent was given)
+- [ ] Adapters for more agent frameworks: Pydantic AI, LangGraph, OpenHands
 - [ ] Deploy kits: Helm chart, Railway and Render templates
 - [ ] Django and FastAPI integration packages
 - [ ] SDKs for Go, Java, PHP and Ruby when a user asks for one (the HTTP API and the
       webhook signature are small enough to port in a day)
 
-## 0.3: Visibility (November 2026)
+## 0.4: Visibility (November 2026)
 
 - [ ] Decision explorer and admin UI: "why didn't this person get it?", rule and
       template editing with dry runs
