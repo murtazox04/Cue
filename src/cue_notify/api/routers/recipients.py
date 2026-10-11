@@ -102,6 +102,28 @@ async def set_preferences(
     return RecipientOut.model_validate(recipient)
 
 
+@router.post(
+    "/{external_id}/consent",
+    status_code=201,
+    summary="Record an opt-in, with the wording the person agreed to",
+)
+async def record_consent(
+    external_id: str,
+    body: preferences.ConsentIn,
+    key: RecipientsWriter,
+    session: SessionDep,
+) -> PreferenceChangeOut:
+    """Subscribes the person to `categories` and stores the evidence in the consent ledger:
+    the exact disclosure (and its SHA-256), how and where they agreed, and when the
+    opt-in expires. After `expires_at`, messages in those categories are suppressed
+    (`consent_expired`) until consent is recorded again."""
+    agents.check_not_agent(key, "record consent on people's behalf")
+    await recipient_service.get(session, external_id)
+    recipient = await recipient_service.lock(session, external_id)
+    change = await preferences.record_consent(session, recipient, body, key.name)
+    return PreferenceChangeOut.model_validate(change)
+
+
 @router.get("/{external_id}/preferences/history", summary="Consent ledger: every preference change")
 async def preference_history(
     external_id: str, _: RecipientsReader, session: SessionDep, page: PageDep

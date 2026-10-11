@@ -11,7 +11,7 @@ from collections.abc import Iterable, Sequence
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 
 class QuietHours(BaseModel):
@@ -149,6 +149,10 @@ class RecipientPreferences(BaseModel):
     quiet_hours: QuietHours | None = Field(
         default=None,
         description="Overrides the default quiet hours. Use equal start and end to disable.",
+    )
+    consent_expires: dict[str, AwareDatetime] = Field(
+        default_factory=dict,
+        description="Per category: the recorded opt-in stops counting after this moment.",
     )
 
     @field_serializer("unsubscribed_categories", "muted_channels")

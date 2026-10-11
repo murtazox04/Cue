@@ -186,3 +186,41 @@ async def test_twilio_replies_are_verified(
     assert ok.text.endswith("<Response/>")
     shopper = (await client.get("/v1/recipients/shopper")).json()
     assert shopper["preferences"]["muted_channels"] == ["sms"]
+
+
+async def test_opt_ins_keep_the_wording_and_expire(client: httpx.AsyncClient) -> None:
+    await _shopper(client)
+    await client.put(
+        "/v1/recipients/shopper/preferences", json={"unsubscribed_categories": ["marketing"]}
+    )
+    disclosure = "Yes, text me deals from Shop. Msg & data rates may apply. Reply STOP to end."
+    consent = {
+        "categories": ["marketing"],
+        "disclosure": disclosure,
+        "disclosure_version": "2026-10",
+        "method": "checkbox",
+        "source": "https://shop.example/checkout",
+        "ip": "198.51.100.7",
+        "expires_at": "2027-10-11T00:00:00Z",
+    }
+    response = await client.post("/v1/recipients/shopper/consent", json=consent)
+    assert response.status_code == 201, response.text
+    change = response.json()
+    assert change["changes"]["consented"] == ["marketing"]
+    assert change["changes"]["resubscribed"] == ["marketing"]
+    assert change["provenance"]["disclosure"] == disclosure
+    assert len(change["provenance"]["disclosure_sha256"]) == 64
+    assert change["provenance"]["api_key"] == "tests"
+
+    # Messages go while the opt-in holds, and stop once it has expired.
+    noon = datetime(2026, 12, 2, 17, 0, tzinfo=UTC)
+    assert (await _promo(client, noon, channels=["push"]))["status"] == "queued"
+    expired = {**consent, "expires_at": "2026-01-01T00:00:00Z"}
+    assert (await client.post("/v1/recipients/shopper/consent", json=expired)).status_code == 201
+    late = await _promo(client, noon, channels=["push"])
+    assert (late["status"], late["status_reason"]) == ("suppressed", "consent_expired")
+
+    unknown = await client.post(
+        "/v1/recipients/shopper/consent", json={**consent, "categories": ["nope"]}
+    )
+    assert unknown.status_code == 422

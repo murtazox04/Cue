@@ -204,6 +204,9 @@ async def decide(session: AsyncSession, runtime: Runtime, intent: Intent) -> Dec
 
     if category.allow_unsubscribe and category.key in prefs.unsubscribed_categories:
         return Decision(MessageStatus.SUPPRESSED, SuppressionReason.UNSUBSCRIBED)
+    consent_until = prefs.consent_expires.get(category.key)
+    if category.allow_unsubscribe and consent_until is not None and consent_until <= utcnow():
+        return Decision(MessageStatus.SUPPRESSED, SuppressionReason.CONSENT_EXPIRED)
 
     reachable = {
         address.channel

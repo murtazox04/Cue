@@ -35,7 +35,7 @@ for a change in priorities.
 - [x] Marketing categories with US federal and state texting hours and caps
 - [x] STOP and START replies (FCC keywords), stricter than both the 2024 revoke-all rule and its replacement, FCC 26-67
 - [x] Consent records with provenance (where and how consent was given)
-- [ ] Recording opt-ins with the exact disclosure shown (versioned), and consent expiry
+- [x] Recording opt-ins with the exact disclosure shown (versioned), and consent expiry
 - [x] Approval bridges for LangGraph and Pydantic AI
 - [ ] OpenHands: notify people when an agent is waiting for input
 - [x] Deploy kits: Helm chart, Render Blueprint, Railway and Heroku conventions

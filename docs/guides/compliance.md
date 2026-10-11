@@ -96,5 +96,30 @@ with **who** (`source`), **what** (`changes`), **when** (`created_at`) and **how
 | STOP / START | `method: "sms_reply"`, `keyword`, `from`, `message_id`, `provider` or `api_key` |
 | Your backend | `method: "api"`, `api_key` |
 
-Regulators expect you to show who agreed, when, how, and to what. Keep the wording
-people agreed to under version control, and record opt-ins through the API.
+## Recording opt-ins
+
+Regulators expect you to show who agreed, when, how, and to what. Record each opt-in
+with the exact wording the person saw:
+
+```http
+POST /v1/recipients/{id}/consent
+{
+  "categories": ["marketing"],
+  "disclosure": "Yes, text me deals from Shop. Msg & data rates may apply. Reply STOP to end.",
+  "disclosure_version": "2026-10",
+  "method": "checkbox",
+  "source": "https://shop.example/checkout",
+  "ip": "198.51.100.7",
+  "user_agent": "Mozilla/5.0 …",
+  "expires_at": "2027-10-11T00:00:00Z"
+}
+```
+
+Cue subscribes the person to those categories. It writes a ledger entry with the
+disclosure text, its SHA-256, the method, the source, the IP address, the user agent and
+the time. The entry is written even if the person was already subscribed.
+
+With `expires_at`, messages in those categories are suppressed with
+`status_reason: "consent_expired"` after that moment, until consent is recorded again.
+France, for example, limits consent to telephone canvassing to one year. Agent keys
+cannot record consent.

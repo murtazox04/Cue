@@ -16,6 +16,9 @@ All notable changes to this project are documented here. The format follows
 - STOP and START replies: `POST /v1/inbound/sms` for any provider and a verified Twilio
   webhook. STOP mutes texts and unsubscribes from optional categories; START restores
   texts.
+- Opt-in records (`POST /v1/recipients/{id}/consent`): the exact disclosure, its hash,
+  method, source, IP address and user agent go into the consent ledger, with an optional
+  expiry after which messages are suppressed (`consent_expired`).
 - Consent provenance: every preference change records how it was made (IP address and
   user agent for the hosted page and one-click unsubscribe, keyword and number for
   replies, API key for your backend).

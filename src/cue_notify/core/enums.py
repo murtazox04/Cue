@@ -118,6 +118,7 @@ class SuppressionReason(StrEnum):
     AGENT_BUDGET = "agent_budget"
     FATIGUE = "fatigue"
     COMPLIANCE = "compliance"
+    CONSENT_EXPIRED = "consent_expired"
 
 
 class Scope(StrEnum):

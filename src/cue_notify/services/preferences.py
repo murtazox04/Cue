@@ -8,16 +8,18 @@ consent ledger (``preference_changes``) so you can show when and how someone opt
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 from urllib.parse import quote
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cue_notify.core.enums import PreferenceSource
 from cue_notify.core.ids import token
 from cue_notify.core.policy import QuietHours, RecipientPreferences
+from cue_notify.core.time import utcnow
 from cue_notify.db.models import Category, PreferenceChange, Recipient
 from cue_notify.runtime import Runtime
 from cue_notify.services import recipients as recipient_service
@@ -66,6 +68,10 @@ def diff(old: RecipientPreferences, new: RecipientPreferences) -> dict[str, Any]
         "unmuted": old.muted_channels - new.muted_channels,
     }
     changes |= {key: sorted(values) for key, values in pairs.items() if values}
+    if new.consent_expires != old.consent_expires:
+        changes["consent_expires"] = {
+            key: value.isoformat() for key, value in sorted(new.consent_expires.items())
+        }
     if new.quiet_hours != old.quiet_hours:
         changes["quiet_hours"] = (
             new.quiet_hours.model_dump(mode="json") if new.quiet_hours else None
@@ -275,3 +281,74 @@ async def save_choices(
         }
     )
     await apply(session, recipient, updated, PreferenceSource.SELF_SERVICE, provenance)
+
+
+# --------------------------------------------------------------------------- opt-in records
+
+
+class ConsentIn(BaseModel):
+    """Proof that a person opted in, as regulators expect to see it."""
+
+    categories: list[str] = Field(min_length=1, max_length=50)
+    disclosure: str = Field(
+        min_length=1, max_length=4000, description="The exact text the person agreed to."
+    )
+    disclosure_version: str | None = Field(default=None, max_length=100)
+    method: str = Field(
+        min_length=1,
+        max_length=50,
+        description="How they agreed.",
+        examples=["checkbox", "double_opt_in", "keyword", "verbal"],
+    )
+    source: str | None = Field(
+        default=None, max_length=500, description="Page, form or campaign where they agreed."
+    )
+    ip: str | None = Field(default=None, max_length=64)
+    user_agent: str | None = Field(default=None, max_length=300)
+    consented_at: AwareDatetime | None = Field(default=None, description="Default: now.")
+    expires_at: AwareDatetime | None = Field(
+        default=None,
+        description="When the opt-in stops counting (France: at most a year for calls).",
+    )
+
+
+async def record_consent(
+    session: AsyncSession, recipient: Recipient, body: ConsentIn, recorded_by: str
+) -> PreferenceChange:
+    """Subscribe the person to ``body.categories`` and keep the evidence in the ledger.
+
+    Always writes a ledger entry, even when they were already subscribed: the record of
+    what they agreed to, and how, is the point.
+    """
+    known = {c.key for c in await _categories(session)}
+    if unknown := set(body.categories) - known:
+        raise UnprocessableError(f"unknown categories: {', '.join(sorted(unknown))}")
+    old = recipient_service.preferences(recipient)
+    expires = dict(old.consent_expires)
+    for key in body.categories:
+        if body.expires_at is None:
+            expires.pop(key, None)
+        else:
+            expires[key] = body.expires_at
+    new = old.model_copy(
+        update={
+            "unsubscribed_categories": old.unsubscribed_categories - set(body.categories),
+            "consent_expires": expires,
+        }
+    )
+    recipient_service.set_preferences(recipient, new)
+    changes = diff(old, new) | {"consented": sorted(set(body.categories))}
+    provenance = body.model_dump(mode="json", exclude={"categories"}) | {
+        "disclosure_sha256": hashlib.sha256(body.disclosure.encode()).hexdigest(),
+        "consented_at": (body.consented_at or utcnow()).isoformat(),
+        "api_key": recorded_by,
+    }
+    change = PreferenceChange(
+        recipient_id=recipient.id,
+        source=PreferenceSource.API,
+        changes=changes,
+        provenance=provenance,
+    )
+    session.add(change)
+    await session.flush()
+    return change
