@@ -7,6 +7,9 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Python SDK 0.3.0: LangGraph (`cue_client.langgraph`) and Pydantic AI
+  (`cue_client.pydantic_ai`) bridges for approval requests, tested end to end with
+  LangGraph 1.2 and Pydantic AI 2.55.
 - US texting rules (`[compliance] us_texting_rules`): marketing texts wait for federal
   and state legal hours in the recipient's time zone, and state caps of 3 a day apply.
   Categories have a `marketing` flag; recipients a `region` (ISO 3166, e.g. `US-FL`).

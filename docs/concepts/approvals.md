@@ -186,3 +186,69 @@ async def on_decision(request: Request):
 
 The request expires when Dapr's own `timeout_seconds` runs out, so nobody approves a
 step the workflow has already denied. Checked against dapr-agents 1.0.9's event schemas.
+
+### LangGraph
+
+A node calls `interrupt(...)` and the graph pauses on its checkpointer. Hand the pending
+interrupt to Cue and resume the thread with the decision:
+
+```python
+from langgraph.types import interrupt
+
+from cue_client.langgraph import approval_request, resume
+
+
+def delete_accounts(state):
+    decision = interrupt({"title": "Delete 1,204 inactive accounts?", "body": "…"})
+    if not decision["approved"]:
+        return {"result": f"kept: {decision['comment']}"}
+    ...
+
+
+result = graph.invoke(inputs, config)
+for pending in result.get("__interrupt__", []):
+    cue.request_approval(**approval_request(pending, thread_id, ["lead"]))
+
+# The approvals.callback_url handler, after verify_webhook(...):
+thread_id, command = resume(json.loads(body))
+graph.invoke(command, {"configurable": {"thread_id": thread_id}})
+```
+
+The node receives `{"approved", "status", "comment", "decided_by"}`. Tested with
+LangGraph 1.2.
+
+### Pydantic AI
+
+Tools registered with `requires_approval=True` end a run with `DeferredToolRequests`. Ask
+through Cue, keep the messages, and continue with the decisions:
+
+```python
+from pydantic_ai import Agent, DeferredToolRequests
+
+from cue_client.pydantic_ai import approval_requests, deferred_results
+
+agent = Agent(model, output_type=[str, DeferredToolRequests])
+
+
+@agent.tool_plain(requires_approval=True)
+def refund(order_id: str) -> str: ...
+
+
+result = agent.run_sync("Refund order 9")
+if isinstance(result.output, DeferredToolRequests):
+    save(conversation_id, result.all_messages())
+    for request in approval_requests(result.output, conversation_id, ["lead"]):
+        cue.request_approval(**request)
+
+# When every pending call is decided:
+agent.run_sync(
+    message_history=load(conversation_id),
+    deferred_tool_results=deferred_results(decisions),
+)
+```
+
+A rejected call reaches the model as a denial carrying the reviewer's comment. Tested with
+Pydantic AI 2.55. Pydantic AI can also use Cue's MCP server directly
+(`MCPServerStdio("uvx", ["cue-notify", "mcp"])`), which gives the agent the
+`request_approval` tool.
+

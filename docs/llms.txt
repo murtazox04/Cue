@@ -15,7 +15,7 @@ Key facts for integrating Cue:
 - Direct sends use `POST /v1/messages` with `template`, `channels`, `importance` and `expires_at`.
 - Every outcome is recorded: messages carry `status` and `status_reason`.
 - AI agents get their own keys, bound to an agent with a per-person budget and optional human approval.
-- Approval requests: agents ask people before risky actions (`POST /v1/approvals`, MCP `request_approval`); decisions come back by signed callback; CrewAI and Dapr bridges in the Python SDK.
+- Approval requests: agents ask people before risky actions (`POST /v1/approvals`, MCP `request_approval`); decisions come back by signed callback; LangGraph, Pydantic AI, CrewAI and Dapr bridges in the Python SDK.
 - Optional screening: a decision model (TypeSafe Jev) reads agent messages before delivery, holds risky ones for a person and lowers overstated importance.
 - The MCP server runs with `uvx cue-notify mcp` (env `CUE_URL`, `CUE_API_KEY`).
 

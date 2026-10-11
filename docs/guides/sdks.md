@@ -32,9 +32,10 @@ Both offer the same operations:
 - **Path safety.** Ids are escaped in paths, so a value like `../api-keys` cannot reach
   another endpoint.
 - **Async.** Python has `AsyncCue` with the same methods.
-- **Agent frameworks.** The Python client ships `cue_client.crewai` (a CrewAI Flows
-  feedback provider) and `cue_client.dapr` (Dapr Agents approval events); neither needs
-  the framework installed until it is used. See [approval requests](../concepts/approvals.md).
+- **Agent frameworks.** The Python client ships bridges for LangGraph
+  (`cue_client.langgraph`), Pydantic AI (`cue_client.pydantic_ai`), CrewAI Flows
+  (`cue_client.crewai`) and Dapr Agents (`cue_client.dapr`); none needs the framework
+  installed until it is used. See [approval requests](../concepts/approvals.md).
 
 ## Verifying webhooks
 
