@@ -50,9 +50,7 @@ async def upsert_recipient(
     # attributes in approval conditions); agents refer to people by external id only.
     agents.check_not_agent(key, "change recipient profiles")
     recipient = await recipient_service.upsert(
-        session,
-        recipient_service.RecipientIn(external_id=external_id, **body.model_dump()),
-        revive_addresses=True,
+        session, recipient_service.RecipientIn(external_id=external_id, **body.model_dump())
     )
     return _out(recipient, key, runtime.settings)
 

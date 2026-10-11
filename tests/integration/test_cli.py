@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 
 from cue_notify.cli import app
 from cue_notify.settings import get_settings
+from tests.helpers import TEST_SECRET_KEY
 
 runner = CliRunner()
 HOOK = "https://hooks.example.com/cue"
@@ -80,7 +81,13 @@ def test_serve_binds_to_loopback_by_default(monkeypatch: pytest.MonkeyPatch) -> 
     ("variables", "problem"),
     [
         ({"CUE_CHANNELS__HOOK__PROVIDER": "webhook", "CUE_CHANNELS__HOOK__URL": HOOK}, "'hook'"),
-        ({"CUE_API__PUBLIC_URL": "http://cue.example.com"}, "public_url"),
+        (
+            {
+                "CUE_API__PUBLIC_URL": "http://cue.example.com",
+                "CUE_API__SECRET_KEY": TEST_SECRET_KEY.get_secret_value(),
+            },
+            "public_url",
+        ),
     ],
     ids=["unsigned-webhook", "plain-http-public-url"],
 )
@@ -102,6 +109,7 @@ def test_check_accepts_explicitly_unsigned_webhooks(monkeypatch: pytest.MonkeyPa
     monkeypatch.setenv("CUE_CHANNELS__HOOK__URL", HOOK)
     monkeypatch.setenv("CUE_CHANNELS__HOOK__ALLOW_UNSIGNED", "true")
     monkeypatch.setenv("CUE_API__PUBLIC_URL", "http://localhost:8000")
+    monkeypatch.setenv("CUE_API__SECRET_KEY", TEST_SECRET_KEY.get_secret_value())
     get_settings.cache_clear()
     assert json.loads(_run("check"))["warnings"] == []
 

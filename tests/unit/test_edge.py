@@ -13,6 +13,7 @@ from cue_notify.channels.webhook import WebhookChannel, WebhookConfig
 from cue_notify.config_warnings import configuration_warnings
 from cue_notify.mcp_http import RequireBearer, create_app
 from cue_notify.settings import ApiSettings, Settings, TokenBucketSettings, is_loopback_host
+from tests.helpers import TEST_SECRET_KEY
 
 TOKEN = "t" * 40
 
@@ -112,7 +113,8 @@ def test_loopback_hosts(host: str, loopback: bool) -> None:
     ],
 )
 def test_plain_http_public_urls_are_reported(public_url: str | None, warns: bool) -> None:
-    settings = Settings(api=ApiSettings(public_url=public_url))
+    secret_key = None if public_url is None else TEST_SECRET_KEY
+    settings = Settings(api=ApiSettings(public_url=public_url, secret_key=secret_key))
     assert bool(configuration_warnings(settings, {})) is warns
 
 
