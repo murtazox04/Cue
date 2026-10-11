@@ -30,7 +30,7 @@ for a change in priorities.
 - [x] Agent keys see only what they sent
 - [x] Screening agents' messages with a decision model (TypeSafe Jev), experimental
 
-## 0.3: Compliance and integrations (October 2026)
+## 0.3: Compliance and integrations (released 11 Oct 2026)
 
 - [x] Marketing categories with US federal and state texting hours and caps
 - [x] STOP and START replies (FCC keywords), stricter than both the 2024 revoke-all rule and its replacement, FCC 26-67

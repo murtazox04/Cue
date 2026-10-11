@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-10-11
+
 ### Added
 - Python SDK 0.3.0: `cue-hook` for OpenHands and Claude Code hooks; webhook verification
   for FastAPI (`cue_client.fastapi`) and Django (`cue_client.django`); LangGraph (`cue_client.langgraph`) and Pydantic AI
@@ -154,7 +156,8 @@ First public release of Cue, the attention layer between software, AI agents and
 - Line breaks in e-mail subjects are collapsed, and messages that cannot be built as
   e-mail fail over instead of retrying.
 
-[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/murtazox04/Cue/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/murtazox04/Cue/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/murtazox04/Cue/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/murtazox04/Cue/compare/v0.1.0...v0.1.1

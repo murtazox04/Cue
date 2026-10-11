@@ -81,7 +81,7 @@ Cue reads the platform's conventions:
 
 On Railway:
 
-1. Create a project from the image `ghcr.io/murtazox04/cue:0.2.0` (or this repository).
+1. Create a project from the image `ghcr.io/murtazox04/cue:0.3.0` (or this repository).
 2. Add PostgreSQL, and give the service `DATABASE_URL=${{Postgres.DATABASE_URL}}`.
 3. Set the start command to `cuectl serve --migrate`.
 4. Add a second service from the same image with the start command `cuectl worker`.
