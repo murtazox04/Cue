@@ -2,7 +2,7 @@
 #
 # Production image: a non-root, source-free virtualenv on python:3.13-slim.
 #   docker build -t cue .
-#   docker run --rm -p 8000:8000 -e CUE_DATABASE__URL=... cuectl serve
+#   docker run --rm -p 8000:8000 -e CUE_DATABASE__URL=... cue serve --host 0.0.0.0
 
 # Optional features to install. Drop "ai" for a ~40% smaller image.
 ARG EXTRAS="postgres fcm metrics ai"

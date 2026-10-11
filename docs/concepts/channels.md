@@ -140,6 +140,11 @@ Idempotency-Key: <message id>
 
 Verify the signature and reject timestamps older than a few minutes.
 
+A channel with a fixed `url` and no `secret` sends unsigned requests that anyone could
+imitate. Cue logs a warning at startup and `cuectl check` fails for such a channel; set
+`allow_unsigned = true` if the receiver authenticates Cue another way (for example a
+token in `headers`).
+
 ### `console`
 
 Logs messages instead of sending them. For development and demos.

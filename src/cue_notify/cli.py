@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import signal
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
@@ -19,7 +20,7 @@ from cue_notify.core.time import utcnow
 from cue_notify.observability import configure_logging
 from cue_notify.runtime import Runtime
 from cue_notify.services.errors import ServiceError
-from cue_notify.settings import get_settings
+from cue_notify.settings import get_settings, is_loopback_host
 
 app = typer.Typer(
     name="cuectl",
@@ -33,6 +34,10 @@ jobs_app = typer.Typer(help="Background job maintenance.", no_args_is_help=True)
 app.add_typer(db_app, name="db")
 app.add_typer(keys_app, name="keys")
 app.add_typer(jobs_app, name="jobs")
+
+API_KEY_ENV = "CUE_API_KEY"
+MCP_BEARER_ENV = "CUE_MCP_AUTH_TOKEN"
+MIN_MCP_TOKEN_LENGTH = 32
 
 
 def _with_runtime[T](fn: Callable[[Runtime], Awaitable[T]], *, quiet: bool = True) -> T:
@@ -61,7 +66,9 @@ def version() -> None:
 
 @app.command()
 def serve(
-    host: Annotated[str, typer.Option(help="Bind address.")] = "0.0.0.0",  # noqa: S104
+    host: Annotated[
+        str, typer.Option(help="Bind address. Use 0.0.0.0 to listen on every interface.")
+    ] = "127.0.0.1",
     port: Annotated[int, typer.Option(help="Port.", envvar="PORT")] = 8000,
     workers: Annotated[int, typer.Option(help="Worker processes.")] = 1,
     reload: Annotated[bool, typer.Option(help="Reload on code changes (development).")] = False,
@@ -126,31 +133,73 @@ def mcp_server(
         str, typer.Option(envvar="CUE_URL", help="Base URL of the Cue API.")
     ] = "http://127.0.0.1:8000",
     api_key: Annotated[
-        str, typer.Option(envvar="CUE_API_KEY", help="API key the agent acts with.")
+        str,
+        typer.Option(
+            envvar=API_KEY_ENV,
+            help=f"API key the agent acts with. Prefer {API_KEY_ENV}: arguments show in ps.",
+        ),
     ] = "",
     transport: Annotated[
         str, typer.Option(help="stdio (desktop agents) or streamable-http.")
     ] = "stdio",
-    host: Annotated[str, typer.Option(help="Bind address for streamable-http.")] = "127.0.0.1",
+    host: Annotated[
+        str,
+        typer.Option(
+            help=f"Bind address for streamable-http. Off loopback it needs {MCP_BEARER_ENV}."
+        ),
+    ] = "127.0.0.1",
     port: Annotated[int, typer.Option(help="Port for streamable-http.")] = 8765,
+    auth_token: Annotated[
+        str,
+        typer.Option(
+            envvar=MCP_BEARER_ENV,
+            help="Bearer token streamable-http clients must send. Prefer the environment.",
+        ),
+    ] = "",
 ) -> None:
     """Run a Model Context Protocol server so AI agents can send notifications."""
     if not api_key:
-        raise typer.BadParameter("an API key is required (--api-key or CUE_API_KEY)")
+        raise typer.BadParameter(f"an API key is required (--api-key or {API_KEY_ENV})")
+    for value, option, env in (
+        (api_key, "--api-key", API_KEY_ENV),
+        (auth_token, "--auth-token", MCP_BEARER_ENV),
+    ):
+        if value and os.environ.get(env) != value:
+            typer.echo(
+                f"warning: {option} on the command line is visible to other users of this "
+                f"machine (ps); set {env} instead",
+                err=True,
+            )
     from cue_notify import mcp_server  # imported lazily: it is only needed here
 
     if transport == "stdio":
         mcp_server.run(url, api_key)
-    elif transport == "streamable-http":
-        mcp_server.run(url, api_key, "streamable-http", host=host, port=port)
-    else:
+        return
+    if transport != "streamable-http":
         raise typer.BadParameter("transport must be stdio or streamable-http")
+    if not auth_token and not is_loopback_host(host):
+        raise typer.BadParameter(
+            f"streamable-http on {host} would let anyone who can reach it act with the API "
+            f"key; set {MCP_BEARER_ENV} (or --auth-token), or bind to 127.0.0.1",
+            param_hint="--host",
+        )
+    if auth_token and len(auth_token) < MIN_MCP_TOKEN_LENGTH:
+        raise typer.BadParameter(
+            f"use at least {MIN_MCP_TOKEN_LENGTH} characters, e.g. from "
+            "`python -c 'import secrets; print(secrets.token_urlsafe(32))'`",
+            param_hint=f"--auth-token / {MCP_BEARER_ENV}",
+        )
+    from cue_notify import mcp_http
+
+    mcp_http.serve(url, api_key, host=host, port=port, token=auth_token or None)
 
 
 @app.command("check")
 def check_config() -> None:
     """Validate configuration and connectivity, then print a summary."""
     from sqlalchemy import text
+
+    from cue_notify.config_warnings import configuration_warnings
 
     async def main(runtime: Runtime) -> dict[str, Any]:
         async with runtime.session() as session:
@@ -163,9 +212,15 @@ def check_config() -> None:
             "channels": {name: type(ch).provider for name, ch in runtime.channels.items()},
             "ai": runtime.generator.model_name if runtime.generator else None,
             "embedded_worker": settings.worker.embedded,
+            "warnings": configuration_warnings(settings, runtime.channels),
         }
 
-    typer.echo(json.dumps(_with_runtime(main), indent=2))
+    summary = _with_runtime(main)
+    typer.echo(json.dumps(summary, indent=2))
+    for warning in summary["warnings"]:
+        typer.echo(f"error: {warning}", err=True)
+    if summary["warnings"]:
+        raise typer.Exit(1)
 
 
 # --------------------------------------------------------------------------- db

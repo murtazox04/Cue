@@ -35,11 +35,19 @@ Add Cue to your agent's MCP configuration, for example:
 ## Remote agents (HTTP)
 
 ```bash
+export CUE_API_KEY=ck_…
+export CUE_MCP_AUTH_TOKEN=$(python -c 'import secrets; print(secrets.token_urlsafe(32))')
 cuectl mcp --transport streamable-http --host 0.0.0.0 --port 8765
 ```
 
-The endpoint is served at `/mcp`. Put it behind your usual authentication; the API key
-the server holds decides what any connected agent may do.
+The endpoint is served at `/mcp`, and clients must send
+`Authorization: Bearer <CUE_MCP_AUTH_TOKEN>`. Anyone holding that token acts with the
+API key the server holds. Without a token the server only binds to a loopback address;
+it refuses any other `--host`. Serve it over TLS (a reverse proxy) when it leaves the
+machine.
+
+Pass secrets through the environment: `--api-key` and `--auth-token` still work, but
+command-line arguments are visible to other users in `ps`, so Cue prints a warning.
 
 ## Tools
 

@@ -7,11 +7,59 @@ over the limit get ``413`` whether they announce their size or stream it.
 
 from __future__ import annotations
 
+from typing import Any
+
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from cue_notify.api.problems import MEDIA_TYPE
+from cue_notify.core.enums import Scope as KeyScope
+from cue_notify.db.models import ApiKey
+from cue_notify.runtime import Runtime
+from cue_notify.services import api_keys
 
 BROADCASTS = "/v1/broadcasts"
+PRESENTED_KEY = "cue_presented_key"
+
+
+def app_path(scope: Scope) -> str:
+    path: str = scope["path"]
+    root_path: str = scope.get("root_path", "")
+    if not root_path or not path.startswith(root_path):
+        return path
+    rest = path[len(root_path) :]
+    if not rest:
+        return "/"
+    return rest if rest.startswith("/") else path
+
+
+def bearer_token(scope: Scope) -> str | None:
+    for name, value in scope["headers"]:
+        if name == b"authorization":
+            scheme, _, credentials = value.decode("latin-1").partition(" ")
+            credentials = credentials.strip()
+            if scheme.lower() == "bearer" and credentials:
+                return credentials
+            return None
+    return None
+
+
+async def presented_key(scope: Scope) -> ApiKey | None:
+    state: dict[str, Any] = scope.setdefault("state", {})
+    if PRESENTED_KEY in state:
+        return state[PRESENTED_KEY]
+    key: ApiKey | None = None
+    token = bearer_token(scope)
+    if token is not None:
+        runtime: Runtime = scope["app"].state.runtime
+        async with runtime.transaction() as session:
+            key = await api_keys.authenticate(session, token)
+    state[PRESENTED_KEY] = key
+    return key
+
+
+async def holds_admin_key(scope: Scope) -> bool:
+    key = await presented_key(scope)
+    return key is not None and api_keys.allows(key, KeyScope.ADMIN)
 
 
 class BodyLimit:
@@ -24,9 +72,11 @@ class BodyLimit:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        path: str = scope["path"][len(scope.get("root_path", "")) :] or scope["path"]
+        path = app_path(scope)
+        limit = self.default
         # Audiences of up to a million external ids are legitimate there (admin only).
-        limit = self.broadcasts if path.rstrip("/") == BROADCASTS else self.default
+        if path.rstrip("/") == BROADCASTS and await holds_admin_key(scope):
+            limit = self.broadcasts
         length = dict(scope["headers"]).get(b"content-length")
         if length is not None and (not length.isdigit() or int(length) > limit):
             await _reject(send, limit)

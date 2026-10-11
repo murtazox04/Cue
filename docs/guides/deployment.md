@@ -34,7 +34,21 @@ is a complete reference stack.
   `/v1/track/*`, and the token pages (`/preferences/…`, `/review/…`, Twilio's webhook)
   are reachable.
 - **Request size.** Bodies over `api.max_body_bytes` (1 MiB) are refused with `413`
-  before they are read. Set a similar limit at your proxy as well.
+  before they are read. Only `POST /v1/broadcasts` with an admin key may send up to
+  `api.max_broadcast_body_bytes`. Set a similar limit at your proxy as well.
+- **Rate limits.** The routes reachable without a key (`/preferences/…`, `/review/…`,
+  `/v1/track/…`, `/v1/inbound/…`) are limited per client address, and so are failed
+  logins: after too many `401`s on `/v1`, requests from that address without a valid
+  key get `429` for a while (valid keys keep working). See
+  [`api.rate_limit`](../reference/configuration.md#apirate_limit). Behind a proxy, list it
+  in `api.trusted_proxies`, or every client shares the proxy's address. The limits are
+  kept **in each process**: with several replicas or `--workers`, a client gets the limit
+  once per process. Add a limit at your reverse proxy or ingress as well for
+  multi-replica setups.
+- **Bind address.** `cuectl serve` listens on `127.0.0.1` unless you pass
+  `--host 0.0.0.0`; the image, Compose file, Helm chart and Render Blueprint pass it.
+- **HTTPS links.** Set `api.public_url` to an `https://` URL. A plain-`http` URL (other
+  than `localhost`) logs a warning at startup and fails `cuectl check`.
 - **Logs.** Tokens in paths (preference pages, review links, open tracking) are replaced
   with `[redacted]` in Cue's logs. Your proxy's access log is yours to redact.
 - **Retention.** Schedule `cuectl prune --older-than 90` (cron/Kubernetes CronJob). The
@@ -92,5 +106,5 @@ On Railway:
 
 1. Create a project from the image `ghcr.io/murtazox04/cue:0.3.1` (or this repository).
 2. Add PostgreSQL, and give the service `DATABASE_URL=${{Postgres.DATABASE_URL}}`.
-3. Set the start command to `cuectl serve --migrate`.
+3. Set the start command to `cuectl serve --migrate --host 0.0.0.0`.
 4. Add a second service from the same image with the start command `cuectl worker`.

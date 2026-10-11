@@ -6,6 +6,51 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Upgrading
+- `cuectl serve` now binds to `127.0.0.1` by default instead of `0.0.0.0`. The container
+  image, `compose.yaml`, the Helm chart and the Render Blueprint pass `--host 0.0.0.0`
+  explicitly; if you start `cuectl serve` yourself (Railway, Heroku, systemd…), add
+  `--host 0.0.0.0` to keep accepting outside connections.
+- `cuectl check` exits with status 1 when it finds an unsafe setting (listed under
+  `warnings`), so CI or deploy scripts that run it may now fail until you fix it.
+- Behind a reverse proxy, set `api.trusted_proxies` so rate limits apply per client
+  instead of to the proxy's address.
+
+### Security
+- `POST /v1/broadcasts` accepts bodies up to `api.max_broadcast_body_bytes` (64 MiB) only
+  with an admin key; the key is checked before the body is read. Anyone else gets the
+  ordinary `api.max_body_bytes` limit, for announced and streamed bodies alike.
+  Unauthenticated clients could make the server read 64 MiB per request before.
+- Per-client rate limits (token buckets, in each process) on the routes reachable
+  without a key — `/preferences/…`, `/review/…`, `/v1/preferences/…`, `/v1/track/…`,
+  `/v1/inbound/…` — and on failed authentication: after too many `401`s on `/v1`, requests
+  from that address get `429` with `Retry-After` until its budget refills, unless they
+  carry a valid key, so guessing cannot lock out a legitimate client sharing the address.
+  Configure with `api.rate_limit`; `X-Forwarded-For` is believed only from
+  `api.trusted_proxies`.
+- `cuectl mcp --transport streamable-http` refuses a non-loopback `--host` unless a bearer
+  token is set (`CUE_MCP_AUTH_TOKEN` or `--auth-token`, at least 32 characters), and then
+  requires `Authorization: Bearer <token>` on every request. Before, anyone who could
+  reach the port acted with the server's API key.
+- `cuectl mcp` warns when `--api-key` or `--auth-token` is given on the command line,
+  where other users can read it in `ps`; use `CUE_API_KEY` and `CUE_MCP_AUTH_TOKEN`.
+- A webhook channel with a fixed `url` and no `secret` logs a warning at startup and fails
+  `cuectl check`, since receivers cannot verify its requests. Set `allow_unsigned = true`
+  on the channel to accept that.
+- A plain-`http` `api.public_url` (other than `localhost`) logs a warning at startup and
+  fails `cuectl check`: preference, unsubscribe and review links carry tokens.
+- Release images are built without the GitHub Actions cache that pushes to `main` also
+  write, so a poisoned cache entry cannot reach a signed release. Manual release runs
+  are refused outside the default branch.
+- The docs workflow no longer leaves the token in the checkout; only the publishing step
+  receives it.
+
+### Changed
+- `cuectl serve` binds to `127.0.0.1` by default (see Upgrading).
+- `cuectl check` lists configuration warnings and exits with status 1 when there are any.
+- The body limit and rate limiter honour `api.root_path` only when the request path
+  starts with it.
+
 ### Fixed
 - Quiet hours and US texting hours are checked again right before sending. A message
   that comes due at a time no longer allowed (preferences changed, a retry backoff, a
