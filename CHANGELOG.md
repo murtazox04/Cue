@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- An address disabled by delivery (an unregistered push token, a blocked bot) came back
+  to life whenever your app sent the same value inline with an event or message, or in
+  a profile update. Only `POST /v1/recipients/{id}/addresses` re-enables it now.
+
 ## [0.3.1] — 2026-10-11
 
 A security release: upgrade if agents or other less-trusted services hold API keys.

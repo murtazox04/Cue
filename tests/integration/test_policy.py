@@ -185,6 +185,41 @@ async def test_invalid_address_is_disabled(
 
 
 @pytest.mark.usefixtures("setup")
+async def test_inline_profiles_do_not_revive_dead_addresses(
+    client: httpx.AsyncClient, runtime: Runtime, push: FakeChannel, sms: FakeChannel
+) -> None:
+    await create_rule(client)
+    push.fail("token-1", invalid=True)
+    await send_event(client)
+    await drain(runtime)
+    push.failures.clear()
+
+    inline = {
+        "external_id": "user-1",
+        "addresses": [
+            {"channel": "push", "value": "token-1"},
+            {"channel": "push", "value": "token-2"},
+        ],
+    }
+    assert (await send_event(client, recipient=inline)).status_code == 202
+    await create_recipient(client, addresses=[{"channel": "push", "value": "token-1"}])
+    await drain(runtime)
+    profile = (await client.get("/v1/recipients/user-1")).json()
+    states = {a["value"]: (a["enabled"], a["disabled_reason"]) for a in profile["addresses"]}
+    assert states["token-1"] == (False, "gone")
+    assert states["token-2"] == (True, None)
+    assert [d.address for d in push.sent] == ["token-2"]
+
+    readded = await client.post(
+        "/v1/recipients/user-1/addresses", json={"channel": "push", "value": "token-1"}
+    )
+    assert readded.status_code == 201, readded.text
+    profile = readded.json()
+    states = {a["value"]: (a["enabled"], a["disabled_reason"]) for a in profile["addresses"]}
+    assert states["token-1"] == (True, None)
+
+
+@pytest.mark.usefixtures("setup")
 async def test_multi_device_fanout(
     client: httpx.AsyncClient, runtime: Runtime, push: FakeChannel
 ) -> None:

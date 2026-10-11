@@ -93,7 +93,9 @@ async def lock(session: AsyncSession, external_id: str) -> Recipient:
     return recipient
 
 
-async def upsert(session: AsyncSession, data: RecipientIn) -> Recipient:
+async def upsert(
+    session: AsyncSession, data: RecipientIn, *, revive_addresses: bool = False
+) -> Recipient:
     recipient = await lock(session, data.external_id)
     if data.locale is not None:
         recipient.locale = data.locale
@@ -104,18 +106,21 @@ async def upsert(session: AsyncSession, data: RecipientIn) -> Recipient:
     if data.attributes:
         recipient.attributes = {**recipient.attributes, **data.attributes}
     for address in data.addresses or []:
-        await add_address(session, recipient, address)
+        await add_address(session, recipient, address, revive=revive_addresses)
     recipient.updated_at = utcnow()
     await session.flush()
     return recipient
 
 
-async def add_address(session: AsyncSession, recipient: Recipient, data: AddressIn) -> Address:
+async def add_address(
+    session: AsyncSession, recipient: Recipient, data: AddressIn, *, revive: bool = True
+) -> Address:
     """Register an address; re-enables it if it exists but was disabled."""
     for existing in recipient.addresses:
         if existing.channel == data.channel and existing.value == data.value:
-            existing.enabled = True
-            existing.disabled_reason = None
+            if revive:
+                existing.enabled = True
+                existing.disabled_reason = None
             if data.label is not None:
                 existing.label = data.label
             return existing
