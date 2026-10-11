@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import math
 import os
 import random
 import socket
@@ -24,12 +25,13 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import delete, or_, select, update
+from sqlalchemy import ColumnElement, delete, func, literal, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cue_notify.core.ids import token as lease_token
 from cue_notify.core.ids import uuid7
 from cue_notify.core.time import utcnow
+from cue_notify.db.base import UTCDateTime
 from cue_notify.db.dml import insert_ignore
 from cue_notify.db.models import Job
 
@@ -64,6 +66,14 @@ class RetryLater(Exception):  # noqa: N818 — reads naturally at the raise site
     def __init__(self, delay: float, reason: str = "") -> None:
         super().__init__(reason or f"retry in {delay:.0f}s")
         self.delay = delay
+
+
+class JobTimeoutError(Exception):
+    pass
+
+
+class LeaseLostError(Exception):
+    pass
 
 
 async def enqueue(
@@ -110,6 +120,12 @@ def backoff(attempt: int, base: float, ceiling: float) -> float:
 
 
 type DeadHandler = Callable[[JobContext, str], Awaitable[None]]
+
+
+def database_clock(session: AsyncSession, offset: timedelta | None = None) -> ColumnElement[Any]:
+    if session.get_bind().dialect.name == "postgresql":
+        return func.now() if offset is None else func.now() + offset
+    return literal(utcnow() + (offset or timedelta()), UTCDateTime())
 
 
 class Worker:
@@ -183,120 +199,242 @@ class Worker:
         for job in jobs:
             task = asyncio.create_task(self._execute(job), name=f"job:{job.kind}:{job.id}")
             self._tasks.add(task)
-            task.add_done_callback(self._tasks.discard)
+            task.add_done_callback(self.forget)
         return len(jobs)
+
+    def forget(self, task: asyncio.Task[None]) -> None:
+        self._tasks.discard(task)
+        if not task.cancelled() and task.exception() is not None:
+            logger.error(
+                "job task crashed", exc_info=task.exception(), extra={"task": task.get_name()}
+            )
 
     async def _claim(self, limit: int) -> list[Job]:
         now = utcnow()
-        lease_until = now + timedelta(seconds=self.settings.lease_seconds)
-        available = or_(Job.locked_until.is_(None), Job.locked_until < now)
+        claimed: list[Job] = []
+        abandoned: list[Job] = []
         async with self.runtime.session() as session, session.begin():
+            lease_until = database_clock(session, timedelta(seconds=self.settings.lease_seconds))
+            available = or_(Job.locked_until.is_(None), Job.locked_until < database_clock(session))
             candidates = (
-                await session.scalars(
-                    select(Job.id)
+                await session.execute(
+                    select(Job.id, Job.attempts, Job.max_attempts)
                     .where(Job.dead.is_(False), Job.run_at <= now, available)
                     .order_by(Job.run_at)
                     .limit(limit)
                     .with_for_update(skip_locked=True)
                 )
             ).all()
-            claimed: list[Job] = []
-            for job_id in candidates:
+            for job_id, attempts, max_attempts in candidates:
                 # The conditional update is the lease: it only succeeds for one worker. The
                 # lease token identifies this claim, so a worker that overran its lease can
                 # never complete or reschedule a job another worker has since claimed.
+                exhausted = attempts >= max_attempts
+                values: dict[str, Any] = {
+                    "locked_until": lease_until,
+                    "locked_by": f"{self.name}:{lease_token(9)}",
+                }
+                if not exhausted:
+                    values["attempts"] = Job.attempts + 1
                 result = await session.execute(
-                    update(Job)
-                    .where(Job.id == job_id, available)
-                    .values(
-                        locked_until=lease_until,
-                        locked_by=f"{self.name}:{lease_token(9)}",
-                        attempts=Job.attempts + 1,
-                    )
-                    .returning(Job)
+                    update(Job).where(Job.id == job_id, available).values(values).returning(Job)
                 )
                 job = result.scalar_one_or_none()
                 if job is not None:
-                    claimed.append(job)
-            return claimed
+                    (abandoned if exhausted else claimed).append(job)
+        for job in abandoned:
+            await self.abandon(job)
+        return claimed
 
-    async def _heartbeat(self, job: Job) -> None:
+    async def abandon(self, job: Job) -> None:
+        log = {"job_id": str(job.id), "kind": job.kind, "attempt": job.attempts}
+        error = (
+            f"abandoned after {job.attempts} attempts: the worker running it stopped "
+            "or lost its lease every time"
+        )
+        logger.error("job %s", error, extra=log)
+        context = JobContext(self.runtime, job.payload, job.attempts, job.max_attempts)
+        try:
+            await self._bury(job, context, error)
+        except Exception:
+            logger.exception(
+                "burying an abandoned job failed; it is retried once its lease expires",
+                extra=log,
+            )
+            return
+        self.runtime.metrics.job_finished(job.kind, "dead", 0.0)
+
+    async def _heartbeat(self, job: Job, work: asyncio.Task[None]) -> None:
         """Extend the lease while the handler runs, so long jobs are not run twice."""
         interval = self.settings.lease_seconds / 3
+        log = {"job_id": str(job.id), "kind": job.kind, "attempt": job.attempts}
         while True:
             await asyncio.sleep(interval)
             try:
                 async with self.runtime.session() as session, session.begin():
-                    await session.execute(
-                        update(Job)
-                        .where(Job.id == job.id, Job.locked_by == job.locked_by)
-                        .values(
-                            locked_until=utcnow() + timedelta(seconds=self.settings.lease_seconds)
-                        )
+                    lease_until = database_clock(
+                        session, timedelta(seconds=self.settings.lease_seconds)
                     )
+                    result = await session.execute(
+                        update(Job).where(*self._owned(job)).values(locked_until=lease_until)
+                    )
+                    renewed = int(getattr(result, "rowcount", 0))
             except Exception:
-                logger.warning(
-                    "lease heartbeat failed", exc_info=True, extra={"job_id": str(job.id)}
-                )
+                logger.warning("lease heartbeat failed", exc_info=True, extra=log)
+                continue
+            if renewed == 0:
+                logger.error("job lost its lease to another worker; cancelling it", extra=log)
+                work.cancel()
+                return
 
     async def _execute(self, job: Job) -> None:
-        handler = self.handlers.get(job.kind)
         log = {"job_id": str(job.id), "kind": job.kind, "attempt": job.attempts}
         context = JobContext(self.runtime, job.payload, job.attempts, job.max_attempts)
         started = time.perf_counter()
-        outcome = "retried"
-        heartbeat = asyncio.create_task(self._heartbeat(job))
+        outcome = "lost"
+        work = asyncio.create_task(self.invoke(job, context), name=f"handler:{job.kind}:{job.id}")
+        heartbeat = asyncio.create_task(self._heartbeat(job, work))
         try:
-            if handler is None:
-                raise PermanentJobError(f"no handler registered for job kind {job.kind!r}")
-            await handler(context)
-        except RetryLater as exc:
-            if job.attempts >= job.max_attempts:
-                logger.error("job gave up after %d attempts: %s", job.attempts, exc, extra=log)
-                outcome = "dead"
-                await self._bury(job, context, str(exc))
-            else:
-                logger.info("job deferred: %s", exc, extra=log)
-                await self._reschedule(job, delay=exc.delay, error=str(exc))
-        except PermanentJobError as exc:
-            logger.error("job failed permanently: %s", exc, extra=log)
-            outcome = "dead"
-            await self._bury(job, context, str(exc))
+            try:
+                failure = await self.outcome_of(work)
+            finally:
+                heartbeat.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await heartbeat
+            if not isinstance(failure, LeaseLostError):
+                outcome = await self.conclude(job, context, failure, log)
+        except asyncio.CancelledError:
+            outcome = "interrupted"
+            await asyncio.wait({work})
+            await asyncio.shield(self.release(job, log))
+            raise
+        finally:
+            self.runtime.metrics.job_finished(job.kind, outcome, time.perf_counter() - started)
+
+    async def invoke(self, job: Job, context: JobContext) -> None:
+        handler = self.handlers.get(job.kind)
+        if handler is None:
+            raise PermanentJobError(f"no handler registered for job kind {job.kind!r}")
+        deadline = asyncio.timeout(self.settings.job_timeout)
+        try:
+            async with deadline:
+                await handler(context)
+        except TimeoutError as exc:
+            if deadline.expired():
+                raise JobTimeoutError(
+                    f"job ran longer than {self.settings.job_timeout:g}s"
+                ) from exc
+            raise
+
+    @staticmethod
+    async def outcome_of(work: asyncio.Task[None]) -> Exception | None:
+        try:
+            await work
+        except asyncio.CancelledError:
+            current = asyncio.current_task()
+            if current is not None and current.cancelling():
+                raise
+            return LeaseLostError("another worker took over the job's lease")
         except Exception as exc:
-            if job.attempts >= job.max_attempts:
-                logger.exception("job failed after %d attempts", job.attempts, extra=log)
-                outcome = "dead"
-                await self._bury(job, context, f"{type(exc).__name__}: {exc}")
-            else:
-                delay = backoff(
-                    job.attempts, self.settings.retry_base_seconds, self.settings.retry_max_seconds
-                )
-                logger.warning("job failed, retrying in %.0fs: %s", delay, exc, extra=log)
-                await self._reschedule(job, delay=delay, error=f"{type(exc).__name__}: {exc}")
-        else:
+            return exc
+        return None
+
+    async def conclude(
+        self, job: Job, context: JobContext, failure: Exception | None, log: dict[str, Any]
+    ) -> str:
+        try:
+            return await self.record(job, context, failure, log)
+        except Exception:
+            logger.exception(
+                "recording the job's outcome failed; it runs again once its lease expires",
+                extra=log,
+            )
+            return "unrecorded"
+
+    async def record(
+        self, job: Job, context: JobContext, failure: Exception | None, log: dict[str, Any]
+    ) -> str:
+        if failure is None:
             async with self.runtime.session() as session, session.begin():
                 await session.execute(delete(Job).where(*self._owned(job)))
-            outcome = "done"
             logger.debug("job done", extra=log)
-        finally:
-            heartbeat.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await heartbeat
-            self.runtime.metrics.job_finished(job.kind, outcome, time.perf_counter() - started)
+            return "done"
+        if isinstance(failure, RetryLater):
+            return await self.defer(job, context, failure, log)
+        if isinstance(failure, PermanentJobError):
+            logger.error("job failed permanently: %s", failure, extra=log)
+            await self._bury(job, context, str(failure))
+            return "dead"
+        error = f"{type(failure).__name__}: {failure}"
+        if job.attempts >= job.max_attempts:
+            logger.error("job failed after %d attempts", job.attempts, exc_info=failure, extra=log)
+            await self._bury(job, context, error)
+            return "dead"
+        delay = backoff(
+            job.attempts, self.settings.retry_base_seconds, self.settings.retry_max_seconds
+        )
+        logger.warning("job failed, retrying in %.0fs: %s", delay, failure, extra=log)
+        await self._reschedule(job, delay=delay, error=error)
+        return "retried"
+
+    async def defer(
+        self, job: Job, context: JobContext, request: RetryLater, log: dict[str, Any]
+    ) -> str:
+        now = utcnow()
+        since = job.deferred_since or now
+        if now - since >= timedelta(seconds=self.settings.max_defer_seconds):
+            logger.error("job kept deferring since %s: %s", since.isoformat(), request, extra=log)
+            await self._bury(job, context, f"deferred since {since.isoformat()}: {request}")
+            return "dead"
+        ceiling = self.settings.retry_max_seconds
+        delay = min(max(request.delay, 0.0), ceiling) if math.isfinite(request.delay) else ceiling
+        logger.info("job deferred: %s", request, extra=log)
+        await self._reschedule(
+            job, delay=delay, error=str(request), refund=True, deferred_since=since
+        )
+        return "retried"
 
     @staticmethod
     def _owned(job: Job) -> tuple[Any, ...]:
         return (Job.id == job.id, Job.locked_by == job.locked_by)
 
-    async def _reschedule(self, job: Job, *, delay: float, error: str) -> None:
+    async def _reschedule(
+        self,
+        job: Job,
+        *,
+        delay: float,
+        error: str,
+        refund: bool = False,
+        deferred_since: datetime | None = None,
+    ) -> None:
         values: dict[str, Any] = {
             "run_at": utcnow() + timedelta(seconds=delay),
             "locked_until": None,
             "locked_by": None,
             "last_error": error[:4000],
         }
+        if refund:
+            values["attempts"] = Job.attempts - 1
+        if deferred_since is not None:
+            values["deferred_since"] = deferred_since
         async with self.runtime.session() as session, session.begin():
             await session.execute(update(Job).where(*self._owned(job)).values(values))
+
+    async def release(self, job: Job, log: dict[str, Any]) -> None:
+        try:
+            async with self.runtime.session() as session, session.begin():
+                await session.execute(
+                    update(Job)
+                    .where(*self._owned(job))
+                    .values(locked_until=None, locked_by=None, attempts=Job.attempts - 1)
+                )
+        except Exception:
+            logger.exception(
+                "releasing an interrupted job failed; it runs again once its lease expires",
+                extra=log,
+            )
+            return
+        logger.info("interrupted job released for another worker", extra=log)
 
     async def _bury(self, job: Job, context: JobContext, error: str) -> None:
         hook = self.on_dead.get(job.kind)
@@ -319,6 +457,6 @@ class Worker:
         if not self._tasks:
             return
         _, pending = await asyncio.wait(self._tasks, timeout=self.settings.shutdown_timeout)
-        for task in pending:  # leases expire, so another worker will pick these up
+        for task in pending:
             task.cancel()
         await asyncio.gather(*pending, return_exceptions=True)

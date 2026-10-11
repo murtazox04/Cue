@@ -398,6 +398,7 @@ class Job(IdMixin, Base):
     locked_by: Mapped[str | None] = mapped_column(String(255))
     last_error: Mapped[str | None] = mapped_column(Text)
     dead: Mapped[bool] = mapped_column(Boolean, default=False)
+    deferred_since: Mapped[datetime | None]
     created_at: Mapped[datetime]
 
 

@@ -47,9 +47,11 @@ Run `cuectl check` to validate a configuration.
 | `concurrency` | `16` | Concurrent jobs per worker process. |
 | `poll_interval` | `1.0` | Seconds between polls when idle. |
 | `lease_seconds` | `300` | How long a claimed job is hidden from other workers. |
-| `max_attempts` | `10` | Attempts before a job is marked dead. |
+| `max_attempts` | `10` | Attempts before a job is marked dead. A job whose worker died this many times is marked dead when it is next claimed. |
 | `retry_base_seconds` / `retry_max_seconds` | `5` / `3600` | Exponential backoff with jitter. |
-| `shutdown_timeout` | `30` | Seconds to finish in-flight jobs on shutdown. |
+| `shutdown_timeout` | `30` | Seconds to finish in-flight jobs on shutdown; jobs still running are cancelled and handed back at once. |
+| `job_timeout` | `120` | Seconds a job may run before it is cancelled; a timeout is retried like any other failure. |
+| `max_defer_seconds` | `86400` | How long a job may keep deferring (rate limits, `Retry-After`) before it is marked dead. Deferrals do not count towards `max_attempts`. |
 
 ## `policy`
 

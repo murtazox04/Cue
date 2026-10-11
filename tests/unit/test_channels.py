@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
@@ -13,7 +14,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from pydantic import ValidationError
 
-from cue_notify.channels.base import Delivery, DeliveryError, InvalidAddressError
+from cue_notify.channels.base import Delivery, DeliveryError, InvalidAddressError, raise_for_http
 from cue_notify.channels.fcm import FcmChannel, FcmConfig
 from cue_notify.channels.registry import ChannelConfigError, ChannelRegistry
 from cue_notify.channels.smtp import SmtpChannel, SmtpConfig
@@ -520,3 +521,25 @@ async def test_channel_secrets_stay_out_of_errors_and_reprs() -> None:
             ChannelRegistry.from_settings({"sms": spec}, http)
     assert "SUPERSECRET" not in str(error.value)
     assert error.value.__cause__ is None
+
+
+@pytest.mark.parametrize(
+    ("header", "expected"),
+    [
+        ("30", 30.0),
+        ("-5", 0.0),
+        ("inf", None),
+        ("nan", None),
+        ("1e400", None),
+        ("Wed, 21 Oct 2026 07:28:00 GMT", None),
+    ],
+)
+def test_retry_after_must_be_a_finite_number(header: str, expected: float | None) -> None:
+    with pytest.raises(DeliveryError) as raised:
+        raise_for_http(httpx.Response(429, headers={"Retry-After": header}))
+    assert raised.value.retryable and raised.value.retry_after == expected
+
+
+@pytest.mark.parametrize("value", [math.inf, -math.inf, math.nan])
+def test_delivery_errors_drop_unusable_retry_after_values(value: float) -> None:
+    assert DeliveryError("busy", retryable=True, retry_after=value).retry_after is None
