@@ -3,6 +3,11 @@ name: Live checks
 # Calls real third-party APIs with repository secrets. Run by hand.
 on:
   workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Screening API base URL (empty: TypeSafe's own)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -24,4 +29,4 @@ jobs:
       - run: uv run pytest tests/live -v -s
         env:
           TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
-          TYPESAFE_BASE_URL: ${{ secrets.TYPESAFE_BASE_URL }}
+          TYPESAFE_BASE_URL: ${{ inputs.base_url || secrets.TYPESAFE_BASE_URL }}
