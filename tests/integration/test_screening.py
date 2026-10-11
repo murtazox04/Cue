@@ -127,6 +127,22 @@ async def test_overstated_importance_is_lowered(
     assert stored["screening"]["outcome"] == "lowered"
 
 
+async def test_screening_never_receives_the_preference_token(
+    client: httpx.AsyncClient, runtime: Runtime, screener: FakeScreener, agent: Any
+) -> None:
+    await create_template(
+        client, key="manage", locales={"en": {"body": "Manage: {{ links.token }}"}}
+    )
+    bot = await agent()
+    await _send(bot, template="manage")
+    await drain(runtime)
+    token = (await client.get("/v1/recipients/user-1")).json()["preference_token"]
+    assert token
+    [request] = screener.requests
+    assert token not in str(request.state())
+    assert request.content["default"]["body"] == "Manage: [preference-token]"
+
+
 async def test_your_own_messages_are_not_screened(
     client: httpx.AsyncClient, runtime: Runtime, push: FakeChannel, screener: FakeScreener
 ) -> None:

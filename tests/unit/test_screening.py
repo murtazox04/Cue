@@ -167,3 +167,35 @@ def test_the_model_sees_html_links_and_push_data() -> None:
     assert "https://evil.example/login" in state
     assert "https://evil.example/p" in state
     assert "<script>" not in state
+
+
+def test_the_model_never_sees_preference_or_review_credentials() -> None:
+    token = "0123456789abcdef01234567" + "Ab-_" * 10 + "xyz"
+    page = f"https://notify.test/preferences/{token}"
+    unsubscribe = f"{page}/unsubscribe?category=marketing"
+    review = "https://notify.test/review/" + "R" * 43
+    request = ScreeningRequest(
+        agent="support-bot",
+        agent_description=None,
+        category="marketing",
+        importance=Importance.NORMAL,
+        content={
+            "default": {"body": f"Manage {page} or {unsubscribe}. Code {token}."},
+            "email": {
+                "body": "Hi",
+                "html": f'<a href="{unsubscribe}">Stop</a> <a href="{review}">Decide</a>',
+            },
+            "push": {"body": "Hi", "data": {"manage": f"myapp://prefs?t={token}"}},
+        },
+    )
+    state = json.dumps(request.state())
+    assert token not in state
+    assert "/preferences/" not in state
+    assert "/review/" not in state
+    assert "[preferences-link]" in state
+    assert "[unsubscribe-link]" in state
+    assert "[review-link]" in state
+    assert "[preference-token]" in state
+    assert request.content["default"]["body"] == (
+        "Manage [preferences-link] or [unsubscribe-link]. Code [preference-token]."
+    )
