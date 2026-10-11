@@ -35,7 +35,12 @@ Both offer the same operations:
 - **Agent frameworks.** The Python client ships bridges for LangGraph
   (`cue_client.langgraph`), Pydantic AI (`cue_client.pydantic_ai`), CrewAI Flows
   (`cue_client.crewai`) and Dapr Agents (`cue_client.dapr`); none needs the framework
-  installed until it is used. See [approval requests](../concepts/approvals.md).
+  installed until it is used.
+- **Web frameworks.** `cue_client.fastapi.CueWebhook` (a dependency) and
+  `cue_client.django.cue_webhook` (a view decorator) check the signature on Cue's webhooks
+  and hand you the parsed payload.
+- **Coding agents.** The `cue-hook` command reports OpenHands and Claude Code hook events
+  to Cue; see [coding agents](coding-agents.md). See [approval requests](../concepts/approvals.md).
 
 ## Verifying webhooks
 

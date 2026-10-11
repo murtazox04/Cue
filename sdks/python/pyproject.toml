@@ -28,6 +28,9 @@ path = "src/cue_client/__init__.py"
 [tool.hatch.build.targets.wheel]
 packages = ["src/cue_client"]
 
+[project.scripts]
+cue-hook = "cue_client.hook:main"
+
 [dependency-groups]
 dev = [
   "pytest>=8.4",
@@ -35,6 +38,9 @@ dev = [
   "pyright>=1.1.400",
   # The tests run the client against the real Cue application.
   "cue-notify; python_version >= '3.12'",
+  # Framework helpers are tested against the frameworks themselves.
+  "django>=4.2",
+  "fastapi>=0.110",
 ]
 
 [tool.uv.sources]

@@ -54,6 +54,7 @@ nav:
       - Custom channels: guides/custom-channels.md
       - SDKs: guides/sdks.md
       - AI agents (MCP): guides/ai-agents.md
+      - Coding agents: guides/coding-agents.md
   - Reference:
       - Configuration: reference/configuration.md
       - HTTP API: reference/api.md

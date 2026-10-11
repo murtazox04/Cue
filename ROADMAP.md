@@ -37,9 +37,9 @@ for a change in priorities.
 - [x] Consent records with provenance (where and how consent was given)
 - [x] Recording opt-ins with the exact disclosure shown (versioned), and consent expiry
 - [x] Approval bridges for LangGraph and Pydantic AI
-- [ ] OpenHands: notify people when an agent is waiting for input
+- [x] `cue-hook`: OpenHands and Claude Code tell people when they finish or wait for input
 - [x] Deploy kits: Helm chart, Render Blueprint, Railway and Heroku conventions
-- [ ] Django and FastAPI integration packages
+- [x] Django and FastAPI webhook verification helpers
 - [ ] SDKs for Go, Java, PHP and Ruby when a user asks for one (the HTTP API and the
       webhook signature are small enough to port in a day)
 
