@@ -53,6 +53,14 @@ class WebhookConfig(ChannelConfig):
         description="Let per-recipient URLs reach private, loopback or link-local addresses.",
     )
     allow_http: bool = Field(default=False, description="Allow plain-http per-recipient URLs.")
+    allow_unsigned: bool = Field(
+        default=False,
+        description="Accept posting to the fixed url without a secret (requests are unsigned).",
+    )
+
+    @property
+    def needs_secret(self) -> bool:
+        return self.url is not None and self.secret is None and not self.allow_unsigned
 
 
 def sign(body: bytes, secret: str, timestamp: int) -> str:

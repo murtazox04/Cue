@@ -15,6 +15,7 @@ from cue_notify import __version__
 from cue_notify.api import pages, problems, review
 from cue_notify.api.deps import RuntimeDep
 from cue_notify.api.limits import BodyLimit
+from cue_notify.api.ratelimit import RateLimit
 from cue_notify.api.routers import (
     agents,
     api_keys,
@@ -31,6 +32,7 @@ from cue_notify.api.routers import (
     rules,
     templates,
 )
+from cue_notify.config_warnings import configuration_warnings
 from cue_notify.jobs import create_worker
 from cue_notify.observability import configure_logging
 from cue_notify.runtime import Runtime
@@ -79,6 +81,8 @@ def create_app(settings: Settings | None = None, runtime: Runtime | None = None)
         owned = runtime is None
         current = runtime or Runtime.create(settings)
         app.state.runtime = current
+        for warning in configuration_warnings(settings, current.channels):
+            logger.warning(warning)
         stop = asyncio.Event()
         worker_task: asyncio.Task[None] | None = None
         if settings.worker.embedded:
@@ -129,6 +133,11 @@ def create_app(settings: Settings | None = None, runtime: Runtime | None = None)
         BodyLimit,
         default=settings.api.max_body_bytes,
         broadcasts=settings.api.max_broadcast_body_bytes,
+    )
+    app.add_middleware(
+        RateLimit,
+        settings=settings.api.rate_limit,
+        trusted_proxies=settings.api.trusted_proxies,
     )
 
     v1 = APIRouter(prefix="/v1")

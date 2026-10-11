@@ -9,7 +9,7 @@ services:
       url: ghcr.io/murtazox04/cue:0.3.1
     # The image's entrypoint is `cuectl`; this replaces its arguments. The port comes
     # from Render's PORT variable. Migrations take a lock, so several instances are safe.
-    dockerCommand: serve --migrate
+    dockerCommand: serve --migrate --host 0.0.0.0
     healthCheckPath: /readyz
     envVars:
       - key: CUE_DATABASE__URL

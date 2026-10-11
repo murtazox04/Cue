@@ -37,7 +37,24 @@ Run `cuectl check` to validate a configuration.
 | `public_url` | none | Public base URL (with any path prefix). Enables [preference and unsubscribe links](../concepts/preferences.md). |
 | `product_name` | none | Shown on the hosted preference page. |
 | `max_body_bytes` | `1048576` | Larger request bodies get `413` before anything reads them. |
-| `max_broadcast_body_bytes` | `67108864` | The same limit for `POST /v1/broadcasts`, whose audience can list a million ids. |
+| `max_broadcast_body_bytes` | `67108864` | The same limit for `POST /v1/broadcasts` with an admin key, whose audience can list a million ids. Without one, `max_body_bytes` applies. |
+| `trusted_proxies` | `[]` | Addresses or networks (`10.0.0.0/8`) of your reverse proxies. Only requests from them have `X-Forwarded-For` believed when rate limiting. |
+
+`public_url` with plain `http://` (other than `localhost`) logs a warning at startup and
+fails `cuectl check`: the links it builds carry tokens.
+
+## `api.rate_limit`
+
+Per client address, in each process. Requests over a limit get `429` with `Retry-After`.
+
+| Key | Default | |
+|---|---|---|
+| `enabled` | `true` | |
+| `pages` | `{per_minute = 60, burst = 30}` | `/preferences/…`, `/review/…` and `/v1/preferences/…`. |
+| `tracking` | `{per_minute = 600, burst = 300}` | `/v1/track/…`. |
+| `inbound` | `{per_minute = 600, burst = 300}` | `/v1/inbound/…`. |
+| `failed_auth` | `{per_minute = 10, burst = 20}` | Responses `401` on `/v1`; once used up, the client gets `429` on all of `/v1` until it refills. |
+| `max_clients` | `100000` | Addresses remembered; the least recently seen are forgotten first. |
 
 ## `worker`
 

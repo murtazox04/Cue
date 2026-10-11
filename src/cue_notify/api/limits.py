@@ -10,8 +10,43 @@ from __future__ import annotations
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from cue_notify.api.problems import MEDIA_TYPE
+from cue_notify.core.enums import Scope as KeyScope
+from cue_notify.runtime import Runtime
+from cue_notify.services import api_keys
 
 BROADCASTS = "/v1/broadcasts"
+
+
+def app_path(scope: Scope) -> str:
+    path: str = scope["path"]
+    root_path: str = scope.get("root_path", "")
+    if not root_path or not path.startswith(root_path):
+        return path
+    rest = path[len(root_path) :]
+    if not rest:
+        return "/"
+    return rest if rest.startswith("/") else path
+
+
+def bearer_token(scope: Scope) -> str | None:
+    for name, value in scope["headers"]:
+        if name == b"authorization":
+            scheme, _, credentials = value.decode("latin-1").partition(" ")
+            credentials = credentials.strip()
+            if scheme.lower() == "bearer" and credentials:
+                return credentials
+            return None
+    return None
+
+
+async def holds_admin_key(scope: Scope) -> bool:
+    token = bearer_token(scope)
+    if token is None:
+        return False
+    runtime: Runtime = scope["app"].state.runtime
+    async with runtime.transaction() as session:
+        key = await api_keys.authenticate(session, token)
+        return key is not None and api_keys.allows(key, KeyScope.ADMIN)
 
 
 class BodyLimit:
@@ -24,9 +59,11 @@ class BodyLimit:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        path: str = scope["path"][len(scope.get("root_path", "")) :] or scope["path"]
+        path = app_path(scope)
+        limit = self.default
         # Audiences of up to a million external ids are legitimate there (admin only).
-        limit = self.broadcasts if path.rstrip("/") == BROADCASTS else self.default
+        if path.rstrip("/") == BROADCASTS and await holds_admin_key(scope):
+            limit = self.broadcasts
         length = dict(scope["headers"]).get(b"content-length")
         if length is not None and (not length.isdigit() or int(length) > limit):
             await _reject(send, limit)
