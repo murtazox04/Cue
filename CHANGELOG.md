@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-10-11
+
+A security release: upgrade if agents or other less-trusted services hold API keys.
+
 ### Security
 - Agent keys can no longer create or change recipient profiles and addresses through
   `/v1/recipients` (only inline profiles were refused before). An agent with
@@ -207,7 +211,8 @@ First public release of Cue, the attention layer between software, AI agents and
 - Line breaks in e-mail subjects are collapsed, and messages that cannot be built as
   e-mail fail over instead of retrying.
 
-[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/murtazox04/Cue/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/murtazox04/Cue/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/murtazox04/Cue/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/murtazox04/Cue/compare/v0.1.1...v0.1.2

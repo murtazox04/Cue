@@ -6,7 +6,7 @@ services:
     name: cue-api
     runtime: image
     image:
-      url: ghcr.io/murtazox04/cue:0.3.0
+      url: ghcr.io/murtazox04/cue:0.3.1
     # The image's entrypoint is `cuectl`; this replaces its arguments. The port comes
     # from Render's PORT variable. Migrations take a lock, so several instances are safe.
     dockerCommand: serve --migrate
@@ -24,7 +24,7 @@ services:
     name: cue-worker
     runtime: image
     image:
-      url: ghcr.io/murtazox04/cue:0.3.0
+      url: ghcr.io/murtazox04/cue:0.3.1
     dockerCommand: worker
     envVars:
       - key: CUE_DATABASE__URL
