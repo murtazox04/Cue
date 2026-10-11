@@ -33,7 +33,7 @@ from cue_notify.core.enums import (
     MessageStatus,
     PreferenceSource,
 )
-from cue_notify.core.ids import token
+from cue_notify.core.ids import preference_token_id, token
 from cue_notify.core.time import utcnow
 from cue_notify.db.base import Base, IdMixin, JSONType, TimestampMixin, enum_type
 
@@ -94,8 +94,10 @@ class Recipient(IdMixin, TimestampMixin, Base):
     """ISO 3166 country or subdivision (``US``, ``US-FL``) whose messaging laws apply."""
     attributes: Mapped[dict[str, Any]] = mapped_column(default=dict)
     preferences: Mapped[dict[str, Any]] = mapped_column(default=dict)
-    preference_token: Mapped[str] = mapped_column(String(64), unique=True, default=token)
-    """Lets the person manage their own preferences (hosted page, unsubscribe links)."""
+    preference_token_id: Mapped[str] = mapped_column(
+        String(32), unique=True, default=preference_token_id
+    )
+    preference_token_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
 
     addresses: Mapped[list[Address]] = relationship(
         back_populates="recipient",

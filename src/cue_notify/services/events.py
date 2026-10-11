@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 PROCESS_JOB = "process_event"
 SYSTEM_SOURCE = "cue"
 """Source of the events Cue reports itself (``cue.*``); refused from the API."""
+SYSTEM_EVENT_PREFIX = "cue."
 
 
 class EventIn(BaseModel):
@@ -69,10 +70,13 @@ async def ingest(
     *,
     source: str,
     agent_key: str | None = None,
+    may_change_profile: bool = True,
 ) -> tuple[Event, bool]:
     """Store an event and schedule its processing. Returns ``(event, created)``."""
     if isinstance(data.recipient, recipient_service.RecipientIn):
-        recipient = await recipient_service.upsert(session, data.recipient)
+        recipient = await recipient_service.upsert(
+            session, data.recipient, may_change_profile=may_change_profile
+        )
     else:
         recipient = await recipient_service.ensure(session, data.recipient)
 
@@ -157,7 +161,13 @@ async def candidate_rules(session: AsyncSession, event_name: str) -> list[Rule]:
             select(Rule).where(Rule.enabled.is_(True)).order_by(Rule.priority.desc(), Rule.key)
         )
     ).all()
-    return [rule for rule in rules if fnmatch.fnmatchcase(event_name, rule.event)]
+    return [rule for rule in rules if pattern_matches(rule.event, event_name)]
+
+
+def pattern_matches(pattern: str, event_name: str) -> bool:
+    if event_name.startswith(SYSTEM_EVENT_PREFIX):
+        return pattern == event_name
+    return fnmatch.fnmatchcase(event_name, pattern)
 
 
 async def evaluate(

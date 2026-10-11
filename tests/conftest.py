@@ -26,12 +26,13 @@ from cue_notify.db.models import Category
 from cue_notify.runtime import Runtime
 from cue_notify.services import api_keys
 from cue_notify.settings import (
+    ApiSettings,
     DatabaseSettings,
     PolicySettings,
     Settings,
     WorkerSettings,
 )
-from tests.helpers import FakeChannel
+from tests.helpers import TEST_SECRET_KEY, FakeChannel
 
 POSTGRES_URL = os.environ.get("CUE_TEST_DATABASE_URL")
 TABLES = (
@@ -101,6 +102,7 @@ def settings(database_url: str) -> Settings:
         database=DatabaseSettings(url=database_url, pool_size=5),
         worker=WorkerSettings(concurrency=4, retry_base_seconds=1, retry_max_seconds=2),
         policy=PolicySettings(default_locale="en", default_timezone="UTC", quiet_hours=None),
+        api=ApiSettings(secret_key=TEST_SECRET_KEY),
     )
 
 

@@ -193,7 +193,7 @@ async def page(
     token: str, request: Request, session: SessionDep, runtime: RuntimeDep, saved: bool = False
 ) -> Response:
     try:
-        recipient = await preferences.by_token(session, token, lock=False)
+        recipient = await preferences.by_token(session, runtime.settings, token, lock=False)
     except ServiceError as exc:
         return _error(request, exc)
     center = await preferences.center(session, runtime, recipient)
@@ -206,7 +206,7 @@ async def save(token: str, request: Request, session: SessionDep, runtime: Runti
         # The body first: the token lookup locks the row (on SQLite, the database), and
         # a client sending its body slowly must not hold that lock.
         form = await form_fields(request)
-        recipient = await preferences.by_token(session, token)
+        recipient = await preferences.by_token(session, runtime.settings, token)
     except ServiceError as exc:
         return _error(request, exc)
     if form.get("action") == ["unsubscribe_all"]:
@@ -228,10 +228,10 @@ async def save(token: str, request: Request, session: SessionDep, runtime: Runti
 
 @router.get("/{token}/unsubscribe", response_class=HTMLResponse)
 async def confirm_unsubscribe(
-    token: str, category: CategoryQuery, request: Request, session: SessionDep
+    token: str, category: CategoryQuery, request: Request, session: SessionDep, runtime: RuntimeDep
 ) -> Response:
     try:
-        await preferences.by_token(session, token, lock=False)
+        await preferences.by_token(session, runtime.settings, token, lock=False)
         known = await preferences.unsubscribable(session, category)
     except ServiceError as exc:
         return _error(request, exc)
@@ -240,12 +240,12 @@ async def confirm_unsubscribe(
 
 @router.post("/{token}/unsubscribe", response_class=HTMLResponse)
 async def one_click_unsubscribe(
-    token: str, category: CategoryQuery, request: Request, session: SessionDep
+    token: str, category: CategoryQuery, request: Request, session: SessionDep, runtime: RuntimeDep
 ) -> Response:
     """RFC 8058 one-click target: mail clients POST ``List-Unsubscribe=One-Click`` here.
     The confirmation page's button posts here too."""
     try:
-        recipient = await preferences.by_token(session, token)
+        recipient = await preferences.by_token(session, runtime.settings, token)
         unsubscribed = await preferences.unsubscribe(
             session, recipient, category, provenance=provenance(request, "one_click")
         )

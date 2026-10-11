@@ -84,6 +84,14 @@ class ApiSettings(BaseModel):
         ),
         examples=["https://notify.example.com"],
     )
+    secret_key: SecretStr | None = Field(
+        default=None,
+        description=(
+            "Signs preference tokens, so the database alone never holds a working link. "
+            "At least 32 characters; required with public_url. Changing it invalidates every "
+            "preference and unsubscribe link issued with the old value."
+        ),
+    )
     product_name: str | None = Field(
         default=None, max_length=100, description="Shown on the hosted preference page."
     )
@@ -105,6 +113,17 @@ class ApiSettings(BaseModel):
         if url.query or url.fragment:
             raise ValueError("public_url must not have a query or fragment")
         return str(url).rstrip("/")
+
+    @model_validator(mode="after")
+    def require_secret_with_public_url(self) -> Self:
+        if self.secret_key is not None and len(self.secret_key.get_secret_value()) < 32:
+            raise ValueError("api.secret_key must be at least 32 characters")
+        if self.public_url is not None and self.secret_key is None:
+            raise ValueError(
+                "api.secret_key is required with api.public_url; generate one with "
+                "`python -c 'import secrets; print(secrets.token_urlsafe(32))'`"
+            )
+        return self
 
 
 class WorkerSettings(BaseModel):

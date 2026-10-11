@@ -26,11 +26,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cue_notify import queue
 from cue_notify.core.content import DEFAULT_VARIANT
-from cue_notify.core.enums import MessageStatus, SuppressionReason
+from cue_notify.core.enums import MessageStatus, Scope, SuppressionReason
 from cue_notify.core.time import utcnow
 from cue_notify.db.models import Agent, ApiKey, Message, Recipient, ReviewLink
 from cue_notify.runtime import Runtime
-from cue_notify.services import composer, events, review_links
+from cue_notify.services import api_keys, composer, events, review_links
 from cue_notify.services.errors import (
     ConflictError,
     ForbiddenError,
@@ -85,6 +85,8 @@ async def _pending(session: AsyncSession, message_id: object, reviewer: ApiKey) 
     if reviewer.agent_key is not None:
         # Not even another agent's: two agents could otherwise approve each other.
         raise ForbiddenError("agent keys cannot review messages; a person must")
+    if not api_keys.allows(reviewer, Scope.APPROVALS_DECIDE):
+        raise ForbiddenError("reviewing messages requires the approvals:decide scope")
     return message
 
 

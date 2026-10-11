@@ -68,25 +68,36 @@ def require(scope: Scope) -> Callable[..., Awaitable[ApiKey]]:
 
 
 def check_inline_profile(key: ApiKey, recipient: object) -> None:
-    """Inline profiles on events and sends may update a recipient, but adding addresses
-    decides where messages go — that needs ``recipients:write``."""
     from cue_notify.services.recipients import RecipientIn
 
-    if isinstance(recipient, RecipientIn) and key.agent_key is not None:
+    if not isinstance(recipient, RecipientIn):
+        return
+    if key.agent_key is not None:
         # A profile changes how everyone's messages to this person are decided (time zone,
         # attributes used by approval conditions); agents may not rewrite it.
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "agent keys refer to recipients by external id only"
         )
-    if (
-        isinstance(recipient, RecipientIn)
-        and recipient.addresses
-        and not api_keys.allows(key, Scope.RECIPIENTS_WRITE)
-    ):
+    if api_keys.allows(key, Scope.RECIPIENTS_WRITE):
+        return
+    guarded = [
+        name
+        for name, value in (
+            ("addresses", recipient.addresses),
+            ("region", recipient.region),
+            ("attributes", recipient.attributes),
+        )
+        if value
+    ]
+    if guarded:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
-            "adding addresses inline requires the recipients:write scope",
+            f"setting {', '.join(guarded)} inline requires the recipients:write scope",
         )
+
+
+def may_change_profile(key: ApiKey) -> bool:
+    return api_keys.allows(key, Scope.RECIPIENTS_WRITE)
 
 
 # Authenticated API key holding the named scope.
@@ -95,6 +106,7 @@ MessagesWriter = Annotated[ApiKey, Depends(require(Scope.MESSAGES_WRITE))]
 MessagesReader = Annotated[ApiKey, Depends(require(Scope.MESSAGES_READ))]
 RecipientsWriter = Annotated[ApiKey, Depends(require(Scope.RECIPIENTS_WRITE))]
 RecipientsReader = Annotated[ApiKey, Depends(require(Scope.RECIPIENTS_READ))]
+ApprovalsDecider = Annotated[ApiKey, Depends(require(Scope.APPROVALS_DECIDE))]
 Admin = Annotated[ApiKey, Depends(require(Scope.ADMIN))]
 
 

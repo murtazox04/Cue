@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
 import httpx
+from pydantic import SecretStr
 
 from cue_notify.ai import Copy, GenerationError, PersonalizationRequest, PersonalizationResult
 from cue_notify.channels.base import (
@@ -18,6 +19,8 @@ from cue_notify.channels.base import (
 )
 from cue_notify.jobs import create_worker
 from cue_notify.runtime import Runtime
+
+TEST_SECRET_KEY = SecretStr("cue-test-secret-key-0123456789abcdef")
 
 # --------------------------------------------------------------------------- fake channel
 
