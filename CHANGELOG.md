@@ -6,6 +6,43 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `cuectl --version`, alongside `cuectl version`.
+- `worker.job_timeout` (120 s): a job running longer is cancelled and retried like any
+  other failure.
+- `worker.max_defer_seconds` (24 h): how long a job may keep deferring before it is
+  marked dead.
+- `cuectl prune --batch-size N` (1000), and indexes on `messages.created_at`,
+  `events.received_at` and `digests.message_id` for it (migration `0014`).
+
+### Fixed
+- `cuectl jobs retry-dead` did nothing useful: the job came back, but the event,
+  message, broadcast or digest it had marked failed stayed failed, so the job ended at
+  once. Retrying now reopens those rows in the same transaction, and only rows that job
+  itself gave up on.
+- A job that crashed its worker every time was claimed again forever. Once it has used
+  `max_attempts` it is marked dead when next claimed, and its failure is recorded.
+- A worker that lost a job's lease kept running it alongside the new owner. The
+  heartbeat now notices and cancels the job. On PostgreSQL, leases are measured with
+  the database clock, so workers with skewed clocks no longer steal running jobs.
+- If recording a job's outcome failed (the database went away), the error was lost. It
+  is now logged with the job id and kind, and the job runs again once its lease expires.
+- Rate-limit deferrals (`Retry-After`) used up a job's attempts, so a busy provider
+  could make a message fail. Deferrals are now free and bounded by
+  `worker.max_defer_seconds` instead (migration `0015`).
+- A `Retry-After` of `inf`, `nan` or a huge number broke the job's bookkeeping. Such
+  values are ignored, and deferrals are clamped to `worker.retry_max_seconds`.
+- When the expiry job of an approval request gave up, the request stayed pending
+  forever. It is now marked expired (and the callback sent), and reading a request past its
+  `expires_at` reports it as expired even before the job runs. The other approval and
+  review jobs log which request or message they gave up on.
+- A digest being flushed while a new event joined it could deadlock on PostgreSQL: the
+  flush now locks the recipient before the digest, in the same order as adding does.
+- Stopping a worker left the jobs it interrupted invisible for `lease_seconds`. They are
+  now handed back at once, without using up an attempt.
+- `cuectl prune` deleted everything in one transaction, holding locks for as long as it
+  ran on large tables. It now deletes in batches, each in its own transaction.
+
 ## [0.3.1] — 2026-10-11
 
 A security release: upgrade if agents or other less-trusted services hold API keys.
