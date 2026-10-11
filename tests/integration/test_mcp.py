@@ -31,6 +31,7 @@ async def test_agent_can_notify_and_inspect(
     tools = {tool.name: tool for tool in await server.list_tools()}
     assert {"send_event", "send_message", "explain", "list_messages"} <= set(tools)
     assert tools["get_message"].annotations.read_only_hint is True
+    assert "review_message" not in tools
 
     explanation = await _call(
         server, "explain", event_name="order.shipped", recipient="user-1", data={"order_id": "9"}
@@ -74,10 +75,7 @@ async def test_ids_cannot_reach_other_endpoints(client: httpx.AsyncClient) -> No
     with pytest.raises(ToolError, match="not a valid id"):
         await server.call_tool("get_message", {"message_id": "../recipients/user-1"})
     with pytest.raises(ToolError, match="not a valid id"):
-        await server.call_tool(
-            "review_message",
-            {"message_id": "../recipients/user-1/preference-token", "approve": True},
-        )
+        await server.call_tool("get_approval", {"approval_id": "../recipients/user-1"})
 
 
 async def test_agent_asks_a_person_before_acting(

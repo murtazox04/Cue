@@ -28,7 +28,7 @@ async def agent_key(client: httpx.AsyncClient) -> str:
     """A key for the support agent holding every scope an agent key may have."""
     body = {"key": "support-bot", "name": "Support", "reviewers": []}
     assert (await client.post("/v1/agents", json=body)).status_code == 201
-    scopes = ["events:write", "messages:write", "messages:read", "recipients:write"]
+    scopes = ["events:write", "messages:write", "messages:read"]
     response = await client.post(
         "/v1/api-keys", json={"name": "bot-key", "scopes": scopes, "agent": "support-bot"}
     )

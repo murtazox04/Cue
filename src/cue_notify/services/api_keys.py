@@ -23,6 +23,9 @@ from cue_notify.services.errors import UnprocessableError
 
 KEY_PREFIX = "ck"
 TOUCH_INTERVAL = timedelta(minutes=1)
+AGENT_FORBIDDEN_SCOPES = frozenset(
+    {Scope.ADMIN, Scope.RECIPIENTS_READ, Scope.RECIPIENTS_WRITE, Scope.APPROVALS_DECIDE}
+)
 
 
 def _hash(raw: str) -> str:
@@ -42,8 +45,12 @@ async def create(
     Keys bound to an agent cannot be ``admin``: an agent could then loosen its own limits.
     """
     granted = {Scope(scope) for scope in scopes}
-    if agent_key is not None and Scope.ADMIN in granted:
-        raise UnprocessableError("keys bound to an agent cannot have the admin scope")
+    refused = sorted(granted & AGENT_FORBIDDEN_SCOPES) if agent_key is not None else []
+    if refused:
+        raise UnprocessableError(
+            f"keys bound to an agent cannot have the {', '.join(refused)} scope"
+            f"{'s' if len(refused) > 1 else ''}"
+        )
     prefix = secrets.token_hex(6)
     raw = f"{KEY_PREFIX}_{prefix}_{secrets.token_urlsafe(24)}"
     key = ApiKey(
@@ -74,5 +81,13 @@ async def authenticate(session: AsyncSession, raw: str) -> ApiKey | None:
     return key
 
 
+def effective_scopes(key: ApiKey) -> set[str]:
+    held = set(key.scopes)
+    if key.agent_key is not None:
+        held -= {scope.value for scope in AGENT_FORBIDDEN_SCOPES}
+    return held
+
+
 def allows(key: ApiKey, scope: Scope) -> bool:
-    return Scope.ADMIN.value in key.scopes or scope.value in key.scopes
+    held = effective_scopes(key)
+    return Scope.ADMIN.value in held or scope.value in held

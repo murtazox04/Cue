@@ -220,7 +220,7 @@ async def test_agents_cannot_review_or_touch_preferences(
     held = (await _send(agent)).json()
 
     await _agent(client, key="other-bot")
-    other = await _key(client, "other-bot", ["messages:write", "recipients:write"])
+    other = await _key(client, "other-bot", ["messages:write"])
     app = create_app(runtime=runtime)
     app.state.runtime = runtime
     async with httpx.AsyncClient(
@@ -283,14 +283,10 @@ async def test_agents_never_see_preference_tokens(
         key="promo",
         locales={"en": {"body": "Manage: {{ links.token }}"}},
     )
-    async with await _agent_client(
-        client, runtime, ["messages:write", "messages:read", "recipients:read", "recipients:write"]
-    ) as agent:
-        profile = (await agent.get("/v1/recipients/user-1")).json()
-        assert profile["preference_token"] is None
-        listed = (await agent.get("/v1/recipients")).json()["items"]
-        assert listed[0]["preference_token"] is None
+    async with await _agent_client(client, runtime, ["messages:write", "messages:read"]) as agent:
+        assert (await agent.get("/v1/recipients/user-1")).status_code == 403
         token = (await client.get("/v1/recipients/user-1")).json()["preference_token"]
+        assert token
 
         sent = (await _send(agent, template="promo", category="transactional")).json()
         assert sent["content"]["default"]["body"] == "Manage: [redacted]"

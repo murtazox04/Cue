@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import Annotated, Any
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Response, status
 from sqlalchemy import select, update
 
 from cue_notify.api.deps import (
+    ApprovalsDecider,
     EventsWriter,
     MessagesReader,
     MessagesWriter,
@@ -15,54 +15,20 @@ from cue_notify.api.deps import (
     RuntimeDep,
     SessionDep,
     check_inline_profile,
+    may_change_profile,
     paginate,
 )
 from cue_notify.api.schemas import MessageOut, Page, ReviewIn, SendIn
-from cue_notify.core.enums import MessageStatus, Scope
+from cue_notify.api.views import message_views
+from cue_notify.core.enums import MessageStatus
 from cue_notify.core.time import ensure_utc
-from cue_notify.db.models import ApiKey, Message, Recipient
-from cue_notify.services import agents, api_keys, catalog, composer, engagement, review_links
+from cue_notify.db.models import Message
+from cue_notify.services import agents, catalog, composer, engagement
 from cue_notify.services import recipients as recipient_service
 from cue_notify.services.errors import ForbiddenError, InvalidStateError, NotFoundError
 
 router = APIRouter(prefix="/messages", tags=["messages"])
 tracking = APIRouter(prefix="/track", tags=["messages"])
-
-
-def _redact(value: Any, secrets: set[str]) -> Any:
-    if isinstance(value, str):
-        for secret in secrets:
-            value = value.replace(secret, "[redacted]")
-        return review_links.redact(value)
-    if isinstance(value, dict):
-        return {k: _redact(v, secrets) for k, v in value.items()}  # pyright: ignore[reportUnknownVariableType]
-    if isinstance(value, list):
-        return [_redact(v, secrets) for v in value]  # pyright: ignore[reportUnknownVariableType]
-    return value
-
-
-async def _views(session: SessionDep, key: ApiKey, messages: Sequence[Message]) -> list[MessageOut]:
-    """Messages as ``key`` may see them. Rendered content can contain preference and
-    unsubscribe links; agent keys get them redacted, since the token would let them
-    change people's preferences. Review links are redacted for every key but ``admin``:
-    they would let a read-only key decide."""
-    views = [MessageOut.model_validate(message) for message in messages]
-    if not views:
-        return views
-    if key.agent_key is None:
-        if api_keys.allows(key, Scope.ADMIN):
-            return views
-        return [view.model_copy(update={"content": _redact(view.content, set())}) for view in views]
-    tokens = set(
-        (
-            await session.scalars(
-                select(Recipient.preference_token).where(
-                    Recipient.id.in_({message.recipient_id for message in messages})
-                )
-            )
-        ).all()
-    )
-    return [view.model_copy(update={"content": _redact(view.content, tokens)}) for view in views]
 
 
 async def _get(session: SessionDep, message_id: UUID) -> Message:
@@ -92,7 +58,9 @@ async def send_message(
     if agent is not None:
         agents.check_category(agent, body.category)
     if isinstance(body.recipient, recipient_service.RecipientIn):
-        recipient = await recipient_service.upsert(session, body.recipient)
+        recipient = await recipient_service.upsert(
+            session, body.recipient, may_change_profile=may_change_profile(key)
+        )
     else:
         recipient = await recipient_service.ensure(session, body.recipient)
     intent = composer.Intent(
@@ -110,13 +78,14 @@ async def send_message(
     message, created = await composer.compose(session, runtime, intent)
     if not created:
         response.status_code = status.HTTP_200_OK
-    return (await _views(session, key, [message]))[0]
+    return (await message_views(session, runtime.settings, key, [message]))[0]
 
 
 @router.get("", summary="List messages")
 async def list_messages(
     key: MessagesReader,
     session: SessionDep,
+    runtime: RuntimeDep,
     page: PageDep,
     recipient: Annotated[str | None, Query(description="Filter by external id.")] = None,
     status_: Annotated[MessageStatus | None, Query(alias="status")] = None,
@@ -139,36 +108,48 @@ async def list_messages(
     if key.agent_key is not None:  # agents see only what they sent
         stmt = stmt.where(Message.agent_key == key.agent_key)
     items, cursor = await paginate(session, stmt, Message.id, page)
-    return Page(items=await _views(session, key, items), next_cursor=cursor)
+    return Page(
+        items=await message_views(session, runtime.settings, key, items), next_cursor=cursor
+    )
 
 
 @router.get("/{message_id}", summary="Get a message")
-async def get_message(message_id: UUID, key: MessagesReader, session: SessionDep) -> MessageOut:
+async def get_message(
+    message_id: UUID, key: MessagesReader, session: SessionDep, runtime: RuntimeDep
+) -> MessageOut:
     message = await _get(session, message_id)
     if key.agent_key is not None and message.agent_key != key.agent_key:
         raise NotFoundError("message", message_id)
-    return (await _views(session, key, [message]))[0]
+    return (await message_views(session, runtime.settings, key, [message]))[0]
 
 
 @router.post("/{message_id}/approve", summary="Approve a message held for review")
 async def approve_message(
-    message_id: UUID, key: MessagesWriter, session: SessionDep, runtime: RuntimeDep
+    message_id: UUID, key: ApprovalsDecider, session: SessionDep, runtime: RuntimeDep
 ) -> MessageOut:
     """Releases it for delivery (policy is checked again at send time). A message that
-    expired while waiting comes back `suppressed` with reason `expired`. Agent keys cannot
-    review messages."""
-    return MessageOut.model_validate(await agents.approve(session, runtime, message_id, key))
+    expired while waiting comes back `suppressed` with reason `expired`. Requires the
+    `approvals:decide` scope, which agent keys can never hold."""
+    message = await agents.approve(session, runtime, message_id, key)
+    return (await message_views(session, runtime.settings, key, [message]))[0]
 
 
 @router.post("/{message_id}/reject", summary="Reject a message held for review")
 async def reject_message(
-    message_id: UUID, body: ReviewIn, key: MessagesWriter, session: SessionDep
+    message_id: UUID,
+    body: ReviewIn,
+    key: ApprovalsDecider,
+    session: SessionDep,
+    runtime: RuntimeDep,
 ) -> MessageOut:
-    return MessageOut.model_validate(await agents.reject(session, message_id, key, body.reason))
+    message = await agents.reject(session, message_id, key, body.reason)
+    return (await message_views(session, runtime.settings, key, [message]))[0]
 
 
 @router.post("/{message_id}/cancel", summary="Cancel a queued message")
-async def cancel_message(message_id: UUID, key: MessagesWriter, session: SessionDep) -> MessageOut:
+async def cancel_message(
+    message_id: UUID, key: MessagesWriter, session: SessionDep, runtime: RuntimeDep
+) -> MessageOut:
     """Agent keys can only cancel the agent's own messages."""
     message = await _get(session, message_id)
     if key.agent_key is not None and message.agent_key != key.agent_key:
@@ -185,16 +166,21 @@ async def cancel_message(message_id: UUID, key: MessagesWriter, session: Session
         raise InvalidStateError(
             f"message is {message.status}; only queued messages can be cancelled"
         )
-    return (await _views(session, key, [message]))[0]
+    return (await message_views(session, runtime.settings, key, [message]))[0]
 
 
 @router.post("/{message_id}/engagement", summary="Report delivery or engagement")
 async def report_engagement(
-    message_id: UUID, body: engagement.EngagementIn, key: EventsWriter, session: SessionDep
+    message_id: UUID,
+    body: engagement.EngagementIn,
+    key: EventsWriter,
+    session: SessionDep,
+    runtime: RuntimeDep,
 ) -> MessageOut:
     # Engagement steers fatigue; it comes from your apps and backend, not from agents.
     agents.check_not_agent(key, "report engagement")
-    return MessageOut.model_validate(engagement.record(await _get(session, message_id), body))
+    message = engagement.record(await _get(session, message_id), body)
+    return (await message_views(session, runtime.settings, key, [message]))[0]
 
 
 @tracking.post(

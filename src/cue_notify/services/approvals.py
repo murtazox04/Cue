@@ -27,12 +27,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cue_notify import queue
 from cue_notify.channels.webhook import SIGNATURE_HEADER, sign
-from cue_notify.core.enums import ApprovalStatus, Importance
+from cue_notify.core.enums import ApprovalStatus, Importance, Scope
 from cue_notify.core.limits import bounded_data
 from cue_notify.core.time import utcnow
 from cue_notify.db.models import Agent, ApiKey, Approval, ReviewLink
 from cue_notify.runtime import Runtime
-from cue_notify.services import agents, events, review_links
+from cue_notify.services import agents, api_keys, events, review_links
 from cue_notify.services.errors import (
     ForbiddenError,
     GoneError,
@@ -175,6 +175,8 @@ async def decide(
 ) -> Approval:
     """A decision through the API. People decide; agent keys never can."""
     agents.check_not_agent(key, "decide approval requests; a person must")
+    if not api_keys.allows(key, Scope.APPROVALS_DECIDE):
+        raise ForbiddenError("deciding approval requests requires the approvals:decide scope")
     approval = await session.get(Approval, approval_id, with_for_update=True)
     if approval is None:
         raise NotFoundError("approval", approval_id)

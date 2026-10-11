@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Query, status
 
 from cue_notify.api.deps import (
+    ApprovalsDecider,
     MessagesReader,
     MessagesWriter,
     PageDep,
@@ -54,7 +55,7 @@ async def get_approval(approval_id: UUID, key: MessagesReader, session: SessionD
 @router.post("/{approval_id}/approve", summary="Approve a request")
 async def approve(
     approval_id: UUID,
-    key: MessagesWriter,
+    key: ApprovalsDecider,
     session: SessionDep,
     runtime: RuntimeDep,
     body: ReviewIn | None = None,
@@ -68,7 +69,7 @@ async def approve(
 @router.post("/{approval_id}/reject", summary="Reject a request")
 async def reject(
     approval_id: UUID,
-    key: MessagesWriter,
+    key: ApprovalsDecider,
     session: SessionDep,
     runtime: RuntimeDep,
     body: ReviewIn | None = None,

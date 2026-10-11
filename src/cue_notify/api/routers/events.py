@@ -13,26 +13,18 @@ from cue_notify.api.deps import (
     RuntimeDep,
     SessionDep,
     check_inline_profile,
+    may_change_profile,
     paginate,
 )
 from cue_notify.api.schemas import EventAccepted, EventOut, Page
-from cue_notify.core.enums import Scope
-from cue_notify.db.models import ApiKey, Event
-from cue_notify.services import agents, api_keys, review_links
+from cue_notify.api.views import event_views
+from cue_notify.db.models import Event
+from cue_notify.services import agents
 from cue_notify.services import events as event_service
 from cue_notify.services import recipients as recipient_service
 from cue_notify.services.errors import ForbiddenError, NotFoundError
 
 router = APIRouter(prefix="/events", tags=["events"])
-
-
-def _out(event: Event, key: ApiKey) -> EventOut:
-    """Review links in Cue's own events would let a read-only key decide; only ``admin``
-    keys see them."""
-    out = EventOut.model_validate(event)
-    if api_keys.allows(key, Scope.ADMIN):
-        return out
-    return out.model_copy(update={"data": review_links.redact_data(out.data)})
 
 
 @router.post(
@@ -69,6 +61,7 @@ async def ingest_event(
         # suppress) another producer's idempotency keys.
         source=f"agent:{agent.key}" if agent else body.source or key.name,
         agent_key=agent.key if agent else None,
+        may_change_profile=may_change_profile(key),
     )
     if created:
         runtime.metrics.event_ingested(event.name)
@@ -81,6 +74,7 @@ async def ingest_event(
 async def list_events(
     key: MessagesReader,
     session: SessionDep,
+    runtime: RuntimeDep,
     page: PageDep,
     recipient: Annotated[str | None, Query(description="Filter by external id.")] = None,
     name: str | None = None,
@@ -94,12 +88,14 @@ async def list_events(
     if key.agent_key is not None:  # agents see only what they reported
         stmt = stmt.where(Event.agent_key == key.agent_key)
     items, cursor = await paginate(session, stmt, Event.id, page)
-    return Page(items=[_out(item, key) for item in items], next_cursor=cursor)
+    return Page(items=await event_views(session, runtime.settings, key, items), next_cursor=cursor)
 
 
 @router.get("/{event_id}", summary="Get an event and its rule outcomes")
-async def get_event(event_id: UUID, key: MessagesReader, session: SessionDep) -> EventOut:
+async def get_event(
+    event_id: UUID, key: MessagesReader, session: SessionDep, runtime: RuntimeDep
+) -> EventOut:
     event = await event_service.get(session, event_id)
     if key.agent_key is not None and event.agent_key != key.agent_key:
         raise NotFoundError("event", event_id)
-    return _out(event, key)
+    return (await event_views(session, runtime.settings, key, [event]))[0]

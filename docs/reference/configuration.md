@@ -34,7 +34,8 @@ Run `cuectl check` to validate a configuration.
 | `cors_origins` | `[]` | Origins allowed to call the API from a browser. |
 | `docs` | `true` | Serve `/docs`, `/redoc` and `/openapi.json`. |
 | `root_path` | `""` | When mounted under a path prefix behind a proxy. |
-| `public_url` | none | Public base URL (with any path prefix). Enables [preference and unsubscribe links](../concepts/preferences.md). |
+| `public_url` | none | Public base URL (with any path prefix). Enables [preference and unsubscribe links](../concepts/preferences.md). Requires `secret_key`. |
+| `secret_key` | none | At least 32 characters; set it as `CUE_API__SECRET_KEY`. Signs preference tokens, so the database never holds a working link. Use the same value on every API and worker process; changing it invalidates every preference link already sent. |
 | `product_name` | none | Shown on the hosted preference page. |
 | `max_body_bytes` | `1048576` | Larger request bodies get `413` before anything reads them. |
 | `max_broadcast_body_bytes` | `67108864` | The same limit for `POST /v1/broadcasts` with an admin key, whose audience can list a million ids. Without one, `max_body_bytes` applies. |

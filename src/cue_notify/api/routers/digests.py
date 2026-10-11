@@ -6,8 +6,16 @@ from uuid import UUID
 from fastapi import APIRouter, Query
 from sqlalchemy import select
 
-from cue_notify.api.deps import MessagesReader, MessagesWriter, PageDep, SessionDep, paginate
+from cue_notify.api.deps import (
+    MessagesReader,
+    MessagesWriter,
+    PageDep,
+    RuntimeDep,
+    SessionDep,
+    paginate,
+)
 from cue_notify.api.schemas import DigestOut, Page
+from cue_notify.api.views import digest_views
 from cue_notify.core.enums import DigestStatus
 from cue_notify.db.models import Digest
 from cue_notify.services import agents
@@ -21,6 +29,7 @@ router = APIRouter(prefix="/digests", tags=["digests"])
 async def list_digests(
     key: MessagesReader,
     session: SessionDep,
+    runtime: RuntimeDep,
     page: PageDep,
     recipient: Annotated[str | None, Query(description="Filter by external id.")] = None,
     status: DigestStatus | None = None,
@@ -33,17 +42,23 @@ async def list_digests(
     if status is not None:
         stmt = stmt.where(Digest.status == status)
     items, cursor = await paginate(session, stmt, Digest.id, page)
-    return Page(items=[DigestOut.model_validate(item) for item in items], next_cursor=cursor)
+    return Page(items=await digest_views(session, runtime.settings, key, items), next_cursor=cursor)
 
 
 @router.get("/{digest_id}", summary="Get a digest and its grouped events")
-async def get_digest(digest_id: UUID, key: MessagesReader, session: SessionDep) -> DigestOut:
+async def get_digest(
+    digest_id: UUID, key: MessagesReader, session: SessionDep, runtime: RuntimeDep
+) -> DigestOut:
     agents.check_not_agent(key, "read digests")
-    return DigestOut.model_validate(await digest_service.get(session, digest_id))
+    digest = await digest_service.get(session, digest_id)
+    return (await digest_views(session, runtime.settings, key, [digest]))[0]
 
 
 @router.post("/{digest_id}/send", summary="Send an open digest now instead of at window end")
-async def send_digest(digest_id: UUID, key: MessagesWriter, session: SessionDep) -> DigestOut:
+async def send_digest(
+    digest_id: UUID, key: MessagesWriter, session: SessionDep, runtime: RuntimeDep
+) -> DigestOut:
     agents.check_not_agent(key, "send digests")
     digest = await digest_service.get(session, digest_id)
-    return DigestOut.model_validate(await digest_service.send_now(session, digest))
+    sent = await digest_service.send_now(session, digest)
+    return (await digest_views(session, runtime.settings, key, [sent]))[0]

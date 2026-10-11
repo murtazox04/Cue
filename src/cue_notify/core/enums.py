@@ -129,6 +129,7 @@ class Scope(StrEnum):
     MESSAGES_READ = "messages:read"
     RECIPIENTS_WRITE = "recipients:write"
     RECIPIENTS_READ = "recipients:read"
+    APPROVALS_DECIDE = "approvals:decide"
     ADMIN = "admin"
 
 

@@ -70,10 +70,12 @@ class RecipientOut(Model):
     attributes: dict[str, Any]
     preferences: RecipientPreferences
     preference_token: str | None = Field(
+        default=None,
         description=(
             "Lets the person manage their own preferences (`/v1/preferences/{token}`, the "
-            "hosted page). Treat it like a password-reset link. Hidden from agent keys."
-        )
+            "hosted page). Treat it like a password-reset link. Hidden from agent keys, and "
+            "null until `api.secret_key` is configured."
+        ),
     )
     addresses: list[AddressOut]
     created_at: datetime

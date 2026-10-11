@@ -1,6 +1,6 @@
 """Self-service preferences: the preference centre, one-click unsubscribe, consent ledger.
 
-Every recipient has a random ``preference_token``. Holding it lets someone see and change
+Every recipient has a preference token. Holding it lets someone see and change
 that person's delivery preferences and nothing else, which is the trust model of an
 unsubscribe link in an e-mail. Every change, whatever its source, is recorded in the
 consent ledger (``preference_changes``) so you can show when and how someone opted out.
@@ -8,16 +8,18 @@ consent ledger (``preference_changes``) so you can show when and how someone opt
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
 from typing import Any
 from urllib.parse import quote
 
-from pydantic import AwareDatetime, BaseModel, Field
-from sqlalchemy import select
+from pydantic import AwareDatetime, BaseModel, Field, SecretStr
+from sqlalchemy import ColumnElement, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cue_notify.core.enums import PreferenceSource
-from cue_notify.core.ids import token
+from cue_notify.core.ids import preference_token_id
 from cue_notify.core.policy import QuietHours, RecipientPreferences
 from cue_notify.core.time import utcnow
 from cue_notify.db.models import Category, PreferenceChange, Recipient
@@ -37,9 +39,10 @@ def links(settings: Settings, recipient: Recipient, category: Category | None) -
     scanners that prefetch URLs never unsubscribe anyone.
     """
     base = settings.api.public_url
-    if base is None:
+    current = preference_token(settings, recipient)
+    if base is None or current is None:
         return {}
-    page = f"{base}/preferences/{recipient.preference_token}"
+    page = f"{base}/preferences/{current}"
     result = {"preferences": page}
     if category is not None and category.allow_unsubscribe:
         result["unsubscribe"] = f"{page}/unsubscribe?category={quote(category.key)}"
@@ -51,7 +54,7 @@ def template_links(settings: Settings, recipient: Recipient, category: Category)
     return (
         {"preferences": None, "unsubscribe": None}
         | links(settings, recipient, category)
-        | {"token": recipient.preference_token}
+        | {"token": preference_token(settings, recipient)}
     )
 
 
@@ -102,9 +105,51 @@ async def apply(
 # --------------------------------------------------------------------------- tokens
 
 
-async def by_token(session: AsyncSession, preference_token: str, *, lock: bool = True) -> Recipient:
+TOKEN_ID_LENGTH = 24
+TOKEN_LENGTH = TOKEN_ID_LENGTH + 43
+
+
+def token_signature(secret: SecretStr, token_id: str) -> str:
+    digest = hmac.new(
+        secret.get_secret_value().encode(),
+        f"cue-preference-token:{token_id}".encode(),
+        hashlib.sha256,
+    ).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+
+
+def issued_token(settings: Settings, token_id: str) -> str | None:
+    secret = settings.api.secret_key
+    if secret is None:
+        return None
+    return token_id + token_signature(secret, token_id)
+
+
+def preference_token(settings: Settings, recipient: Recipient) -> str | None:
+    return issued_token(settings, recipient.preference_token_id)
+
+
+def token_hash(presented: str) -> str:
+    return hashlib.sha256(presented.encode()).hexdigest()
+
+
+def token_condition(settings: Settings, presented: str) -> ColumnElement[bool]:
+    token_id = presented[:TOKEN_ID_LENGTH]
+    expected = issued_token(settings, token_id)
+    if (
+        expected is not None
+        and len(presented) == TOKEN_LENGTH
+        and hmac.compare_digest(presented.encode(), expected.encode())
+    ):
+        return Recipient.preference_token_id == token_id
+    return Recipient.preference_token_hash == token_hash(presented)
+
+
+async def by_token(
+    session: AsyncSession, settings: Settings, presented: str, *, lock: bool = True
+) -> Recipient:
     """The recipient owning ``preference_token``; row-locked unless only reading."""
-    stmt = select(Recipient).where(Recipient.preference_token == preference_token)
+    stmt = select(Recipient).where(token_condition(settings, presented))
     if lock:
         stmt = stmt.with_for_update().execution_options(populate_existing=True)
     recipient = await session.scalar(stmt)
@@ -115,7 +160,8 @@ async def by_token(session: AsyncSession, preference_token: str, *, lock: bool =
 
 def rotate(recipient: Recipient) -> None:
     """Issue a new token; links sent earlier stop working."""
-    recipient.preference_token = token()
+    recipient.preference_token_id = preference_token_id()
+    recipient.preference_token_hash = None
 
 
 # --------------------------------------------------------------------------- centre

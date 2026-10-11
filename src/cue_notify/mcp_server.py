@@ -175,20 +175,6 @@ def create_server(client: httpx.AsyncClient) -> MCPServer:
         return _result(await client.get("/v1/messages", params=params))
 
     @_tool(server, SENDS)
-    async def review_message(  # pyright: ignore[reportUnusedFunction]
-        message_id: str, approve: bool, reason: str | None = None
-    ) -> Any:
-        """Approve or reject a message an agent sent that is waiting for review
-        (`status` `pending_approval`; list them with `list_messages`). Approving
-        releases it for delivery; rejecting cancels it. Only keys that are not bound to an
-        agent may review, so call this on behalf of a person who decided."""
-        if approve:
-            return _result(await client.post(f"/v1/messages/{_id(message_id)}/approve"))
-        return _result(
-            await client.post(f"/v1/messages/{_id(message_id)}/reject", json={"reason": reason})
-        )
-
-    @_tool(server, SENDS)
     async def request_approval(  # pyright: ignore[reportUnusedFunction]
         title: str,
         reviewers: list[str],

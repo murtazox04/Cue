@@ -19,6 +19,7 @@ services:
       - key: CUE_API__PUBLIC_URL
         sync: false # e.g. https://cue-api.onrender.com, for preference and review links
       - fromGroup: cue-channels
+      - fromGroup: cue-secrets
 
   - type: worker
     name: cue-worker
@@ -34,12 +35,17 @@ services:
       - key: CUE_API__PUBLIC_URL
         sync: false
       - fromGroup: cue-channels
+      - fromGroup: cue-secrets
 
 databases:
   - name: cue-db
     databaseName: cue
 
 envVarGroups:
+  - name: cue-secrets
+    envVars:
+      - key: CUE_API__SECRET_KEY
+        generateValue: true
   # Console channels only log. Replace them with real connectors, for example
   # CUE_CHANNELS__EMAIL__PROVIDER=webhook and CUE_CHANNELS__EMAIL__URL=…
   - name: cue-channels

@@ -24,7 +24,10 @@ The complete, always-current reference is generated from the code: open
 | `GET /v1/events`, `GET /v1/events/{id}` | `messages:read` | Events with per-rule outcomes. |
 | `POST /v1/messages` | `messages:write` | Send a template directly. |
 | `GET /v1/messages`, `GET /v1/messages/{id}` | `messages:read` | Filter by `recipient`, `status`, `event_id`, `broadcast_id`. |
-| `POST /v1/messages/{id}/approve`, `…/reject` | `messages:write` | Review a message an agent sent that is `pending_approval`. |
+| `POST /v1/messages/{id}/approve`, `…/reject` | `approvals:decide` | Review a message an agent sent that is `pending_approval`. |
+| `POST /v1/approvals` | `messages:write` | Ask people to approve an action. |
+| `GET /v1/approvals`, `GET /v1/approvals/{id}` | `messages:read` | Approval requests and their decisions. |
+| `POST /v1/approvals/{id}/approve`, `…/reject` | `approvals:decide` | Decide an approval request. |
 | `POST /v1/messages/{id}/cancel` | `messages:write` | Cancel a queued message. |
 | `GET /v1/digests`, `GET /v1/digests/{id}` | `messages:read` | Grouped events; filter by `recipient`, `status`. |
 | `POST /v1/digests/{id}/send` | `messages:write` | Close a digest's window early. |

@@ -31,3 +31,7 @@ def uuid7() -> UUID:
 def token(nbytes: int = 24) -> str:
     """URL-safe random token for secrets that are shown or embedded (tracking tokens)."""
     return secrets.token_urlsafe(nbytes)
+
+
+def preference_token_id() -> str:
+    return secrets.token_hex(12)

@@ -15,6 +15,22 @@ All notable changes to this project are documented here. The format follows
   `warnings`), so CI or deploy scripts that run it may now fail until you fix it.
 - Behind a reverse proxy, set `api.trusted_proxies` so rate limits apply per client
   instead of to the proxy's address.
+- Give the keys your people approve with the `approvals:decide` scope, for example
+  `cuectl keys create approvals-ui -s approvals:decide -s messages:read`. Keys with only
+  `messages:write` now get `403` on `…/approve` and `…/reject`.
+- Set `CUE_API__SECRET_KEY` (at least 32 random characters, the same value on every API
+  and worker process) before upgrading. It is required whenever `api.public_url` is set,
+  and without it `preference_token` and templates' `links.token` are `null` (guard them
+  with `{% if links.token %}` as you would `links.unsubscribe`).
+  Changing it later invalidates every preference link already sent.
+- Migration `0013` hashes existing preference tokens in place. It cannot be undone:
+  downgrading issues new random tokens, and links sent before then stop working.
+- `preference_token` in `GET /v1/recipients/{id}` is a new, longer token after the
+  upgrade; the old one still works until you rotate it, but it is no longer shown.
+- Agent keys holding `recipients:*` or `approvals:decide` lose those scopes; recreate
+  them without, and give profile updates to your backend's own key.
+- Event producers that change people's region, attributes, addresses, locale or time
+  zone inline need `recipients:write`.
 
 ### Security
 - `POST /v1/broadcasts` accepts bodies up to `api.max_broadcast_body_bytes` (64 MiB) only
@@ -44,6 +60,30 @@ All notable changes to this project are documented here. The format follows
   are refused outside the default branch.
 - The docs workflow no longer leaves the token in the checkout; only the publishing step
   receives it.
+- Approving or rejecting held messages and approval requests through the API needs the
+  new `approvals:decide` scope (or `admin`). Any key with `messages:write` could decide
+  before, including keys that only send. One-time review links keep working.
+- The MCP server no longer has a `review_message` tool: AI clients ask for approval,
+  people decide.
+- Keys bound to an agent can no longer hold `recipients:read`, `recipients:write` or
+  `approvals:decide` (nor `admin`, as before). Existing agent keys with these scopes are
+  denied them on every request.
+- Event producers can no longer rewrite profiles inline: `region`, `attributes` and
+  `addresses` on an event or direct send need `recipients:write`, and changing a stored
+  `locale` or `timezone` does too. Creating a recipient inline, filling an empty locale or
+  time zone, or repeating the stored values still works with `events:write`.
+- Review links are redacted for every non-admin key in every response that carries
+  message content or digest items: engagement reports, approve and reject responses and
+  `/v1/digests` showed them before.
+- Wildcard rules (`*`, `cue.*`) no longer match Cue's own `cue.*` events; a rule or
+  digest sees them only when it names the event exactly, so a catch-all rule cannot copy
+  review links into other messages.
+- Preference tokens are no longer stored. New tokens are signed with `api.secret_key`
+  (HMAC-SHA256 over a random per-recipient id) and verified on use; tokens issued before
+  this release are kept only as SHA-256 hashes, so links in e-mails already sent,
+  including one-click unsubscribe, keep working until the token is rotated.
+- Screening replaces preference, unsubscribe and review links and preference tokens with
+  fixed placeholders before the message reaches the screening model.
 
 ### Changed
 - `cuectl serve` binds to `127.0.0.1` by default (see Upgrading).

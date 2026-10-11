@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import subprocess
 import sys
@@ -53,7 +54,7 @@ def test_preference_tokens_are_backfilled_for_existing_recipients(tmp_path: Path
                 for n in range(3)
             ],
         )
-    command.upgrade(config, "head")
+    command.upgrade(config, "0012")
     with engine.connect() as connection:
         tokens = [
             row[0] for row in connection.exec_driver_sql("SELECT preference_token FROM recipients")
@@ -61,6 +62,40 @@ def test_preference_tokens_are_backfilled_for_existing_recipients(tmp_path: Path
     engine.dispose()
     assert len(tokens) == len(set(tokens)) == 3
     assert all(token and len(token) >= 32 for token in tokens)
+
+
+def test_existing_preference_tokens_are_hashed_in_place(tmp_path: Path) -> None:
+    path = tmp_path / "hashing.db"
+    config = alembic_config(f"sqlite+aiosqlite:///{path}")
+    command.upgrade(config, "0012")
+    engine = create_engine(f"sqlite:///{path}")
+    plaintext = {f"user-{n}": f"old-token-{n:022d}" for n in range(1205)}
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO recipients (id, external_id, attributes, preferences, "
+                "preference_token, created_at, updated_at) "
+                "VALUES (:id, :external_id, '{}', '{}', :token, :at, :at)"
+            ),
+            [
+                {"id": f"{n:032x}", "external_id": external_id, "token": token, "at": "2026-01-01"}
+                for n, (external_id, token) in enumerate(plaintext.items())
+            ],
+        )
+    command.upgrade(config, "head")
+    with engine.connect() as connection:
+        rows = connection.exec_driver_sql(
+            "SELECT external_id, preference_token_id, preference_token_hash FROM recipients"
+        ).all()
+        columns = {column["name"] for column in inspect(connection).get_columns("recipients")}
+    engine.dispose()
+    assert "preference_token" not in columns
+    assert len(rows) == len(plaintext)
+    assert {external_id: digest for external_id, _, digest in rows} == {
+        external_id: hashlib.sha256(token.encode()).hexdigest()
+        for external_id, token in plaintext.items()
+    }
+    assert len({token_id for _, token_id, _ in rows}) == len(plaintext)
 
 
 def test_concurrent_upgrades_wait_for_each_other() -> None:

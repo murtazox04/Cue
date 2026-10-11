@@ -3,7 +3,14 @@ from __future__ import annotations
 from fastapi import APIRouter, status
 from sqlalchemy import select
 
-from cue_notify.api.deps import PageDep, RecipientsReader, RecipientsWriter, SessionDep, paginate
+from cue_notify.api.deps import (
+    PageDep,
+    RecipientsReader,
+    RecipientsWriter,
+    RuntimeDep,
+    SessionDep,
+    paginate,
+)
 from cue_notify.api.schemas import (
     AddressIn,
     Page,
@@ -16,42 +23,53 @@ from cue_notify.core.policy import RecipientPreferences
 from cue_notify.db.models import ApiKey, PreferenceChange, Recipient
 from cue_notify.services import agents, preferences
 from cue_notify.services import recipients as recipient_service
+from cue_notify.settings import Settings
 
 router = APIRouter(prefix="/recipients", tags=["recipients"])
 
 
-def _out(recipient: Recipient, key: ApiKey) -> RecipientOut:
+def _out(recipient: Recipient, key: ApiKey, settings: Settings) -> RecipientOut:
     """Agent keys never see the preference token: it would let them change preferences."""
     out = RecipientOut.model_validate(recipient)
-    return out.model_copy(update={"preference_token": None}) if key.agent_key else out
+    if key.agent_key:
+        return out
+    return out.model_copy(
+        update={"preference_token": preferences.preference_token(settings, recipient)}
+    )
 
 
 @router.put("/{external_id}", summary="Create or update a recipient")
 async def upsert_recipient(
-    external_id: str, body: RecipientUpsert, key: RecipientsWriter, session: SessionDep
+    external_id: str,
+    body: RecipientUpsert,
+    key: RecipientsWriter,
+    session: SessionDep,
+    runtime: RuntimeDep,
 ) -> RecipientOut:
     # A profile decides how everyone's messages to this person go (time zone, region,
     # attributes in approval conditions); agents refer to people by external id only.
     agents.check_not_agent(key, "change recipient profiles")
     recipient = await recipient_service.upsert(
-        session, recipient_service.RecipientIn(external_id=external_id, **body.model_dump())
+        session,
+        recipient_service.RecipientIn(external_id=external_id, **body.model_dump()),
+        revive_addresses=True,
     )
-    return _out(recipient, key)
+    return _out(recipient, key, runtime.settings)
 
 
 @router.get("", summary="List recipients")
 async def list_recipients(
-    key: RecipientsReader, session: SessionDep, page: PageDep
+    key: RecipientsReader, session: SessionDep, runtime: RuntimeDep, page: PageDep
 ) -> Page[RecipientOut]:
     items, cursor = await paginate(session, select(Recipient), Recipient.id, page)
-    return Page(items=[_out(item, key) for item in items], next_cursor=cursor)
+    return Page(items=[_out(item, key, runtime.settings) for item in items], next_cursor=cursor)
 
 
 @router.get("/{external_id}", summary="Get a recipient")
 async def get_recipient(
-    external_id: str, key: RecipientsReader, session: SessionDep
+    external_id: str, key: RecipientsReader, session: SessionDep, runtime: RuntimeDep
 ) -> RecipientOut:
-    return _out(await recipient_service.get(session, external_id), key)
+    return _out(await recipient_service.get(session, external_id), key, runtime.settings)
 
 
 @router.delete(
@@ -71,12 +89,16 @@ async def delete_recipient(external_id: str, key: RecipientsWriter, session: Ses
     summary="Add an address (device token, phone, e-mail…)",
 )
 async def add_address(
-    external_id: str, body: AddressIn, key: RecipientsWriter, session: SessionDep
+    external_id: str,
+    body: AddressIn,
+    key: RecipientsWriter,
+    session: SessionDep,
+    runtime: RuntimeDep,
 ) -> RecipientOut:
     agents.check_not_agent(key, "change where messages go")
     recipient = await recipient_service.lock(session, external_id)
     await recipient_service.add_address(session, recipient, body)
-    return _out(recipient, key)
+    return _out(recipient, key, runtime.settings)
 
 
 @router.delete(
@@ -94,7 +116,11 @@ async def remove_address(
 
 @router.put("/{external_id}/preferences", summary="Replace delivery preferences")
 async def set_preferences(
-    external_id: str, body: RecipientPreferences, key: RecipientsWriter, session: SessionDep
+    external_id: str,
+    body: RecipientPreferences,
+    key: RecipientsWriter,
+    session: SessionDep,
+    runtime: RuntimeDep,
 ) -> RecipientOut:
     """Changes are recorded in the consent ledger with source `api`. Agent keys cannot
     change people's preferences."""
@@ -104,7 +130,7 @@ async def set_preferences(
     await preferences.apply(
         session, recipient, body, PreferenceSource.API, {"method": "api", "api_key": key.name}
     )
-    return RecipientOut.model_validate(recipient)
+    return _out(recipient, key, runtime.settings)
 
 
 @router.post(
@@ -145,11 +171,11 @@ async def preference_history(
 
 @router.post("/{external_id}/preference-token", summary="Issue a new preference token")
 async def rotate_preference_token(
-    external_id: str, key: RecipientsWriter, session: SessionDep
+    external_id: str, key: RecipientsWriter, session: SessionDep, runtime: RuntimeDep
 ) -> RecipientOut:
     """Preference and unsubscribe links sent before stop working."""
     agents.check_not_agent(key, "rotate preference tokens")
     await recipient_service.get(session, external_id)
     recipient = await recipient_service.lock(session, external_id)
     preferences.rotate(recipient)
-    return RecipientOut.model_validate(recipient)
+    return _out(recipient, key, runtime.settings)
