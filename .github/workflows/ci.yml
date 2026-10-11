@@ -122,3 +122,19 @@ jobs:
           tags: cue:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  quickstart:
+    name: Quick start (Docker Compose)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker compose up --build -d
+      - name: Wait for the API
+        run: timeout 120 bash -c 'until curl -fs localhost:8000/healthz; do sleep 2; done'
+      - name: Walk through the getting-started guide
+        run: |
+          key=$(docker compose exec -T api cuectl keys create admin | grep -o 'ck_[A-Za-z0-9_-]*')
+          CUE_KEY="$key" scripts/smoke.sh
+      - if: failure()
+        run: docker compose logs
+

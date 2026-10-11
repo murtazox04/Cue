@@ -137,7 +137,8 @@ Or with Python 3.12+:
 
 ```bash
 pip install 'cue-notify[postgres]'
-export CUE_WORKER__EMBEDDED=true CUE_CHANNELS__PUSH__PROVIDER=console
+export CUE_WORKER__EMBEDDED=true
+export CUE_CHANNELS__PUSH__PROVIDER=console CUE_CHANNELS__SMS__PROVIDER=console
 cuectl db upgrade && cuectl keys create admin && cuectl serve
 ```
 

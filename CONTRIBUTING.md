@@ -7,7 +7,7 @@ Thanks for helping! Bug reports, docs fixes, new channels and features are all w
 You need [uv](https://docs.astral.sh/uv/). Python is installed by uv if missing.
 
 ```bash
-git clone https://github.com/murtazox04/Cue && cd cue
+git clone https://github.com/murtazox04/Cue && cd Cue
 uv sync --all-extras          # creates .venv with every optional feature
 uv run pre-commit install     # lint and format on commit
 uv run cuectl db upgrade     # SQLite at ./cue.db

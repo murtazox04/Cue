@@ -9,7 +9,7 @@ so no third-party accounts are needed.
 === "Docker Compose"
 
     ```bash
-    git clone https://github.com/murtazox04/Cue && cd cue
+    git clone https://github.com/murtazox04/Cue && cd Cue
     docker compose up --build -d
     docker compose exec api cuectl keys create admin
     ```
@@ -19,7 +19,8 @@ so no third-party accounts are needed.
     ```bash
     pip install 'cue-notify[postgres]'   # or: uv tool install cue-notify
     export CUE_WORKER__EMBEDDED=true       # run jobs inside the API process
-    export CUE_CHANNELS__PUSH__PROVIDER=console
+    export CUE_CHANNELS__PUSH__PROVIDER=console  # log instead of sending
+    export CUE_CHANNELS__SMS__PROVIDER=console
     cuectl db upgrade                         # SQLite at ./cue.db by default
     cuectl keys create admin
     cuectl serve
