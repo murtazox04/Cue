@@ -90,7 +90,15 @@ class ChannelRegistry(Mapping[str, AnyChannel]):
                 config = provider.config_model.model_validate(spec.options)
                 channels[name] = provider(name, config, http)
             except ValidationError as exc:
-                raise ChannelConfigError(f"channel {name!r} ({spec.provider}): {exc}") from exc
+                # Without the input values (and without chaining the original), so channel
+                # credentials never end up in startup logs.
+                problems = "; ".join(
+                    f"{'.'.join(map(str, error['loc'])) or 'config'}: {error['msg']}"
+                    for error in exc.errors(include_input=False, include_url=False)
+                )
+                raise ChannelConfigError(
+                    f"channel {name!r} ({spec.provider}): {problems}"
+                ) from None
             except (OSError, ValueError) as exc:
                 raise ChannelConfigError(f"channel {name!r} ({spec.provider}): {exc}") from exc
         return cls(channels)

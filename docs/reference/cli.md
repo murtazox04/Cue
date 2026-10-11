@@ -15,7 +15,10 @@ cuectl keys list
 cuectl keys revoke KEY_ID
 cuectl jobs stats                 queued and dead jobs by kind
 cuectl jobs retry-dead [--kind K]
-cuectl prune [--older-than DAYS]  delete old events, finished messages and closed digests
+cuectl prune [--older-than DAYS] [--ledger-older-than DAYS]
+                                  delete old events, finished messages, closed digests,
+                                  decided approval requests, expired review links and
+                                  dead jobs; the consent ledger only when asked
 cuectl version
 ```
 

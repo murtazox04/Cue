@@ -22,7 +22,7 @@ from uuid import UUID
 
 import httpx
 from pydantic import AfterValidator, BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cue_notify import queue
@@ -38,6 +38,7 @@ from cue_notify.services.errors import (
     GoneError,
     InvalidStateError,
     NotFoundError,
+    TooManyRequestsError,
 )
 
 REQUEST_JOB = "request_approval"
@@ -73,6 +74,17 @@ async def create(
         if outside:
             raise ForbiddenError(
                 f"agent {agent.key} may only ask its reviewers; not allowed: {', '.join(outside)}"
+            )
+        # Approval requests notify reviewers outside the agent's attention budget.
+        limit = runtime.settings.approvals.max_pending_per_agent
+        pending = await session.scalar(
+            select(func.count())
+            .select_from(Approval)
+            .where(Approval.agent_key == agent.key, Approval.status == ApprovalStatus.PENDING)
+        )
+        if (pending or 0) >= limit:
+            raise TooManyRequestsError(
+                f"agent {agent.key} already has {limit} pending approval requests"
             )
     importance = body.importance
     if agent is not None and importance.rank > agent.max_importance.rank:
@@ -234,7 +246,7 @@ async def request(ctx: queue.JobContext) -> None:
                     data={**data, "review_url": review_links.url(runtime.settings, token)},
                     idempotency_key=f"{approval.id}:{reviewer}",
                 ),
-                source="cue",
+                source=events.SYSTEM_SOURCE,
             )
 
 

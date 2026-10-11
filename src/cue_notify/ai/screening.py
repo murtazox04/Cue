@@ -16,7 +16,9 @@ probabilities instead of text in a few hundred milliseconds, for a fraction of a
 
 from __future__ import annotations
 
+import html
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -24,6 +26,10 @@ import httpx
 
 from cue_notify.core.enums import Importance
 from cue_notify.settings import ScreeningSettings
+
+_HIDDEN = re.compile(r"<(script|style)\b.*?</\1\s*>", re.IGNORECASE | re.DOTALL)
+_TAG = re.compile(r"<[^>]*>")
+_HREF = re.compile(r"""\b(?:href|src)\s*=\s*["']?([^"'\s>]+)""", re.IGNORECASE)
 
 URGENCY_LEVELS: dict[Importance, str] = {
     Importance.LOW: "Can wait: informational, no action or time pressure",
@@ -67,7 +73,17 @@ class ScreeningRequest:
         """What the model reads: the sender, the claim and the words, never recipient data."""
         variants: list[dict[str, Any]] = []
         for variant in self.content.values():
-            text = {key: variant[key] for key in ("title", "body", "url") if variant.get(key)}
+            # Everything a person may see or tap: an HTML body or a push payload link
+            # could carry what the plain body does not.
+            text = {
+                key: variant[key]
+                for key in ("title", "body", "url", "image_url")
+                if variant.get(key)
+            }
+            if variant.get("html"):
+                text["html_text"] = html_text(variant["html"])
+            if variant.get("data"):
+                text["data"] = variant["data"]
             actions = [
                 {"label": action.get("label"), "url": action.get("url")}
                 for action in variant.get("actions") or []
@@ -98,6 +114,22 @@ class Screener(Protocol):
     async def screen(self, request: ScreeningRequest) -> Verdict: ...
 
 
+def html_text(markup: str, limit: int = 8000) -> str:
+    """The readable text and link targets of an HTML body."""
+    links = " ".join(f"[{href}]" for href in _HREF.findall(markup))
+    text = html.unescape(_TAG.sub(" ", _HIDDEN.sub(" ", markup)))
+    return (" ".join(text.split()) + (" " + links if links else ""))[:limit]
+
+
+def _probability(value: Any) -> float:
+    """A probability from the provider; anything else (NaN included) is an error, so
+    ``on_error`` decides instead of every comparison quietly coming out false."""
+    number = float(value)
+    if not 0.0 <= number <= 1.0:  # also false for NaN
+        raise ValueError(f"not a probability: {value!r}")
+    return number
+
+
 def judge(
     request: ScreeningRequest,
     answers: dict[str, Any],
@@ -105,12 +137,12 @@ def judge(
     model: str,
 ) -> Verdict:
     """Turn the model's answers into a verdict. Thresholds live here, in code."""
-    risks = {name: float(answers[name]["noul"]) for name in RISKS}
+    risks = {name: _probability(answers[name]["noul"]) for name in RISKS}
     urgency = answers["urgency"]
     levels = list(URGENCY_LEVELS)
-    probabilities = {int(k): float(v) for k, v in urgency["probabilities"].items()}
+    probabilities = {int(k): _probability(v) for k, v in urgency["probabilities"].items()}
     judged = levels[max(probabilities, key=lambda level: probabilities[level])]
-    confidence = float(urgency["confidence"])
+    confidence = _probability(urgency["confidence"])
     record: dict[str, Any] = {
         "model": model,
         "risks": risks,

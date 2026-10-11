@@ -73,7 +73,8 @@ store per-rule outcomes. Debugging is a query, not a log search.
 errors surface immediately and content is auditable); AI personalisation runs at send
 time, after policy, so tokens are never spent on messages that will not be sent.
 
-**Idempotency everywhere.** Events dedupe on `(source, idempotency_key)`; messages on
+**Idempotency everywhere.** Events dedupe on `(source, idempotency_key)` (an agent key's
+source is always `agent:<key>`, so it cannot claim another producer's keys); messages on
 `dedup_key` (`event:<id>:<rule>`, `broadcast:<id>:<recipient>`, `api:<key>:<key>`); jobs
 on `key`. Every job handler re-checks state before acting, so at-least-once execution
 is safe.

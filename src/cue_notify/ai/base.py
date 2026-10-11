@@ -18,7 +18,12 @@ from pydantic import BaseModel, Field
 from cue_notify.core.content import Content
 
 _URL = re.compile(r"https?://[^\s<>\"']+")
-_NUMBER = re.compile(r"\d(?:[\d\s.,']*\d)?")  # \s also matches no-break spaces
+# Links without a scheme ("pay.example/login") count too, or a model could invent one.
+_DOMAIN = re.compile(r"\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b(?:/[^\s<>\"']*)?", re.IGNORECASE)
+# Dates, times and ranges ("2026-10-11", "08:00") are one fact, so their parts cannot be
+# swapped. \s also matches no-break spaces.
+_NUMBER = re.compile(r"\d(?:[\d\s.,'/:\-]*\d)?")
+_SEPARATORS = re.compile(r"[^\d]+")
 
 
 class GenerationError(Exception):
@@ -70,13 +75,19 @@ class ContentGenerator(Protocol):
 
 
 def facts(text: str | None) -> set[str]:
-    """Numbers (separator-insensitive) and URLs that must survive a rewrite."""
+    """Numbers, links and domains that must survive a rewrite.
+
+    A number may change its separators ("1 250 000" and "1,250,000" are the same fact)
+    but not where they are, so "1 250 000" cannot become "12 500.00".
+    """
     if not text:
         return set()
     urls = set(_URL.findall(text))
-    without_urls = _URL.sub(" ", text)
-    numbers = {re.sub(r"\D", "", match) for match in _NUMBER.findall(without_urls)}
-    return urls | numbers
+    rest = _URL.sub(" ", text)
+    domains = {match.lower() for match in _DOMAIN.findall(rest)}
+    rest = _DOMAIN.sub(" ", rest)
+    numbers = {_SEPARATORS.sub("|", match) for match in _NUMBER.findall(rest)}
+    return urls | domains | numbers
 
 
 def violations(request: PersonalizationRequest, copy: Copy) -> list[str]:

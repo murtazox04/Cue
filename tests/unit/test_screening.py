@@ -130,3 +130,40 @@ def test_settings_need_a_key(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.api_key is not None
     assert settings.api_key.get_secret_value() == "from-env"
     assert ScreeningSettings().api_key is None  # disabled: nothing is read
+
+
+@pytest.mark.parametrize("bad", [float("nan"), 1.5, -0.1, "high"])
+async def test_nonsense_scores_count_as_errors(bad: Any) -> None:
+    answers = _answers(1)
+    answers["deception"]["noul"] = bad
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        content = json.dumps({"answers": answers, "model": "jev"}, allow_nan=True)
+        return httpx.Response(200, content=content)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        with pytest.raises(ScreeningError):
+            await TypeSafeScreener(SETTINGS, http).screen(_request())
+
+
+def test_the_model_sees_html_links_and_push_data() -> None:
+    request = ScreeningRequest(
+        agent="support-bot",
+        agent_description=None,
+        category="transactional",
+        importance=Importance.NORMAL,
+        content={
+            "default": {"title": "Refund", "body": "Refund sent."},
+            "email": {
+                "body": "Refund sent.",
+                "html": "<p>Refund sent.</p><script>x</script>"
+                '<a href="https://evil.example/login">Confirm your card</a>',
+            },
+            "push": {"body": "Refund sent.", "data": {"url": "https://evil.example/p"}},
+        },
+    )
+    state = json.dumps(request.state())
+    assert "Confirm your card" in state
+    assert "https://evil.example/login" in state
+    assert "https://evil.example/p" in state
+    assert "<script>" not in state

@@ -87,6 +87,14 @@ class ApiSettings(BaseModel):
     product_name: str | None = Field(
         default=None, max_length=100, description="Shown on the hosted preference page."
     )
+    max_body_bytes: int = Field(
+        default=1_048_576, ge=65_536, description="Larger request bodies are refused (413)."
+    )
+    max_broadcast_body_bytes: int = Field(
+        default=64 * 1_048_576,
+        ge=65_536,
+        description="Limit for POST /v1/broadcasts, whose audience can list a million ids.",
+    )
 
     @field_validator("public_url")
     @classmethod
@@ -231,6 +239,11 @@ class ApprovalSettings(BaseModel):
         default=None, description="Signs callbacks (Cue-Signature header). Required with a URL."
     )
     timeout: float = Field(default=10.0, gt=0)
+    max_pending_per_agent: int = Field(
+        default=10,
+        ge=1,
+        description="Open requests one agent may have at a time, so it cannot flood reviewers.",
+    )
 
     @model_validator(mode="after")
     def _secret_with_url(self) -> Self:
@@ -255,6 +268,14 @@ class ChannelSpec(BaseModel):
     @property
     def options(self) -> dict[str, Any]:
         return dict(self.model_extra or {})
+
+    def __repr_args__(self) -> list[tuple[str | None, Any]]:  # pyright: ignore[reportIncompatibleMethodOverride]
+        # Options hold credentials (auth tokens, passwords); show only their names.
+        return [
+            ("provider", self.provider),
+            ("enabled", self.enabled),
+            ("options", sorted(self.options)),
+        ]
 
 
 class Settings(BaseSettings):

@@ -7,12 +7,14 @@ shows what is asked (mail scanners prefetch links) and the decision is a ``POST`
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cue_notify.ai.screening import html_text
 from cue_notify.api.deps import RuntimeDep, SessionDep
 from cue_notify.api.pages import ENV, HEADERS, STYLE, form_fields
 from cue_notify.core.content import DEFAULT_VARIANT
@@ -20,6 +22,8 @@ from cue_notify.core.enums import MessageStatus
 from cue_notify.db.models import Agent, Recipient, ReviewLink
 from cue_notify.services import agents, approvals, review_links
 from cue_notify.services.errors import NotFoundError, ServiceError
+
+_LINK = re.compile(r"(?:https?://|www\.)[^\s<>\"'\]]+")
 
 router = APIRouter(prefix="/review", include_in_schema=False)
 
@@ -40,6 +44,8 @@ PAGE = ENV.from_string("""<!doctype html>
 <fieldset><legend>{{ title or "Message" }}</legend>
 <p style="white-space:pre-line">{{ body }}</p>
 {% if url %}<small>Link: {{ url }}</small>{% endif %}
+{% if links %}<small>Every link in the message, on any channel:</small>
+<ul>{% for link in links %}<li><small>{{ link }}</small></li>{% endfor %}</ul>{% endif %}
 {% if reason %}<small>Held because: {{ reason }}</small>{% endif %}
 </fieldset>
 <form method="post">
@@ -78,6 +84,23 @@ async def _agent_name(session: AsyncSession, key: str | None, fallback: str) -> 
     return agent.name if agent else key or fallback
 
 
+def _links(variants: dict[str, dict[str, Any]]) -> list[str]:
+    """Link targets from every variant (HTML, push data and buttons included), so the
+    reviewer approves what each channel would actually show, not only the default text."""
+    found: set[str] = set()
+    for variant in variants.values():
+        found.update(str(variant[key]) for key in ("url", "image_url") if variant.get(key))
+        found.update(str(a["url"]) for a in variant.get("actions") or [] if a.get("url"))
+        text = " ".join(
+            [str(v) for v in (variant.get("data") or {}).values()]
+            + [str(variant.get(key) or "") for key in ("title", "body")]
+        )
+        found.update(_LINK.findall(text))
+        if variant.get("html"):
+            found.update(_LINK.findall(html_text(variant["html"])))
+    return sorted(found)[:20]
+
+
 async def _message_view(session: AsyncSession, link: ReviewLink) -> dict[str, Any]:
     message = await agents.by_review_link(session, link, lock=False)
     recipient = await session.get(Recipient, message.recipient_id)
@@ -90,6 +113,7 @@ async def _message_view(session: AsyncSession, link: ReviewLink) -> dict[str, An
         "title": content.get("title"),
         "body": content.get("body", ""),
         "url": content.get("url"),
+        "links": _links(message.content),
         "reason": message.status_reason,
         "comment_label": "Reason, if you reject it (optional)",
         "approve_label": "Approve and send",
@@ -107,6 +131,7 @@ async def _approval_view(session: AsyncSession, link: ReviewLink) -> dict[str, A
         "title": approval.title,
         "body": approval.body,
         "url": None,
+        "links": [],
         "reason": None,
         "comment_label": "Comment for the requester (optional)",
         "approve_label": "Approve",
@@ -134,10 +159,12 @@ async def decide(
         form = await form_fields(request)
         action = (form.get("action") or [""])[0]
         if action not in ("approve", "reject"):
-            return RedirectResponse(".", status_code=303)
+            return RedirectResponse(token, status_code=303)  # back to this page
         approve = action == "approve"
         comment = (form.get("reason") or [""])[0].strip()[:400] or None
-        link = await review_links.find(session, token)
+        # Not locked: the decision locks the target, and locking the link first would
+        # deadlock two reviewers deciding at once (each holds its link, both close both).
+        link = await review_links.find(session, token, lock=False)
         if link.message_id is None:
             await approvals.decide_by_link(session, runtime, link, approve=approve, comment=comment)
             text = "Approved. The requester has been told." if approve else "Rejected."

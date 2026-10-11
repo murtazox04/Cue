@@ -51,19 +51,22 @@ def build_model(settings: AISettings) -> Model:
         raise GenerationError(str(exc)) from exc
 
 
+def _data(value: object) -> str:
+    """JSON that cannot close the tag it sits in: ``<`` is escaped, so a value such as
+    ``</recipient>`` stays data."""
+    return json.dumps(value, ensure_ascii=False, default=str).replace("<", "\\u003c")
+
+
 def build_prompt(request: PersonalizationRequest) -> str:
     original = {"title": request.baseline.title, "body": request.baseline.body}
     sections = [
         f"<locale>{request.locale}</locale>",
         f"<channel>{request.channel}</channel>",
-        f"<original>{json.dumps(original, ensure_ascii=False)}</original>",
+        f"<original>{_data(original)}</original>",
         f"<limits>title ≤ {request.max_title} chars, body ≤ {request.max_body} chars</limits>",
     ]
     if request.context:
-        sections.append(
-            f"<recipient>{json.dumps(dict(request.context), ensure_ascii=False, default=str)}"
-            "</recipient>"
-        )
+        sections.append(f"<recipient>{_data(dict(request.context))}</recipient>")
     return "\n".join(sections)
 
 

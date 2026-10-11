@@ -29,6 +29,8 @@ from cue_notify.services.errors import NotFoundError
 logger = logging.getLogger(__name__)
 
 PROCESS_JOB = "process_event"
+SYSTEM_SOURCE = "cue"
+"""Source of the events Cue reports itself (``cue.*``); refused from the API."""
 
 
 class EventIn(BaseModel):

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cue_notify.core.enums import Scope
 from cue_notify.db.base import IdMixin
-from cue_notify.db.models import ApiKey
+from cue_notify.db.models import Agent, ApiKey
 from cue_notify.runtime import Runtime
 from cue_notify.services import api_keys
 
@@ -54,6 +54,10 @@ def require(scope: Scope) -> Callable[..., Awaitable[ApiKey]]:
             raise unauthorized
         async with runtime.transaction() as session:
             key = await api_keys.authenticate(session, credentials.credentials)
+            if key is not None and key.agent_key is not None:
+                agent = await session.get(Agent, key.agent_key)
+                if agent is None or not agent.enabled:
+                    raise HTTPException(status.HTTP_403_FORBIDDEN, "the key's agent is disabled")
         if key is None:
             raise unauthorized
         if not api_keys.allows(key, scope):

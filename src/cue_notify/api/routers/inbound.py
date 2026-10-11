@@ -53,7 +53,11 @@ async def inbound_sms(
 
 
 def twilio_signature(auth_token: str, url: str, params: dict[str, list[str]]) -> str:
-    payload = url + "".join(key + value for key in sorted(params) for value in params[key])
+    """Twilio's request signature: the URL, then every parameter (empty ones included)
+    as name + value, sorted by name and then by value, HMAC-SHA1 with the auth token."""
+    payload = url + "".join(
+        key + value for key in sorted(params) for value in sorted(set(params[key]))
+    )
     digest = hmac.new(auth_token.encode(), payload.encode(), hashlib.sha1).digest()
     return base64.b64encode(digest).decode()
 
@@ -72,10 +76,12 @@ async def inbound_twilio(request: Request, session: SessionDep, runtime: Runtime
     public_url = runtime.settings.api.public_url
     if public_url is None:
         raise UnprocessableError("set api.public_url so Twilio's signature can be checked")
-    params = await form_fields(request)
+    params = await form_fields(request, keep_blank=True)  # Twilio signs empty fields too
     url = f"{str(public_url).rstrip('/')}/v1/inbound/twilio"
-    expected = twilio_signature(_twilio_token(runtime), url, params)
-    if not hmac.compare_digest(expected, request.headers.get("X-Twilio-Signature", "")):
+    expected = twilio_signature(_twilio_token(runtime), url, params).encode()
+    # Bytes: compare_digest refuses non-ASCII str, which would turn a junk header into 500.
+    received = request.headers.get("X-Twilio-Signature", "").encode("latin-1")
+    if not hmac.compare_digest(expected, received):
         raise ForbiddenError("invalid Twilio signature")
     phone = (params.get("From") or [""])[0]
     text = (params.get("Body") or [""])[0]

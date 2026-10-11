@@ -58,6 +58,12 @@ ingress:
   annotations: {}
   host: cue.example.com
   tls: []          # [{secretName: cue-tls, hosts: [cue.example.com]}]
+  # What the internet may reach. /metrics and the probes stay inside the cluster.
+  paths: [/v1, /preferences, /review, /docs, /redoc, /openapi.json]
+
+networkPolicy:
+  enabled: false
+  from: []         # who may reach the API, e.g. [{namespaceSelector: {matchLabels: {…}}}]
 
 metrics:
   enabled: false   # exposes /metrics for Prometheus

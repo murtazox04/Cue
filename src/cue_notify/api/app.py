@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from cue_notify import __version__
 from cue_notify.api import pages, problems, review
 from cue_notify.api.deps import RuntimeDep
+from cue_notify.api.limits import BodyLimit
 from cue_notify.api.routers import (
     agents,
     api_keys,
@@ -124,6 +125,11 @@ def create_app(settings: Settings | None = None, runtime: Runtime | None = None)
             allow_headers=["Authorization", "Content-Type"],
         )
     problems.install(app)
+    app.add_middleware(
+        BodyLimit,
+        default=settings.api.max_body_bytes,
+        broadcasts=settings.api.max_broadcast_body_bytes,
+    )
 
     v1 = APIRouter(prefix="/v1")
     for module in (

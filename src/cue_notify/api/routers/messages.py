@@ -18,10 +18,10 @@ from cue_notify.api.deps import (
     paginate,
 )
 from cue_notify.api.schemas import MessageOut, Page, ReviewIn, SendIn
-from cue_notify.core.enums import MessageStatus
+from cue_notify.core.enums import MessageStatus, Scope
 from cue_notify.core.time import ensure_utc
 from cue_notify.db.models import ApiKey, Message, Recipient
-from cue_notify.services import agents, catalog, composer, engagement
+from cue_notify.services import agents, api_keys, catalog, composer, engagement, review_links
 from cue_notify.services import recipients as recipient_service
 from cue_notify.services.errors import ForbiddenError, InvalidStateError, NotFoundError
 
@@ -33,7 +33,7 @@ def _redact(value: Any, secrets: set[str]) -> Any:
     if isinstance(value, str):
         for secret in secrets:
             value = value.replace(secret, "[redacted]")
-        return value
+        return review_links.redact(value)
     if isinstance(value, dict):
         return {k: _redact(v, secrets) for k, v in value.items()}  # pyright: ignore[reportUnknownVariableType]
     if isinstance(value, list):
@@ -44,10 +44,15 @@ def _redact(value: Any, secrets: set[str]) -> Any:
 async def _views(session: SessionDep, key: ApiKey, messages: Sequence[Message]) -> list[MessageOut]:
     """Messages as ``key`` may see them. Rendered content can contain preference and
     unsubscribe links; agent keys get them redacted, since the token would let them
-    change people's preferences."""
+    change people's preferences. Review links are redacted for every key but ``admin``:
+    they would let a read-only key decide."""
     views = [MessageOut.model_validate(message) for message in messages]
-    if key.agent_key is None or not views:
+    if not views:
         return views
+    if key.agent_key is None:
+        if api_keys.allows(key, Scope.ADMIN):
+            return views
+        return [view.model_copy(update={"content": _redact(view.content, set())}) for view in views]
     tokens = set(
         (
             await session.scalars(

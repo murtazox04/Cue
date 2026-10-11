@@ -52,7 +52,7 @@ async def test_health_endpoints_are_public(client: httpx.AsyncClient) -> None:
     anonymous = {"Authorization": ""}
     assert (await client.get("/healthz", headers=anonymous)).json()["status"] == "ok"
     ready = (await client.get("/readyz", headers=anonymous)).json()
-    assert ready == {"status": "ready", "channels": ["push", "sms"]}
+    assert ready == {"status": "ready"}  # nothing about the setup for anonymous callers
 
 
 async def test_openapi_documents_security(client: httpx.AsyncClient) -> None:

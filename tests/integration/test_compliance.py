@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any
@@ -163,13 +166,21 @@ async def twilio(settings: Settings, push: FakeChannel) -> AsyncIterator[Runtime
         await http.aclose()
 
 
+def _reference_signature(auth_token: str, url: str, params: dict[str, str]) -> str:
+    """Twilio's documented algorithm, written independently of Cue's implementation."""
+    data = url + "".join(name + params[name] for name in sorted(params))
+    digest = hmac.new(auth_token.encode(), data.encode(), hashlib.sha1).digest()
+    return base64.b64encode(digest).decode()
+
+
 async def test_twilio_replies_are_verified(
     client: httpx.AsyncClient, twilio: Runtime, runtime: Runtime
 ) -> None:
     await _shopper(client)
     app = create_app(runtime=twilio)
     app.state.runtime = twilio
-    form = {"From": PHONE, "Body": "UNSUBSCRIBE", "MessageSid": "SM1"}
+    # Twilio sends (and signs) empty parameters too.
+    form = {"From": PHONE, "Body": "UNSUBSCRIBE", "MessageSid": "SM1", "FromCity": ""}
     url = f"{BASE}/v1/inbound/twilio"
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://cue.test"
@@ -178,7 +189,14 @@ async def test_twilio_replies_are_verified(
             "/v1/inbound/twilio", data=form, headers={"X-Twilio-Signature": "nope"}
         )
         assert forged.status_code == 403
-        signature = twilio_signature("twilio-token", url, {k: [v] for k, v in form.items()})
+        junk = await twilio_server.post(
+            "/v1/inbound/twilio", data=form, headers={"X-Twilio-Signature": b"\xe9t\xe9"}
+        )
+        assert junk.status_code == 403
+        assert twilio_signature("twilio-token", url, {k: [v] for k, v in form.items()}) == (
+            _reference_signature("twilio-token", url, form)
+        )
+        signature = _reference_signature("twilio-token", url, form)
         ok = await twilio_server.post(
             "/v1/inbound/twilio", data=form, headers={"X-Twilio-Signature": signature}
         )

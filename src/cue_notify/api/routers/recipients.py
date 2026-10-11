@@ -30,6 +30,9 @@ def _out(recipient: Recipient, key: ApiKey) -> RecipientOut:
 async def upsert_recipient(
     external_id: str, body: RecipientUpsert, key: RecipientsWriter, session: SessionDep
 ) -> RecipientOut:
+    # A profile decides how everyone's messages to this person go (time zone, region,
+    # attributes in approval conditions); agents refer to people by external id only.
+    agents.check_not_agent(key, "change recipient profiles")
     recipient = await recipient_service.upsert(
         session, recipient_service.RecipientIn(external_id=external_id, **body.model_dump())
     )
@@ -70,6 +73,7 @@ async def delete_recipient(external_id: str, key: RecipientsWriter, session: Ses
 async def add_address(
     external_id: str, body: AddressIn, key: RecipientsWriter, session: SessionDep
 ) -> RecipientOut:
+    agents.check_not_agent(key, "change where messages go")
     recipient = await recipient_service.lock(session, external_id)
     await recipient_service.add_address(session, recipient, body)
     return _out(recipient, key)
@@ -81,8 +85,9 @@ async def add_address(
     summary="Remove an address",
 )
 async def remove_address(
-    external_id: str, channel: str, value: str, _: RecipientsWriter, session: SessionDep
+    external_id: str, channel: str, value: str, key: RecipientsWriter, session: SessionDep
 ) -> None:
+    agents.check_not_agent(key, "change where messages go")
     recipient = await recipient_service.get(session, external_id)
     await recipient_service.remove_address(session, recipient, channel, value)
 

@@ -1,0 +1,36 @@
+{{- if .Values.networkPolicy.enabled }}
+# The API accepts traffic on its HTTP port only; the worker accepts none. Egress stays
+# open: Cue reaches the database and the providers you configure.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cue.fullname" . }}-api
+  labels:
+    {{- include "cue.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "cue.selector" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - port: http
+      {{- with .Values.networkPolicy.from }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cue.fullname" . }}-worker
+  labels:
+    {{- include "cue.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "cue.selector" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  policyTypes: [Ingress]
+{{- end }}

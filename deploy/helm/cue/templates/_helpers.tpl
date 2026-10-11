@@ -57,6 +57,8 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 
 {{/* Pod spec pieces shared by the API and the worker. */}}
 {{- define "cue.podCommon" -}}
+# Cue never talks to the Kubernetes API; don't hand it a token that could.
+automountServiceAccountToken: false
 securityContext:
   {{- toYaml .Values.podSecurityContext | nindent 2 }}
 {{- with .Values.nodeSelector }}

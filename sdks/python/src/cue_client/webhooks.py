@@ -44,5 +44,9 @@ def verify_webhook(
     if abs(current - timestamp) > tolerance:
         raise InvalidSignatureError("signature timestamp is outside the tolerance")
     expected = hmac.new(secret.encode(), f"{timestamp}.".encode() + body, hashlib.sha256)
-    if not hmac.compare_digest(expected.hexdigest(), candidate):
+    # Bytes, because compare_digest raises TypeError on non-ASCII str: a junk header must
+    # be a rejected signature, not a server error.
+    if not hmac.compare_digest(
+        expected.hexdigest().encode(), candidate.encode("utf-8", "surrogateescape")
+    ):
         raise InvalidSignatureError("signature does not match")

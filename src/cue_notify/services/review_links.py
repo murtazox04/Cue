@@ -1,15 +1,18 @@
 """One-time review links for held messages and approval requests.
 
-Each reviewer gets their own unguessable token in ``review_url``. Only its SHA-256 hash
-is stored; the first decision closes every link for the same target, and links expire
-with it.
+Each reviewer gets their own unguessable token in ``review_url``. Links are looked up by
+the token's SHA-256 hash; the token itself exists only in the reviewer's notification
+(and the event that produced it), which the API shows to ``admin`` keys alone. The first
+decision closes every link for the same target, and links expire with it.
 """
 
 from __future__ import annotations
 
 import hashlib
+import re
 import secrets
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -18,6 +21,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cue_notify.db.models import ReviewLink
 from cue_notify.services.errors import GoneError, NotFoundError
 from cue_notify.settings import Settings
+
+_IN_TEXT = re.compile(r"/review/[A-Za-z0-9_-]{20,}")
+
+
+def redact(text: str) -> str:
+    """``text`` with review tokens replaced, for keys that may not decide."""
+    return _IN_TEXT.sub("/review/[redacted]", text)
+
+
+def redact_data(value: Any) -> Any:
+    if isinstance(value, str):
+        return redact(value)
+    if isinstance(value, dict):
+        return {k: redact_data(v) for k, v in value.items()}  # pyright: ignore[reportUnknownVariableType]
+    if isinstance(value, list):
+        return [redact_data(v) for v in value]  # pyright: ignore[reportUnknownVariableType]
+    return value
 
 
 def _hash(token: str) -> str:

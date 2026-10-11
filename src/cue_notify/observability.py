@@ -8,11 +8,34 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sys
 from datetime import UTC, datetime
 from typing import Any, Literal
 
 _RESERVED = frozenset(vars(logging.LogRecord("", 0, "", 0, "", (), None))) | {"message", "asctime"}
+
+
+# Paths that carry a credential: preference pages, review links, open tracking.
+_TOKEN_PATH = re.compile(r"/(preferences|review|track)/[A-Za-z0-9_-]{8,}")
+
+
+def redact(text: str) -> str:
+    return _TOKEN_PATH.sub(r"/\1/[redacted]", text)
+
+
+class RedactTokens(logging.Filter):
+    """Keeps tokens in request paths (access log, error context) out of the logs; anyone
+    who can read the logs could otherwise change preferences or decide reviews."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        if "/" in message:
+            record.msg, record.args = redact(message), None
+        for key, value in _extra(record).items():
+            if isinstance(value, str) and "/" in value:
+                setattr(record, key, redact(value))
+        return True
 
 
 def _extra(record: logging.LogRecord) -> dict[str, Any]:
@@ -48,6 +71,7 @@ class ConsoleFormatter(logging.Formatter):
 def configure_logging(level: str = "INFO", fmt: Literal["console", "json"] = "console") -> None:
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(JsonFormatter() if fmt == "json" else ConsoleFormatter())
+    handler.addFilter(RedactTokens())
     root = logging.getLogger()
     root.handlers[:] = [handler]
     root.setLevel(level)
@@ -65,6 +89,7 @@ class Metrics:
 
     def __init__(self, enabled: bool) -> None:
         self.enabled = False
+        self._event_names: set[str] = set()
         if not enabled:
             return
         try:
@@ -97,9 +122,19 @@ class Metrics:
             registry=self.registry,
         )
 
+    MAX_EVENT_NAMES = 200
+    """Distinct event-name labels; any producer can invent names, so later ones are
+    counted as ``other`` instead of growing memory without bound."""
+
     def event_ingested(self, name: str) -> None:
-        if self.enabled:
-            self._events.labels(name=name).inc()
+        if not self.enabled:
+            return
+        if name not in self._event_names:
+            if len(self._event_names) >= self.MAX_EVENT_NAMES:
+                name = "other"
+            else:
+                self._event_names.add(name)
+        self._events.labels(name=name).inc()
 
     def message_finished(self, status: str, channel: str | None, category: str) -> None:
         if self.enabled:

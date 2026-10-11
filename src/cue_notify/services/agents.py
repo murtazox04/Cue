@@ -169,7 +169,7 @@ async def request_review(ctx: queue.JobContext) -> None:
                     data={**data, "review_url": review_links.url(runtime.settings, token)},
                     idempotency_key=f"{message.id}:{reviewer}",
                 ),
-                source="cue",
+                source=events.SYSTEM_SOURCE,
             )
 
 

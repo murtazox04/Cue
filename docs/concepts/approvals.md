@@ -29,7 +29,8 @@ POST /v1/approvals
 | `metadata` | `{}` | Returned with the decision (up to 16 KB), e.g. a flow or workflow id. |
 
 Any key with `messages:write` can ask. An agent key may only name the people in its
-agent's `reviewers` list, so it cannot use approval notifications to reach anyone else.
+agent's `reviewers` list, so it cannot use approval notifications to reach anyone else,
+and may have at most `approvals.max_pending_per_agent` (10) open requests at a time.
 The response is the request, with `status: "pending"`.
 
 ## How reviewers hear about it
@@ -51,7 +52,9 @@ guarantees as for messages:
 - **Personal:** each reviewer gets their own link.
 - **One-time:** the first decision closes all of them.
 - **Safe to open:** opening the link changes nothing; only the buttons act.
-- **Not stored:** Cue keeps only a SHA-256 hash of the token.
+- **Looked up by hash:** links are found by the token's SHA-256 hash. The token itself
+  exists only in the reviewer's notification and the event behind it, and the API shows
+  those to `admin` keys alone; other keys see `/review/[redacted]`.
 
 A reviewer can add a comment; it is returned with the decision.
 

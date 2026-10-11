@@ -7,7 +7,7 @@ import hashlib
 import smtplib
 import ssl
 from email.message import EmailMessage
-from email.utils import formataddr, make_msgid
+from email.utils import formataddr, getaddresses, make_msgid
 from typing import ClassVar, Literal
 
 from pydantic import Field, SecretStr
@@ -35,6 +35,16 @@ class SmtpConfig(ChannelConfig):
     timeout: float = Field(default=15.0, gt=0)
 
 
+def single_address(address: str) -> str:
+    """``address`` if it is exactly one mailbox. A list ("a@x.com, b@y.com") would copy
+    every message to all of them, past the recipient's preferences and caps."""
+    addresses = getaddresses([address])
+    name, addr = addresses[0] if len(addresses) == 1 else ("", "")
+    if name or addr != address.strip() or addr.count("@") != 1:
+        raise InvalidAddressError("the address must be a single e-mail address")
+    return addr
+
+
 class SmtpChannel(Channel[SmtpConfig]):
     provider: ClassVar[str] = "smtp"
     config_model: ClassVar[type[ChannelConfig]] = SmtpConfig
@@ -46,7 +56,7 @@ class SmtpChannel(Channel[SmtpConfig]):
         # Rendered titles may contain line breaks from event data; headers cannot.
         email["Subject"] = " ".join((content.title or "").split())
         email["From"] = formataddr((config.from_name or "", config.from_address))
-        email["To"] = delivery.address
+        email["To"] = single_address(delivery.address)
         email["Message-ID"] = make_msgid(idstring=str(delivery.message_id))
         if content.thread:
             # A stable root id per thread lets mail clients stack the conversation.

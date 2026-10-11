@@ -33,6 +33,7 @@ def test_matches_the_server_signer() -> None:
         (BODY, _sign(BODY, "other", NOW), NOW, "does not match"),
         (BODY, _sign(BODY, SECRET, NOW), NOW + 301, "outside the tolerance"),
         (BODY, "t=abc,v1=00", NOW, "malformed"),
+        (BODY, f"t={NOW},v1=\u00e9\u00e9", NOW, "does not match"),
         (BODY, "v1=00", NOW, "malformed"),
         (BODY, None, NOW, "missing"),
     ],

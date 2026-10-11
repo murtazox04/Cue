@@ -171,7 +171,7 @@ class _BadFormError(ServiceError):
     title = "Bad request"
 
 
-async def form_fields(request: Request) -> dict[str, list[str]]:
+async def form_fields(request: Request, *, keep_blank: bool = False) -> dict[str, list[str]]:
     """Parse a small urlencoded form without ever buffering more than the limit."""
     body = bytearray()
     async for chunk in request.stream():
@@ -179,7 +179,11 @@ async def form_fields(request: Request) -> dict[str, list[str]]:
         if len(body) > MAX_FORM_BYTES:
             raise _BadFormError("the form is too large")
     try:
-        return parse_qs(body.decode("utf-8", errors="replace"), max_num_fields=200)
+        return parse_qs(
+            body.decode("utf-8", errors="replace"),
+            keep_blank_values=keep_blank,
+            max_num_fields=200,
+        )
     except ValueError as exc:
         raise _BadFormError("the form has too many fields") from exc
 
@@ -199,8 +203,10 @@ async def page(
 @router.post("/{token}", response_class=HTMLResponse)
 async def save(token: str, request: Request, session: SessionDep, runtime: RuntimeDep) -> Response:
     try:
-        recipient = await preferences.by_token(session, token)
+        # The body first: the token lookup locks the row (on SQLite, the database), and
+        # a client sending its body slowly must not hold that lock.
         form = await form_fields(request)
+        recipient = await preferences.by_token(session, token)
     except ServiceError as exc:
         return _error(request, exc)
     if form.get("action") == ["unsubscribe_all"]:

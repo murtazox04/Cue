@@ -36,6 +36,8 @@ Run `cuectl check` to validate a configuration.
 | `root_path` | `""` | When mounted under a path prefix behind a proxy. |
 | `public_url` | none | Public base URL (with any path prefix). Enables [preference and unsubscribe links](../concepts/preferences.md). |
 | `product_name` | none | Shown on the hosted preference page. |
+| `max_body_bytes` | `1048576` | Larger request bodies get `413` before anything reads them. |
+| `max_broadcast_body_bytes` | `67108864` | The same limit for `POST /v1/broadcasts`, whose audience can list a million ids. |
 
 ## `worker`
 
@@ -101,6 +103,7 @@ Where decisions on [approval requests](../concepts/approvals.md) are reported.
 | `callback_url` | — | Receives a signed `POST` for each decision. |
 | `callback_secret` | — | Signs callbacks (`Cue-Signature`). Required with `callback_url`. |
 | `timeout` | `10` | Seconds per callback request. |
+| `max_pending_per_agent` | `10` | Open requests one agent may have; more get `429`. Requests from keys not bound to an agent are not limited. |
 
 ## `compliance`
 

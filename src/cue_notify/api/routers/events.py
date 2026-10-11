@@ -16,13 +16,23 @@ from cue_notify.api.deps import (
     paginate,
 )
 from cue_notify.api.schemas import EventAccepted, EventOut, Page
-from cue_notify.db.models import Event
-from cue_notify.services import agents
+from cue_notify.core.enums import Scope
+from cue_notify.db.models import ApiKey, Event
+from cue_notify.services import agents, api_keys, review_links
 from cue_notify.services import events as event_service
 from cue_notify.services import recipients as recipient_service
-from cue_notify.services.errors import NotFoundError
+from cue_notify.services.errors import ForbiddenError, NotFoundError
 
 router = APIRouter(prefix="/events", tags=["events"])
+
+
+def _out(event: Event, key: ApiKey) -> EventOut:
+    """Review links in Cue's own events would let a read-only key decide; only ``admin``
+    keys see them."""
+    out = EventOut.model_validate(event)
+    if api_keys.allows(key, Scope.ADMIN):
+        return out
+    return out.model_copy(update={"data": review_links.redact_data(out.data)})
 
 
 @router.post(
@@ -41,16 +51,23 @@ async def ingest_event(
     """Record something that happened to a recipient. Matching rules run asynchronously.
 
     Send an `idempotency_key` so retries never produce duplicate notifications;
-    keys are unique per `source` (default: the API key's name). Adding addresses
-    inline requires the `recipients:write` scope.
+    keys are unique per `source` (default: the API key's name; always `agent:<key>` for
+    agent keys). Adding addresses inline requires the `recipients:write` scope. Names
+    starting with `cue.` and the source `cue` are reserved for Cue's own events.
     """
     check_inline_profile(key, body.recipient)
+    if body.name.startswith("cue.") or body.source == event_service.SYSTEM_SOURCE:
+        # Cue's own events (approval requests, for instance) carry review links;
+        # a forged one would be a phishing message that looks like Cue's.
+        raise ForbiddenError("event names starting with 'cue.' and source 'cue' are reserved")
     agent = await agents.for_key(session, key)
     event, created = await event_service.ingest(
         session,
         runtime,
         body,
-        source=body.source or key.name,
+        # An agent's events get a source of their own, so it cannot claim (and thereby
+        # suppress) another producer's idempotency keys.
+        source=f"agent:{agent.key}" if agent else body.source or key.name,
         agent_key=agent.key if agent else None,
     )
     if created:
@@ -77,7 +94,7 @@ async def list_events(
     if key.agent_key is not None:  # agents see only what they reported
         stmt = stmt.where(Event.agent_key == key.agent_key)
     items, cursor = await paginate(session, stmt, Event.id, page)
-    return Page(items=[EventOut.model_validate(item) for item in items], next_cursor=cursor)
+    return Page(items=[_out(item, key) for item in items], next_cursor=cursor)
 
 
 @router.get("/{event_id}", summary="Get an event and its rule outcomes")
@@ -85,4 +102,4 @@ async def get_event(event_id: UUID, key: MessagesReader, session: SessionDep) ->
     event = await event_service.get(session, event_id)
     if key.agent_key is not None and event.agent_key != key.agent_key:
         raise NotFoundError("event", event_id)
-    return EventOut.model_validate(event)
+    return _out(event, key)

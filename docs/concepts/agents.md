@@ -22,8 +22,11 @@ own backend. Its keys can never:
 - hold the `admin` scope, which would let it loosen its own limits;
 - change, reset or delete anyone's preferences, rotate preference tokens or see them (they
   are redacted from recipients and message content it reads);
-- send inline recipient profiles, which could change the time zone or attributes policy
-  decides on; agents refer to people by external id;
+- create or change recipient profiles or addresses, inline or through
+  `/v1/recipients`: that would decide where everyone's messages go, or change the time
+  zone and attributes policy decides on; agents refer to people by external id;
+- report events as another producer: an agent's events always have source
+  `agent:<key>`, and the `cue.*` names and source `cue` are reserved for Cue;
 - cancel, review or report engagement on messages that are not its own.
 
 ## Set one up
@@ -124,11 +127,12 @@ their phone without an API key. Each reviewer gets their own link:
 - **Safe to preview:** opening the link changes nothing (mail scanners prefetch links);
   only the buttons, which `POST`, act.
 - **Recorded:** the message's `reviewed_by` is `link:<reviewer>`.
-- **Unguessable and not stored:** the token has 256 bits of randomness, and Cue keeps
-  only its SHA-256 hash.
+- **Unguessable:** the token has 256 bits of randomness, and links are looked up by its
+  SHA-256 hash.
 
 Agent keys see only the messages and events they sent themselves, and no digests, so an
-agent can never read its own review link.
+agent can never read its own review link. Other keys without `admin` see review links as
+`/review/[redacted]`, so a read-only dashboard key cannot decide either.
 
 ## Screening
 

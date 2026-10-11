@@ -6,6 +6,48 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+- Agent keys can no longer create or change recipient profiles and addresses through
+  `/v1/recipients` (only inline profiles were refused before). An agent with
+  `recipients:write` could otherwise redirect someone's messages, including password
+  resets from other senders, or rewrite attributes its approval condition reads.
+- An agent's events always have the source `agent:<key>`, so it cannot claim another
+  producer's idempotency keys and suppress their events. Event names starting with
+  `cue.` and the source `cue` are reserved: forged approval notifications are refused.
+- Review links are shown only to `admin` keys; other keys see `/review/[redacted]` in
+  events and message content, so a read-only key can no longer decide.
+- Keys of a disabled agent are refused on every endpoint, not only on sends.
+- Agents may have at most `approvals.max_pending_per_agent` (10) open approval requests,
+  so approval notifications cannot be used to bypass the attention budget.
+- Request bodies over `api.max_body_bytes` (1 MiB; 64 MiB for broadcasts) are refused
+  with `413` before they are read; unauthenticated clients could exhaust memory before.
+- Tokens in request paths (preference pages, review links, open tracking) are redacted
+  in logs.
+- Twilio STOP replies with empty parameters (`FromCity=`, common on inbound SMS) were
+  rejected as forged; signatures now follow Twilio's algorithm exactly. A junk
+  signature header returns 403 instead of 500.
+- The hosted preference page reads the form before locking, so a client sending its
+  body slowly cannot hold the SQLite write lock.
+- Two reviewers deciding at once no longer deadlock on PostgreSQL.
+- AI guardrails: numbers keep their grouping ("1 250 000" cannot become "12 500.00"),
+  dates cannot have their parts swapped, links without a scheme count as facts, and
+  prompt data cannot close its tag.
+- Screening sees HTML bodies (as text, with link targets), image links and push data,
+  and treats out-of-range or NaN scores as errors (`on_error` applies). The review page
+  lists every link the message carries, on every channel.
+- Channel credentials no longer appear in configuration errors or `repr`.
+- Static webhook headers go only to the configured URL, never to recipient-registered
+  URLs; IPv6 addresses that embed IPv4 (NAT64, 6to4) are refused for those URLs.
+- E-mail addresses must be a single mailbox; a list would have copied messages past
+  preferences and caps.
+- `/readyz` no longer reports channel names or database error types; metrics count at
+  most 200 distinct event names.
+- `cuectl prune` also deletes decided approval requests, expired review links and dead
+  jobs; `--ledger-older-than` prunes the consent ledger when you choose to.
+- Helm: no service-account token is mounted, the ingress exposes only the API, token
+  pages and docs (not `/metrics`), and an optional NetworkPolicy.
+- Python SDK: a non-ASCII signature header is rejected instead of raising `TypeError`.
+
 ## [0.3.0] — 2026-10-11
 
 ### Added

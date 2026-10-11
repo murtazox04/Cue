@@ -28,9 +28,18 @@ is a complete reference stack.
   `worker.shutdown_timeout`; set your orchestrator's grace period higher.
 - **Probes.** Liveness: `GET /healthz`. Readiness: `GET /readyz` (checks the database).
 - **Metrics.** Set `metrics = true` and scrape `/metrics` (install the `metrics` extra).
-- **TLS and network.** Terminate TLS at your ingress. Only `/v1/track/*`, `/healthz` and
-  `/readyz` are meant to be reachable without a key.
-- **Retention.** Schedule `cuectl prune --older-than 90` (cron/Kubernetes CronJob).
+  `/metrics` has no key; keep it off the public ingress (the Helm chart routes it only
+  inside the cluster).
+- **TLS and network.** Terminate TLS at your ingress. Without a key, only the probes,
+  `/v1/track/*`, and the token pages (`/preferences/…`, `/review/…`, Twilio's webhook)
+  are reachable.
+- **Request size.** Bodies over `api.max_body_bytes` (1 MiB) are refused with `413`
+  before they are read. Set a similar limit at your proxy as well.
+- **Logs.** Tokens in paths (preference pages, review links, open tracking) are replaced
+  with `[redacted]` in Cue's logs. Your proxy's access log is yours to redact.
+- **Retention.** Schedule `cuectl prune --older-than 90` (cron/Kubernetes CronJob). The
+  consent ledger is proof of consent, so it is kept unless you add
+  `--ledger-older-than DAYS`.
 - **Dead jobs.** `cuectl jobs stats` shows jobs that exhausted retries;
   `cuectl jobs retry-dead` requeues them after you fix the cause.
 

@@ -40,6 +40,11 @@ class ForbiddenError(ServiceError):
     title = "Forbidden"
 
 
+class TooManyRequestsError(ServiceError):
+    status_code = 429
+    title = "Too many requests"
+
+
 class GoneError(ServiceError):
     status_code = 410
     title = "Gone"

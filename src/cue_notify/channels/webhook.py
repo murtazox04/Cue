@@ -60,10 +60,20 @@ def sign(body: bytes, secret: str, timestamp: int) -> str:
     return f"t={timestamp},v1={mac.hexdigest()}"
 
 
+# IPv6 prefixes that embed an IPv4 address (NAT64, IPv4-compatible, 6to4); the embedded
+# address could be private, so they are refused outright.
+_EMBEDS_IPV4 = tuple(
+    ipaddress.ip_network(net) for net in ("64:ff9b::/96", "64:ff9b:1::/48", "::/96", "2002::/16")
+)
+
+
 def is_public(ip: str) -> bool:
     address = ipaddress.ip_address(ip)
-    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
-        address = address.ipv4_mapped
+    if isinstance(address, ipaddress.IPv6Address):
+        if address.ipv4_mapped is not None:
+            address = address.ipv4_mapped
+        elif any(address in net for net in _EMBEDS_IPV4):
+            return False
     return address.is_global and not address.is_multicast
 
 
@@ -119,7 +129,9 @@ class WebhookChannel(Channel[WebhookConfig]):
         headers = {
             "Content-Type": "application/json",
             "Idempotency-Key": str(delivery.message_id),
-            **self.config.headers,
+            # Static headers (often credentials) go only to the configured URL, never to
+            # URLs that recipients registered themselves.
+            **(self.config.headers if self.config.url is not None else {}),
         }
         if self.config.secret:
             headers[SIGNATURE_HEADER] = sign(

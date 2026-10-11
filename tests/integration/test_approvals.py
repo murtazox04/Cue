@@ -24,7 +24,7 @@ from cue_notify.settings import (
     Settings,
     WorkerSettings,
 )
-from tests.helpers import FakeChannel, create_recipient, drain
+from tests.helpers import FakeChannel, create_recipient, create_rule, create_template, drain
 
 BASE = "https://notify.test"
 CALLBACK = "https://app.test/cue/decisions"
@@ -251,3 +251,47 @@ async def test_invalid_requests_are_rejected(
     response = await agent.post("/v1/approvals", json=body)
     assert response.status_code == 422
     assert fragment in response.text
+
+
+async def test_review_links_are_shown_only_to_admin_keys(
+    client: httpx.AsyncClient, agent: httpx.AsyncClient, runtime: Runtime
+) -> None:
+    await create_template(
+        client,
+        key="review",
+        locales={
+            "en": {"title": "Your OK?", "body": "{{ data.title }}", "url": "{{ data.review_url }}"}
+        },
+    )
+    await create_rule(
+        client,
+        key="ask-reviewers",
+        event="cue.approval_requested",
+        template="review",
+        channels=["push"],
+    )
+    await _ask(agent)
+    await drain(runtime)
+    key = await client.post("/v1/api-keys", json={"name": "dashboard", "scopes": ["messages:read"]})
+    async with _client(runtime, key.json()["key"]) as dashboard:
+        [event] = (await dashboard.get("/v1/events")).json()["items"]
+        messages = (await dashboard.get("/v1/messages")).json()["items"]
+    assert event["data"]["review_url"] == f"{BASE}/review/[redacted]"
+    assert messages
+    assert "/review/[redacted]" in json.dumps(messages)
+    path = await _review_path(client)  # admin keys still see the link
+    assert "[redacted]" not in path
+    assert path.removeprefix("/review/") not in json.dumps(messages)
+
+
+async def test_agents_have_a_limit_on_open_requests(
+    client: httpx.AsyncClient, agent: httpx.AsyncClient, runtime: Runtime
+) -> None:
+    limit = runtime.settings.approvals.max_pending_per_agent
+    for _ in range(limit):
+        await _ask(agent)
+    body = {"title": "One more?", "reviewers": ["lead"]}
+    refused = await agent.post("/v1/approvals", json=body)
+    assert refused.status_code == 429
+    # Your own backend is not bound by an agent's limit.
+    assert (await client.post("/v1/approvals", json=body)).status_code == 201

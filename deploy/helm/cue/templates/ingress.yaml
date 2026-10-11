@@ -21,11 +21,13 @@ spec:
     - host: {{ .Values.ingress.host }}
       http:
         paths:
-          - path: /
+          {{- range .Values.ingress.paths }}
+          - path: {{ . }}
             pathType: Prefix
             backend:
               service:
-                name: {{ include "cue.fullname" . }}
+                name: {{ include "cue.fullname" $ }}
                 port:
                   name: http
+          {{- end }}
 {{- end }}

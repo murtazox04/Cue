@@ -304,30 +304,61 @@ def jobs_retry_dead(
 @app.command()
 def prune(
     older_than: Annotated[int, typer.Option(help="Retention in days.")] = 90,
+    ledger_older_than: Annotated[
+        int | None,
+        typer.Option(
+            help="Also delete consent-ledger entries older than this many days. They are "
+            "proof of consent, so they are kept unless you ask (US claims run for 4 years)."
+        ),
+    ] = None,
 ) -> None:
-    """Delete events, final messages and closed digests older than the retention period."""
-    from cue_notify.core.enums import DigestStatus, EventStatus, MessageStatus
-    from cue_notify.db.models import Digest, Event, Message
+    """Delete events, final messages, closed digests, decided approval requests and dead
+    jobs older than the retention period."""
+    from cue_notify.core.enums import ApprovalStatus, DigestStatus, EventStatus, MessageStatus
+    from cue_notify.db.models import (
+        Approval,
+        Digest,
+        Event,
+        Job,
+        Message,
+        PreferenceChange,
+        ReviewLink,
+    )
 
-    async def main(runtime: Runtime) -> tuple[int, int]:
+    async def main(runtime: Runtime) -> dict[str, int]:
         cutoff = utcnow() - timedelta(days=older_than)
+        statements = {
+            "message": delete(Message).where(
+                Message.created_at < cutoff,
+                Message.status.not_in((MessageStatus.QUEUED, MessageStatus.SENDING)),
+            ),
+            "event": delete(Event).where(
+                Event.received_at < cutoff, Event.status != EventStatus.PENDING
+            ),
+            "digest": delete(Digest).where(
+                Digest.created_at < cutoff, Digest.status != DigestStatus.OPEN
+            ),
+            # Titles, bodies and metadata of requests can hold personal data too.
+            "approval request": delete(Approval).where(
+                Approval.created_at < cutoff, Approval.status != ApprovalStatus.PENDING
+            ),
+            "review link": delete(ReviewLink).where(ReviewLink.expires_at < cutoff),
+            # Payloads and errors of jobs that gave up.
+            "dead job": delete(Job).where(Job.dead.is_(True), Job.created_at < cutoff),
+        }
+        if ledger_older_than is not None:
+            statements["consent-ledger entry"] = delete(PreferenceChange).where(
+                PreferenceChange.created_at < utcnow() - timedelta(days=ledger_older_than)
+            )
+        counts: dict[str, int] = {}
         async with runtime.transaction() as session:
-            await session.execute(
-                delete(Digest).where(Digest.created_at < cutoff, Digest.status != DigestStatus.OPEN)
-            )
-            messages = await session.execute(
-                delete(Message).where(
-                    Message.created_at < cutoff,
-                    Message.status.not_in((MessageStatus.QUEUED, MessageStatus.SENDING)),
-                )
-            )
-            events = await session.execute(
-                delete(Event).where(Event.received_at < cutoff, Event.status != EventStatus.PENDING)
-            )
-        return int(getattr(messages, "rowcount", 0)), int(getattr(events, "rowcount", 0))
+            for name, statement in statements.items():
+                result = await session.execute(statement)
+                counts[name] = int(getattr(result, "rowcount", 0))
+        return counts
 
-    messages, events = _with_runtime(main)
-    typer.echo(f"deleted {messages} message(s) and {events} event(s)")
+    counts = _with_runtime(main)
+    typer.echo("deleted " + ", ".join(f"{n} {name}(s)" for name, n in counts.items()))
 
 
 def main() -> None:

@@ -19,7 +19,12 @@ from cue_notify.channels.registry import ChannelConfigError, ChannelRegistry
 from cue_notify.channels.smtp import SmtpChannel, SmtpConfig
 from cue_notify.channels.telegram import TelegramChannel, TelegramConfig, format_message
 from cue_notify.channels.twilio import TwilioChannel, TwilioConfig
-from cue_notify.channels.webhook import SIGNATURE_HEADER, WebhookChannel, WebhookConfig
+from cue_notify.channels.webhook import (
+    SIGNATURE_HEADER,
+    WebhookChannel,
+    WebhookConfig,
+    is_public,
+)
 from cue_notify.core.content import Action, Content
 from cue_notify.core.enums import Importance
 from cue_notify.settings import ChannelSpec
@@ -461,3 +466,57 @@ def test_smtp_subject_line_breaks_are_collapsed() -> None:
     email = channel.build(_delivery("ann@x.test", title="Hi\r\nBcc: victim@x.test"))
     assert email["Subject"] == "Hi Bcc: victim@x.test"
     assert email["Bcc"] is None
+
+
+# --------------------------------------------------------------------------- security review
+
+
+@pytest.mark.parametrize(
+    "ip", ["64:ff9b::a9fe:a9fe", "::a9fe:a9fe", "2002:a9fe:a9fe::1", "::ffff:10.0.0.1"]
+)
+def test_ipv6_addresses_embedding_ipv4_are_not_public(ip: str) -> None:
+    assert not is_public(ip)
+
+
+async def test_static_webhook_headers_only_go_to_the_configured_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200)
+
+    async def resolve(_: WebhookChannel, host: str, port: int) -> list[str]:
+        return ["93.184.216.34"]
+
+    monkeypatch.setattr(WebhookChannel, "resolve", resolve)
+    headers = {"Authorization": "Bearer internal"}
+    async with _client(handler) as http:
+        fixed = WebhookConfig.model_validate({"url": "https://hooks.test/in", "headers": headers})
+        await WebhookChannel("hook", fixed, http).send(_delivery())
+        anywhere = WebhookConfig.model_validate({"headers": headers})
+        await WebhookChannel("hook", anywhere, http).send(_delivery("https://someone.test/x"))
+    assert seen[0].headers["authorization"] == "Bearer internal"
+    assert "authorization" not in seen[1].headers
+
+
+@pytest.mark.parametrize(
+    "address", ["a@x.test, b@y.test", "Bob <a@x.test>", "a@x.test\nBcc: c@z.test", "nobody"]
+)
+async def test_smtp_sends_to_exactly_one_mailbox(address: str) -> None:
+    config = SmtpConfig(host="mail.test", from_address="noreply@x.test")
+    async with httpx.AsyncClient() as http:
+        channel = SmtpChannel("mail", config, http)
+        with pytest.raises(InvalidAddressError):
+            await channel.send(_delivery(address))
+
+
+async def test_channel_secrets_stay_out_of_errors_and_reprs() -> None:
+    spec = ChannelSpec(provider="twilio", account_sid="AC1", auth_token="SUPERSECRET")
+    assert "SUPERSECRET" not in repr(spec)
+    async with httpx.AsyncClient() as http:
+        with pytest.raises(ChannelConfigError) as error:
+            ChannelRegistry.from_settings({"sms": spec}, http)
+    assert "SUPERSECRET" not in str(error.value)
+    assert error.value.__cause__ is None
