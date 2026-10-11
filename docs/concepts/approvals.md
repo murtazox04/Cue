@@ -86,15 +86,16 @@ Cue at an internal address.
 
 **Polling.** You can also call `GET /v1/approvals/{id}` until `status` is not `pending`.
 
-**API decisions.** A person can also decide through the API, with any key not bound to an
-agent:
+**API decisions.** A person can also decide through the API, with a key that holds the
+`approvals:decide` scope (or `admin`), for example from your own approval UI:
 
 ```http
 POST /v1/approvals/{id}/approve  {"reason": "go ahead"}
 POST /v1/approvals/{id}/reject   {"reason": "not this week"}
 ```
 
-Agent keys can never decide, and they see only their own requests.
+Agent keys can never hold `approvals:decide`, so they can never decide, and they see only
+their own requests.
 
 ## From agents
 

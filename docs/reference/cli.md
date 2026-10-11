@@ -30,8 +30,9 @@ deployments and debugging. All commands read the same [configuration](configurat
 | Scope | Grants |
 |---|---|
 | `events:write` | Ingest events, report engagement. |
-| `messages:write` | Direct sends, cancel messages, approve or reject held messages. |
+| `messages:write` | Direct sends, cancel messages, ask for approvals. |
 | `messages:read` | Read messages and events. |
 | `recipients:write` | Create, update and erase recipients, addresses and preferences. |
 | `recipients:read` | Read recipients. |
+| `approvals:decide` | Approve or reject held messages and approval requests. Give it to the keys your people decide with. |
 | `admin` | Everything, including templates, rules, categories, broadcasts and keys. |
