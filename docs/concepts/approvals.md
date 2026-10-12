@@ -133,7 +133,7 @@ from crewai.flow import Flow, human_feedback, listen, start
 from cue_client import Cue, verify_webhook
 from cue_client.crewai import CueFeedbackProvider, resume_args
 
-provider = CueFeedbackProvider(Cue(CUE_KEY, CUE_URL), reviewers=["lead"])
+provider = CueFeedbackProvider(Cue(CUE_API_KEY, CUE_URL), reviewers=["lead"])
 
 
 class PublishFlow(Flow):
@@ -171,7 +171,7 @@ hands it to Cue, and publishes Cue's decision back:
 from cue_client import AsyncCue, verify_webhook
 from cue_client.dapr import approval_request, approval_response
 
-cue = AsyncCue(CUE_KEY, CUE_URL)
+cue = AsyncCue(CUE_API_KEY, CUE_URL)
 
 
 @app.post("/approval-requests")  # Dapr subscription, request topic

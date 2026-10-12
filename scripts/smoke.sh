@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Walk through docs/getting-started.md against a running Cue and fail loudly if any
-# step does not behave as documented. Usage: CUE_KEY=ck_… scripts/smoke.sh [base url]
+# step does not behave as documented. Usage: CUE_API_KEY=ck_… scripts/smoke.sh [base url]
 set -euo pipefail
 
 URL="${1:-http://localhost:8000}"
-: "${CUE_KEY:?set CUE_KEY to an admin API key}"
-AUTH=(-H "Authorization: Bearer $CUE_KEY")
+: "${CUE_API_KEY:?set CUE_API_KEY to an admin API key}"
+AUTH=(-H "Authorization: Bearer $CUE_API_KEY")
 JSON=(-H "Content-Type: application/json")
 
 post() {  # post <path> <expected status> <body>

@@ -175,7 +175,7 @@ jobs:
       - name: Walk through the getting-started guide
         run: |
           key=$(docker compose exec -T api cuectl keys create admin | grep -o 'ck_[A-Za-z0-9_-]*')
-          CUE_KEY="$key" scripts/smoke.sh
+          CUE_API_KEY="$key" scripts/smoke.sh
       - if: failure()
         run: docker compose logs
 
@@ -209,7 +209,7 @@ jobs:
           key=$(kubectl exec deploy/cue-api -- cuectl keys create admin | grep -o 'ck_[A-Za-z0-9_-]*')
           kubectl port-forward svc/cue 8000:80 &
           timeout 60 bash -c 'until curl -fs localhost:8000/healthz; do sleep 2; done'
-          CUE_KEY="$key" scripts/smoke.sh
+          CUE_API_KEY="$key" scripts/smoke.sh
       - if: failure()
         run: |
           kubectl get pods -A

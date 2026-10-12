@@ -104,7 +104,8 @@ template and a rule and send an event that shows up in the log.
 To try it without installing anything, with [uv](https://docs.astral.sh/uv/):
 
 ```bash
-CUE_WORKER__EMBEDDED=true CUE_CHANNELS__PUSH__PROVIDER=console uvx cue-notify serve --migrate
+CUE_WORKER__EMBEDDED=true CUE_CHANNELS__PUSH__PROVIDER=console \
+  CUE_CHANNELS__SMS__PROVIDER=console uvx cue-notify serve --migrate
 ```
 
 and, in a second terminal in the same directory (both use `./cue.db`),
