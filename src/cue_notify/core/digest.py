@@ -102,7 +102,7 @@ class DigestPolicy(BaseModel):
         days = set(self.days or WEEKDAYS)
         for offset in range(8):
             date = local.date() + timedelta(days=offset)
-            candidate = datetime.combine(date, self.deliver_at, tzinfo=tz)
-            if WEEKDAYS[date.weekday()] in days and candidate > local:
-                return candidate.astimezone(UTC)
+            candidate = datetime.combine(date, self.deliver_at, tzinfo=tz).astimezone(UTC)
+            if WEEKDAYS[date.weekday()] in days and candidate > now.astimezone(UTC):
+                return candidate
         raise AssertionError("a week always contains an allowed day")  # pragma: no cover

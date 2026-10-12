@@ -1,7 +1,7 @@
 {
   "name": "cue",
   "owner": { "name": "Murtazo Xurramov" },
-  "description": "Cue: the attention layer between software, AI agents and people.",
+  "description": "Cue: a self-hosted notification decision engine.",
   "plugins": [
     {
       "name": "cue",

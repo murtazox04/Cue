@@ -24,6 +24,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from cue_notify import queue
 from cue_notify.ai import GenerationError, PersonalizationRequest
@@ -33,7 +34,7 @@ from cue_notify.core.content import DEFAULT_VARIANT, Content
 from cue_notify.core.enums import MessageStatus, SuppressionReason
 from cue_notify.core.time import utcnow
 from cue_notify.db.dml import upsert_increment
-from cue_notify.db.models import Agent, AiUsage, Category, Message, Recipient, Template
+from cue_notify.db.models import Agent, AiUsage, Category, Job, Message, Recipient, Template
 from cue_notify.runtime import Runtime
 from cue_notify.services import composer, preferences
 from cue_notify.services import recipients as recipient_service
@@ -277,8 +278,22 @@ async def deliver(ctx: queue.JobContext) -> None:
             message.status = MessageStatus.SUPPRESSED
             message.status_reason = SuppressionReason.EXPIRED
             return
-        message.status = MessageStatus.SENDING
-        message.attempts += 1
+        now = utcnow()
+        allowed = (
+            now
+            if category is None
+            else composer.message_send_time(now, message, recipient, category, runtime)
+        )
+        if allowed <= now:
+            message.status = MessageStatus.SENDING
+            message.attempts += 1
+        elif message.expires_at is not None and allowed >= message.expires_at:
+            message.status = MessageStatus.SUPPRESSED
+            message.status_reason = SuppressionReason.EXPIRED
+            return
+        else:
+            message.status = MessageStatus.QUEUED
+            message.send_at = allowed
         links = preferences.links(runtime.settings, recipient, category)
         targets = {
             channel: [
@@ -289,6 +304,12 @@ async def deliver(ctx: queue.JobContext) -> None:
             for channel in message.channels
             if channel in runtime.channels and channel not in prefs.muted_channels
         }
+    if allowed > now:
+        raise queue.RetryLater(
+            (allowed - utcnow()).total_seconds(),
+            f"outside allowed hours until {allowed}",
+            planned=True,
+        )
 
     await _personalize(runtime, message, recipient)
     if await _screen(runtime, message):
@@ -360,8 +381,25 @@ async def deliver_dead(ctx: queue.JobContext, error: str) -> None:
                 Message.id == UUID(ctx.payload["message_id"]),
                 Message.status.in_((MessageStatus.QUEUED, MessageStatus.SENDING)),
             )
-            .values(status=MessageStatus.FAILED, status_reason=f"gave up: {error}"[:500])
+            .values(status=MessageStatus.FAILED, status_reason=gave_up_reason(error))
         )
+
+
+def gave_up_reason(error: str) -> str:
+    return f"gave up: {error}"[:500]
+
+
+async def deliver_revive(session: AsyncSession, job: Job) -> bool:
+    result = await session.execute(
+        update(Message)
+        .where(
+            Message.id == UUID(job.payload["message_id"]),
+            Message.status == MessageStatus.FAILED,
+            Message.status_reason == gave_up_reason(job.last_error or ""),
+        )
+        .values(status=MessageStatus.QUEUED, status_reason=None)
+    )
+    return bool(getattr(result, "rowcount", 0))
 
 
 async def _disable_addresses(

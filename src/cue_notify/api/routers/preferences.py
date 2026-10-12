@@ -21,7 +21,7 @@ async def get_preferences(
 ) -> preferences.PreferenceCenter:
     """Categories with their subscription state and the routes this person can be
     reached on, ready to render as a preference page."""
-    recipient = await preferences.by_token(session, token, lock=False)
+    recipient = await preferences.by_token(session, runtime.settings, token, lock=False)
     return await preferences.center(session, runtime, recipient)
 
 
@@ -35,7 +35,7 @@ async def update_preferences(
 ) -> preferences.PreferenceCenter:
     """Recorded in the consent ledger with source `self_service`. Categories that do not
     allow unsubscribing (such as `transactional`) are refused with 422."""
-    recipient = await preferences.by_token(session, token)
+    recipient = await preferences.by_token(session, runtime.settings, token)
     return await preferences.update(
         session, runtime, recipient, body, provenance=provenance(request, "preference_api")
     )

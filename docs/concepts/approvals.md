@@ -86,15 +86,16 @@ Cue at an internal address.
 
 **Polling.** You can also call `GET /v1/approvals/{id}` until `status` is not `pending`.
 
-**API decisions.** A person can also decide through the API, with any key not bound to an
-agent:
+**API decisions.** A person can also decide through the API, with a key that holds the
+`approvals:decide` scope (or `admin`), for example from your own approval UI:
 
 ```http
 POST /v1/approvals/{id}/approve  {"reason": "go ahead"}
 POST /v1/approvals/{id}/reject   {"reason": "not this week"}
 ```
 
-Agent keys can never decide, and they see only their own requests.
+Agent keys can never hold `approvals:decide`, so they can never decide, and they see only
+their own requests.
 
 ## From agents
 
@@ -132,7 +133,7 @@ from crewai.flow import Flow, human_feedback, listen, start
 from cue_client import Cue, verify_webhook
 from cue_client.crewai import CueFeedbackProvider, resume_args
 
-provider = CueFeedbackProvider(Cue(CUE_KEY, CUE_URL), reviewers=["lead"])
+provider = CueFeedbackProvider(Cue(CUE_API_KEY, CUE_URL), reviewers=["lead"])
 
 
 class PublishFlow(Flow):
@@ -170,7 +171,7 @@ hands it to Cue, and publishes Cue's decision back:
 from cue_client import AsyncCue, verify_webhook
 from cue_client.dapr import approval_request, approval_response
 
-cue = AsyncCue(CUE_KEY, CUE_URL)
+cue = AsyncCue(CUE_API_KEY, CUE_URL)
 
 
 @app.post("/approval-requests")  # Dapr subscription, request topic

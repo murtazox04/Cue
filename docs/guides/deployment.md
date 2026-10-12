@@ -10,8 +10,15 @@ docker build -t cue .                               # everything, including AI
 docker build -t cue --build-arg EXTRAS="postgres fcm metrics" .   # without AI
 ```
 
-The image runs as an unprivileged user, contains no source tree, logs JSON and has a
-health check on `/healthz`. [`compose.yaml`](https://github.com/murtazox04/Cue/blob/main/compose.yaml)
+Released images are published as `ghcr.io/murtazox04/cue:<version>` (for example
+`0.4.0`) and `ghcr.io/murtazox04/cue:<major>.<minor>` (for example `0.4`, which follows
+patch releases). The versions are listed on the
+[releases page](https://github.com/murtazox04/Cue/releases); pin an exact version in
+production.
+
+The image's entrypoint is `cuectl` and its default command is
+`serve --host 0.0.0.0 --port 8000`. It runs as an unprivileged user, contains no source
+tree, logs JSON and has a health check on `/healthz`. [`compose.yaml`](https://github.com/murtazox04/Cue/blob/main/compose.yaml)
 is a complete reference stack.
 
 ## Production checklist
@@ -34,14 +41,43 @@ is a complete reference stack.
   `/v1/track/*`, and the token pages (`/preferences/…`, `/review/…`, Twilio's webhook)
   are reachable.
 - **Request size.** Bodies over `api.max_body_bytes` (1 MiB) are refused with `413`
-  before they are read. Set a similar limit at your proxy as well.
+  before they are read. Only `POST /v1/broadcasts` with an admin key may send up to
+  `api.max_broadcast_body_bytes`. Set a similar limit at your proxy as well.
+- **Rate limits.** The routes reachable without a key (`/preferences/…`, `/review/…`,
+  `/v1/track/…`, `/v1/inbound/…`) are limited per client address, and so are failed
+  logins: after too many `401`s on `/v1`, requests from that address without a valid
+  key get `429` for a while (valid keys keep working). See
+  [`api.rate_limit`](../reference/configuration.md#apirate_limit). Behind a proxy, list it
+  in `api.trusted_proxies`, or every client shares the proxy's address. The limits are
+  kept **in each process**: with several replicas or `--workers`, a client gets the limit
+  once per process. Add a limit at your reverse proxy or ingress as well for
+  multi-replica setups.
+- **Bind address.** `cuectl serve` listens on `127.0.0.1` unless you pass
+  `--host 0.0.0.0`; the image, Compose file, Helm chart and Render Blueprint pass it.
+- **HTTPS links.** Set `api.public_url` to an `https://` URL. A plain-`http` URL (other
+  than `localhost`) logs a warning at startup and fails `cuectl check`.
+- **Secret key.** `api.public_url` requires `api.secret_key` (`CUE_API__SECRET_KEY`), which
+  signs preference and unsubscribe links. Generate it once:
+  `python -c 'import secrets; print(secrets.token_urlsafe(32))'` (at least 32
+  characters), keep it in your secret store, and give **the same value to every API and
+  worker process**: a link signed by a worker must verify on the API. Changing it later
+  breaks every preference and unsubscribe link already sent, so rotate it only if it
+  leaks. The Render Blueprint generates one for you.
+- **Check before rollout.** `cuectl check` validates the configuration and the database
+  connection and exits with status 1 when it finds an unsafe setting (an unsigned webhook,
+  a plain-`http` public URL), listing it under `warnings`.
 - **Logs.** Tokens in paths (preference pages, review links, open tracking) are replaced
   with `[redacted]` in Cue's logs. Your proxy's access log is yours to redact.
-- **Retention.** Schedule `cuectl prune --older-than 90` (cron/Kubernetes CronJob). The
-  consent ledger is proof of consent, so it is kept unless you add
-  `--ledger-older-than DAYS`.
+- **Retention.** Nothing is deleted unless you run `cuectl prune`; the worker does not
+  run it for you. Schedule it daily with the same configuration as the API, for
+  example from cron (`0 3 * * * cuectl prune --older-than 90`) or a Kubernetes
+  CronJob running the image with the arguments `prune --older-than 90`. It deletes in
+  batches of `--batch-size` rows (1000), each in its own transaction, so it can run
+  while Cue is serving. The consent ledger is proof of consent, so it is kept unless you
+  add `--ledger-older-than DAYS`.
 - **Dead jobs.** `cuectl jobs stats` shows jobs that exhausted retries;
-  `cuectl jobs retry-dead` requeues them after you fix the cause.
+  `cuectl jobs retry-dead` requeues them after you fix the cause, and reopens the
+  events, messages, broadcasts and digests they had marked failed.
 
 ## Delivery guarantees
 
@@ -56,12 +92,18 @@ The chart in [`deploy/helm/cue`](https://github.com/murtazox04/Cue/tree/main/dep
 runs the API and the worker against your PostgreSQL:
 
 ```bash
+kubectl create secret generic cue-secrets \
+  --from-literal=secret-key="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
 helm install cue ./deploy/helm/cue \
   --set database.existingSecret=cue-db \
   --set env.CUE_API__PUBLIC_URL=https://cue.example.com \
+  --set secretEnv.CUE_API__SECRET_KEY.secretName=cue-secrets \
+  --set secretEnv.CUE_API__SECRET_KEY.key=secret-key \
   --set ingress.enabled=true --set ingress.host=cue.example.com
 kubectl exec deploy/cue-api -- cuectl keys create admin
 ```
+
+`env` and `secretEnv` apply to both the API and the worker, so they share the secret key.
 
 - **Configuration:** structure (channels, quiet hours) goes in `config`, which becomes
   `cue.toml` in a ConfigMap. Secrets go in `secretEnv` or `envFrom`, from your own
@@ -77,7 +119,9 @@ kubectl exec deploy/cue-api -- cuectl keys create admin
 
 [`render.yaml`](https://github.com/murtazox04/Cue/blob/main/render.yaml) is a Blueprint:
 **New → Blueprint →** this repository. It creates the API (migrating on start), a worker
-and a PostgreSQL database from the published image. Set `CUE_API__PUBLIC_URL` when Render
+and a PostgreSQL database from the published image (a `<major>.<minor>` tag, which follows patch
+releases; change it in `render.yaml` to pin or upgrade), and generates
+`CUE_API__SECRET_KEY` for both services. Set `CUE_API__PUBLIC_URL` when Render
 asks, then create a key in the API service's shell: `cuectl keys create admin`.
 
 ## Railway, Heroku and similar platforms
@@ -90,7 +134,10 @@ Cue reads the platform's conventions:
 
 On Railway:
 
-1. Create a project from the image `ghcr.io/murtazox04/cue:0.3.1` (or this repository).
+1. Create a project from the image `ghcr.io/murtazox04/cue:<version>` (or this
+   repository).
 2. Add PostgreSQL, and give the service `DATABASE_URL=${{Postgres.DATABASE_URL}}`.
-3. Set the start command to `cuectl serve --migrate`.
+3. Set the start command to `cuectl serve --migrate --host 0.0.0.0`. Without
+   `--host 0.0.0.0` it listens only inside its own container.
 4. Add a second service from the same image with the start command `cuectl worker`.
+5. If you set `CUE_API__PUBLIC_URL`, set the same `CUE_API__SECRET_KEY` on both services.

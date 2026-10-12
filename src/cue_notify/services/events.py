@@ -20,7 +20,7 @@ from cue_notify.core.ids import uuid7
 from cue_notify.core.limits import bounded_data
 from cue_notify.core.time import ensure_utc, utcnow
 from cue_notify.db.dml import insert_ignore
-from cue_notify.db.models import Agent, Category, Event, Recipient, Rule, Template
+from cue_notify.db.models import Agent, Category, Event, Job, Recipient, Rule, Template
 from cue_notify.runtime import Runtime
 from cue_notify.services import composer, digests
 from cue_notify.services import recipients as recipient_service
@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 PROCESS_JOB = "process_event"
 SYSTEM_SOURCE = "cue"
 """Source of the events Cue reports itself (``cue.*``); refused from the API."""
+SYSTEM_EVENT_PREFIX = "cue."
 
 
 class EventIn(BaseModel):
@@ -69,10 +70,13 @@ async def ingest(
     *,
     source: str,
     agent_key: str | None = None,
+    may_change_profile: bool = True,
 ) -> tuple[Event, bool]:
     """Store an event and schedule its processing. Returns ``(event, created)``."""
     if isinstance(data.recipient, recipient_service.RecipientIn):
-        recipient = await recipient_service.upsert(session, data.recipient)
+        recipient = await recipient_service.upsert(
+            session, data.recipient, may_change_profile=may_change_profile
+        )
     else:
         recipient = await recipient_service.ensure(session, data.recipient)
 
@@ -157,7 +161,13 @@ async def candidate_rules(session: AsyncSession, event_name: str) -> list[Rule]:
             select(Rule).where(Rule.enabled.is_(True)).order_by(Rule.priority.desc(), Rule.key)
         )
     ).all()
-    return [rule for rule in rules if fnmatch.fnmatchcase(event_name, rule.event)]
+    return [rule for rule in rules if pattern_matches(rule.event, event_name)]
+
+
+def pattern_matches(pattern: str, event_name: str) -> bool:
+    if event_name.startswith(SYSTEM_EVENT_PREFIX):
+        return pattern == event_name
+    return fnmatch.fnmatchcase(event_name, pattern)
 
 
 async def evaluate(
@@ -277,3 +287,16 @@ async def process_dead(ctx: queue.JobContext, error: str) -> None:
         if event is not None and event.status is EventStatus.PENDING:
             event.status = EventStatus.FAILED
             event.error = error[:4000]
+
+
+async def process_revive(session: AsyncSession, job: Job) -> bool:
+    event = await session.get(Event, UUID(job.payload["event_id"]), with_for_update=True)
+    if (
+        event is None
+        or event.status is not EventStatus.FAILED
+        or event.error != (job.last_error or "")[:4000]
+    ):
+        return False
+    event.status = EventStatus.PENDING
+    event.error = None
+    return True

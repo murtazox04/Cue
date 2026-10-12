@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import signal
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 from uuid import UUID
 
 import typer
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import ColumnElement, and_, delete, func, select, update
+from sqlalchemy.orm import InstrumentedAttribute
 
 from cue_notify import __version__
 from cue_notify.core.enums import Scope
@@ -19,11 +21,14 @@ from cue_notify.core.time import utcnow
 from cue_notify.observability import configure_logging
 from cue_notify.runtime import Runtime
 from cue_notify.services.errors import ServiceError
-from cue_notify.settings import get_settings
+from cue_notify.settings import get_settings, is_loopback_host
+
+if TYPE_CHECKING:
+    from cue_notify.db.base import Base
 
 app = typer.Typer(
     name="cuectl",
-    help="Cue — the attention layer between software, AI agents and people.",
+    help="Cue: a self-hosted notification decision engine.",
     no_args_is_help=True,
     pretty_exceptions_show_locals=False,
 )
@@ -33,6 +38,11 @@ jobs_app = typer.Typer(help="Background job maintenance.", no_args_is_help=True)
 app.add_typer(db_app, name="db")
 app.add_typer(keys_app, name="keys")
 app.add_typer(jobs_app, name="jobs")
+
+API_KEY_ENV = "CUE_API_KEY"
+MCP_BEARER_ENV = "CUE_MCP_AUTH_TOKEN"
+MIN_MCP_TOKEN_LENGTH = 32
+AGENT_DEFAULT_SCOPES = (Scope.EVENTS_WRITE, Scope.MESSAGES_WRITE, Scope.MESSAGES_READ)
 
 
 def _with_runtime[T](fn: Callable[[Runtime], Awaitable[T]], *, quiet: bool = True) -> T:
@@ -53,6 +63,27 @@ def _with_runtime[T](fn: Callable[[Runtime], Awaitable[T]], *, quiet: bool = Tru
         raise typer.Exit(1) from exc
 
 
+def print_version(requested: bool) -> None:
+    if requested:
+        typer.echo(__version__)
+        raise typer.Exit
+
+
+@app.callback()
+def options(
+    show_version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            callback=print_version,
+            is_eager=True,
+            help="Print the version and exit.",
+        ),
+    ] = False,
+) -> None:
+    pass
+
+
 @app.command()
 def version() -> None:
     """Print the version."""
@@ -61,7 +92,9 @@ def version() -> None:
 
 @app.command()
 def serve(
-    host: Annotated[str, typer.Option(help="Bind address.")] = "0.0.0.0",  # noqa: S104
+    host: Annotated[
+        str, typer.Option(help="Bind address. Use 0.0.0.0 to listen on every interface.")
+    ] = "127.0.0.1",
     port: Annotated[int, typer.Option(help="Port.", envvar="PORT")] = 8000,
     workers: Annotated[int, typer.Option(help="Worker processes.")] = 1,
     reload: Annotated[bool, typer.Option(help="Reload on code changes (development).")] = False,
@@ -126,31 +159,73 @@ def mcp_server(
         str, typer.Option(envvar="CUE_URL", help="Base URL of the Cue API.")
     ] = "http://127.0.0.1:8000",
     api_key: Annotated[
-        str, typer.Option(envvar="CUE_API_KEY", help="API key the agent acts with.")
+        str,
+        typer.Option(
+            envvar=API_KEY_ENV,
+            help=f"API key the agent acts with. Prefer {API_KEY_ENV}: arguments show in ps.",
+        ),
     ] = "",
     transport: Annotated[
         str, typer.Option(help="stdio (desktop agents) or streamable-http.")
     ] = "stdio",
-    host: Annotated[str, typer.Option(help="Bind address for streamable-http.")] = "127.0.0.1",
+    host: Annotated[
+        str,
+        typer.Option(
+            help=f"Bind address for streamable-http. Off loopback it needs {MCP_BEARER_ENV}."
+        ),
+    ] = "127.0.0.1",
     port: Annotated[int, typer.Option(help="Port for streamable-http.")] = 8765,
+    auth_token: Annotated[
+        str,
+        typer.Option(
+            envvar=MCP_BEARER_ENV,
+            help="Bearer token streamable-http clients must send. Prefer the environment.",
+        ),
+    ] = "",
 ) -> None:
     """Run a Model Context Protocol server so AI agents can send notifications."""
     if not api_key:
-        raise typer.BadParameter("an API key is required (--api-key or CUE_API_KEY)")
+        raise typer.BadParameter(f"an API key is required (--api-key or {API_KEY_ENV})")
+    for value, option, env in (
+        (api_key, "--api-key", API_KEY_ENV),
+        (auth_token, "--auth-token", MCP_BEARER_ENV),
+    ):
+        if value and os.environ.get(env) != value:
+            typer.echo(
+                f"warning: {option} on the command line is visible to other users of this "
+                f"machine (ps); set {env} instead",
+                err=True,
+            )
     from cue_notify import mcp_server  # imported lazily: it is only needed here
 
     if transport == "stdio":
         mcp_server.run(url, api_key)
-    elif transport == "streamable-http":
-        mcp_server.run(url, api_key, "streamable-http", host=host, port=port)
-    else:
+        return
+    if transport != "streamable-http":
         raise typer.BadParameter("transport must be stdio or streamable-http")
+    if not auth_token and not is_loopback_host(host):
+        raise typer.BadParameter(
+            f"streamable-http on {host} would let anyone who can reach it act with the API "
+            f"key; set {MCP_BEARER_ENV} (or --auth-token), or bind to 127.0.0.1",
+            param_hint="--host",
+        )
+    if auth_token and len(auth_token) < MIN_MCP_TOKEN_LENGTH:
+        raise typer.BadParameter(
+            f"use at least {MIN_MCP_TOKEN_LENGTH} characters, e.g. from "
+            "`python -c 'import secrets; print(secrets.token_urlsafe(32))'`",
+            param_hint=f"--auth-token / {MCP_BEARER_ENV}",
+        )
+    from cue_notify import mcp_http
+
+    mcp_http.serve(url, api_key, host=host, port=port, token=auth_token or None)
 
 
 @app.command("check")
 def check_config() -> None:
     """Validate configuration and connectivity, then print a summary."""
     from sqlalchemy import text
+
+    from cue_notify.config_warnings import configuration_warnings
 
     async def main(runtime: Runtime) -> dict[str, Any]:
         async with runtime.session() as session:
@@ -163,9 +238,15 @@ def check_config() -> None:
             "channels": {name: type(ch).provider for name, ch in runtime.channels.items()},
             "ai": runtime.generator.model_name if runtime.generator else None,
             "embedded_worker": settings.worker.embedded,
+            "warnings": configuration_warnings(settings, runtime.channels),
         }
 
-    typer.echo(json.dumps(_with_runtime(main), indent=2))
+    summary = _with_runtime(main)
+    typer.echo(json.dumps(summary, indent=2))
+    for warning in summary["warnings"]:
+        typer.echo(f"error: {warning}", err=True)
+    if summary["warnings"]:
+        raise typer.Exit(1)
 
 
 # --------------------------------------------------------------------------- db
@@ -209,8 +290,15 @@ def db_current() -> None:
 def keys_create(
     name: Annotated[str, typer.Argument(help="Who uses the key, e.g. 'backend'.")],
     scope: Annotated[
-        list[Scope], typer.Option("--scope", "-s", help="Repeatable. Default: admin.")
-    ] = [Scope.ADMIN],  # noqa: B006 — Typer requires a literal default
+        list[Scope] | None,
+        typer.Option(
+            "--scope",
+            "-s",
+            help="Repeatable. Default: admin, or with --agent: "
+            + ", ".join(AGENT_DEFAULT_SCOPES)
+            + ".",
+        ),
+    ] = None,
     agent: Annotated[
         str | None, typer.Option(help="Bind the key to an agent (its budget and approval apply).")
     ] = None,
@@ -218,11 +306,13 @@ def keys_create(
     """Create an API key and print it once."""
     from cue_notify.services import agents, api_keys
 
+    granted = scope or (list(AGENT_DEFAULT_SCOPES) if agent is not None else [Scope.ADMIN])
+
     async def main(runtime: Runtime) -> str:
         async with runtime.transaction() as session:
             if agent is not None:
                 await agents.get(session, agent)
-            _, raw = await api_keys.create(session, name, scope, agent_key=agent)
+            _, raw = await api_keys.create(session, name, granted, agent_key=agent)
         return raw
 
     raw = _with_runtime(main)
@@ -289,16 +379,15 @@ def jobs_retry_dead(
     kind: Annotated[str | None, typer.Option(help="Only this kind.")] = None,
 ) -> None:
     """Requeue jobs that exhausted their retries."""
-    from cue_notify.db.models import Job
+    from cue_notify import jobs
+    from cue_notify.queue import Revival
 
-    async def main(runtime: Runtime) -> int:
-        stmt = update(Job).where(Job.dead.is_(True)).values(dead=False, attempts=0, run_at=utcnow())
-        if kind:
-            stmt = stmt.where(Job.kind == kind)
+    async def main(runtime: Runtime) -> Revival:
         async with runtime.transaction() as session:
-            return int(getattr(await session.execute(stmt), "rowcount", 0))
+            return await jobs.revive(session, kind)
 
-    typer.echo(f"requeued {_with_runtime(main)} job(s)")
+    revival = _with_runtime(main)
+    typer.echo(f"requeued {revival.jobs} job(s), reopened {revival.rows} row(s)")
 
 
 @app.command()
@@ -311,6 +400,9 @@ def prune(
             "proof of consent, so they are kept unless you ask (US claims run for 4 years)."
         ),
     ] = None,
+    batch_size: Annotated[
+        int, typer.Option(min=1, help="Rows deleted per transaction, so locks stay short.")
+    ] = 1000,
 ) -> None:
     """Delete events, final messages, closed digests, decided approval requests and dead
     jobs older than the retention period."""
@@ -327,38 +419,66 @@ def prune(
 
     async def main(runtime: Runtime) -> dict[str, int]:
         cutoff = utcnow() - timedelta(days=older_than)
-        statements = {
-            "message": delete(Message).where(
-                Message.created_at < cutoff,
-                Message.status.not_in((MessageStatus.QUEUED, MessageStatus.SENDING)),
+        targets: dict[str, tuple[type[Base], InstrumentedAttribute[Any], ColumnElement[bool]]] = {
+            "message": (
+                Message,
+                Message.id,
+                and_(
+                    Message.created_at < cutoff,
+                    Message.status.not_in((MessageStatus.QUEUED, MessageStatus.SENDING)),
+                ),
             ),
-            "event": delete(Event).where(
-                Event.received_at < cutoff, Event.status != EventStatus.PENDING
+            "event": (
+                Event,
+                Event.id,
+                and_(Event.received_at < cutoff, Event.status != EventStatus.PENDING),
             ),
-            "digest": delete(Digest).where(
-                Digest.created_at < cutoff, Digest.status != DigestStatus.OPEN
+            "digest": (
+                Digest,
+                Digest.id,
+                and_(Digest.created_at < cutoff, Digest.status != DigestStatus.OPEN),
             ),
             # Titles, bodies and metadata of requests can hold personal data too.
-            "approval request": delete(Approval).where(
-                Approval.created_at < cutoff, Approval.status != ApprovalStatus.PENDING
+            "approval request": (
+                Approval,
+                Approval.id,
+                and_(Approval.created_at < cutoff, Approval.status != ApprovalStatus.PENDING),
             ),
-            "review link": delete(ReviewLink).where(ReviewLink.expires_at < cutoff),
+            "review link": (ReviewLink, ReviewLink.token_hash, ReviewLink.expires_at < cutoff),
             # Payloads and errors of jobs that gave up.
-            "dead job": delete(Job).where(Job.dead.is_(True), Job.created_at < cutoff),
+            "dead job": (Job, Job.id, and_(Job.dead.is_(True), Job.created_at < cutoff)),
         }
         if ledger_older_than is not None:
-            statements["consent-ledger entry"] = delete(PreferenceChange).where(
-                PreferenceChange.created_at < utcnow() - timedelta(days=ledger_older_than)
+            targets["consent-ledger entry"] = (
+                PreferenceChange,
+                PreferenceChange.id,
+                PreferenceChange.created_at < utcnow() - timedelta(days=ledger_older_than),
             )
-        counts: dict[str, int] = {}
-        async with runtime.transaction() as session:
-            for name, statement in statements.items():
-                result = await session.execute(statement)
-                counts[name] = int(getattr(result, "rowcount", 0))
-        return counts
+        return {
+            name: await delete_in_batches(runtime, model, key, condition, batch_size)
+            for name, (model, key, condition) in targets.items()
+        }
 
     counts = _with_runtime(main)
     typer.echo("deleted " + ", ".join(f"{n} {name}(s)" for name, n in counts.items()))
+
+
+async def delete_in_batches(
+    runtime: Runtime,
+    model: type[Base],
+    key: InstrumentedAttribute[Any],
+    condition: ColumnElement[bool],
+    batch_size: int,
+) -> int:
+    deleted = 0
+    while True:
+        batch = select(key).where(condition).limit(batch_size).scalar_subquery()
+        async with runtime.transaction() as session:
+            result = await session.execute(delete(model).where(key.in_(batch)))
+        removed = int(getattr(result, "rowcount", 0))
+        deleted += removed
+        if removed < batch_size:
+            return deleted
 
 
 def main() -> None:

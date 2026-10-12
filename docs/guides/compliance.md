@@ -25,7 +25,9 @@ unknown_state = "strict" # or "federal"
 ```
 
 When it is on, a **marketing** message planned for a text channel and a US recipient is
-held until the recipient's legal hours, in their time zone. In states with a cap, a
+held until the recipient's legal hours, in their time zone. The hours are checked again
+right before sending, so a retry or a late approval cannot send outside them. In states
+with a cap, a
 fourth marketing message within 24 hours is suppressed with
 `status_reason: "compliance: 3 marketing texts per 24 hours (…)"`. Transactional texts
 and other channels are not affected.

@@ -36,8 +36,10 @@ POST /v1/recipients/user-42/addresses
 
 A message goes to **all** enabled addresses of the first channel that works. When a
 provider reports an address as permanently invalid (unregistered token, blocked bot,
-unreachable number), the address is disabled with a reason and skipped from then on;
-re-adding it re-enables it.
+unreachable number), the address is disabled with a reason and skipped from then on.
+Re-adding it with `POST /v1/recipients/{external_id}/addresses` re-enables it; sending the
+same value again in a profile update or inline with an event or message keeps it disabled,
+so a stale token your app keeps reporting does not come back to life.
 
 ## Fallback and retries
 
@@ -137,6 +139,11 @@ Idempotency-Key: <message id>
 ```
 
 Verify the signature and reject timestamps older than a few minutes.
+
+A channel with a fixed `url` and no `secret` sends unsigned requests that anyone could
+imitate. Cue logs a warning at startup and `cuectl check` fails for such a channel; set
+`allow_unsigned = true` if the receiver authenticates Cue another way (for example a
+token in `headers`).
 
 ### `console`
 

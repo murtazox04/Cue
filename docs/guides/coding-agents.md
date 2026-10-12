@@ -12,8 +12,13 @@ pip install cue-notify-client   # provides the cue-hook command
 export CUE_URL=https://cue.example.com CUE_API_KEY=ck_… CUE_RECIPIENT=dev-42
 ```
 
-`CUE_RECIPIENT` is your external id in Cue. Use a key bound to an [agent](../concepts/agents.md)
-if you want a per-person budget on these pings.
+`CUE_RECIPIENT` is your external id in Cue. The hook only reports events, so its key
+needs only `events:write`. Bind it to an [agent](../concepts/agents.md) if you want a
+per-person budget on these pings:
+
+```bash
+cuectl keys create coding-hooks --agent coding-agents -s events:write
+```
 
 ## OpenHands
 

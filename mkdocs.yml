@@ -1,5 +1,5 @@
 site_name: Cue
-site_description: The right message, at the right moment — a self-hosted notification decision engine
+site_description: "Self-hosted notification decision engine: quiet hours, time zones, digests, frequency caps and preferences in front of the sender you already have"
 site_url: https://murtazox04.github.io/Cue/
 repo_url: https://github.com/murtazox04/Cue
 repo_name: murtazox04/Cue
@@ -58,5 +58,7 @@ nav:
   - Reference:
       - Configuration: reference/configuration.md
       - HTTP API: reference/api.md
+      - API key scopes: reference/scopes.md
+      - Statuses and reasons: reference/statuses.md
       - CLI: reference/cli.md
   - Architecture: architecture.md

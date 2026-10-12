@@ -1,9 +1,9 @@
 apiVersion: v2
 name: cue
-description: The attention layer between software, AI agents and people. Self-hosted notifications that decide whether, when and how to reach someone.
+description: Self-hosted notification decision engine that decides whether, when and how to reach someone, in front of the sender you already have.
 type: application
-version: 0.1.1
-appVersion: "0.3.1"
+version: 0.1.2
+appVersion: "0.4.0"
 home: https://murtazox04.github.io/Cue
 sources:
   - https://github.com/murtazox04/Cue

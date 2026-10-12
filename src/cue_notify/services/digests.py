@@ -30,7 +30,7 @@ from cue_notify.core.digest import DigestPolicy
 from cue_notify.core.enums import DigestStatus
 from cue_notify.core.policy import zone
 from cue_notify.core.time import utcnow
-from cue_notify.db.models import Category, Digest, Event, Recipient, Rule, Template
+from cue_notify.db.models import Category, Digest, Event, Job, Recipient, Rule, Template
 from cue_notify.runtime import Runtime
 from cue_notify.services import composer
 from cue_notify.services.errors import NotFoundError
@@ -71,9 +71,7 @@ async def add(
 ) -> Digest:
     """Add ``event`` to the open digest for its key, opening one if needed."""
     policy = DigestPolicy.model_validate(rule.digest)
-    await session.execute(
-        select(Recipient.id).where(Recipient.id == recipient.id).with_for_update()
-    )
+    await lock_recipient(session, recipient.id)
     key = grouping_key(policy, context)
     item = {
         "event_id": str(event.id),
@@ -155,8 +153,8 @@ async def flush(ctx: queue.JobContext) -> None:
     runtime = ctx.runtime
     digest_id = UUID(ctx.payload["digest_id"])
     async with runtime.transaction() as session:
-        digest = await session.get(Digest, digest_id, with_for_update=True)
-        if digest is None or digest.status is not DigestStatus.OPEN:
+        digest = await lock_open_digest(session, digest_id)
+        if digest is None:
             return
         rule = await session.get(Rule, digest.rule_id)
         recipient = await session.get(Recipient, digest.recipient_id)
@@ -194,6 +192,51 @@ async def flush(ctx: queue.JobContext) -> None:
         "digest sent",
         extra={"digest_id": str(digest_id), "count": digest.count, "status": message.status},
     )
+
+
+async def lock_recipient(session: AsyncSession, recipient_id: UUID) -> None:
+    await session.execute(
+        select(Recipient.id).where(Recipient.id == recipient_id).with_for_update()
+    )
+
+
+async def lock_open_digest(session: AsyncSession, digest_id: UUID) -> Digest | None:
+    digest = await session.get(Digest, digest_id)
+    if digest is None or digest.status is not DigestStatus.OPEN:
+        return None
+    await lock_recipient(session, digest.recipient_id)
+    digest = await session.get(Digest, digest_id, with_for_update=True, populate_existing=True)
+    if digest is None or digest.status is not DigestStatus.OPEN:
+        return None
+    return digest
+
+
+async def flush_revive(session: AsyncSession, job: Job) -> bool:
+    digest = await session.get(Digest, UUID(job.payload["digest_id"]))
+    if digest is None:
+        return False
+    await lock_recipient(session, digest.recipient_id)
+    digest = await session.get(Digest, digest.id, with_for_update=True, populate_existing=True)
+    if (
+        digest is None
+        or digest.status is not DigestStatus.CANCELLED
+        or digest.sent_at is not None
+        or digest.message_id is not None
+    ):
+        return False
+    reopened = await session.scalar(
+        select(Digest.id).where(
+            Digest.rule_id == digest.rule_id,
+            Digest.recipient_id == digest.recipient_id,
+            Digest.key == digest.key,
+            Digest.status == DigestStatus.OPEN,
+        )
+    )
+    if reopened is not None:
+        return False
+    digest.status = DigestStatus.OPEN
+    await queue.restore_key(session, job, _job_key(digest))
+    return True
 
 
 async def flush_dead(ctx: queue.JobContext, error: str) -> None:

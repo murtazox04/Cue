@@ -7,8 +7,9 @@ layer combines these with database state.
 from __future__ import annotations
 
 import hashlib
+from bisect import bisect_left
 from collections.abc import Iterable, Sequence
-from datetime import datetime, time, timedelta
+from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_serializer, field_validator
@@ -94,7 +95,15 @@ def defer_past_quiet_hours(when: datetime, tz: ZoneInfo, window: QuietHours | No
         end_date += timedelta(days=1)  # window wraps midnight: it ends tomorrow
     # Combining with tzinfo resolves DST gaps/folds the same way zoneinfo does elsewhere.
     resume = datetime.combine(end_date, window.end, tzinfo=tz)
+    if resume.astimezone(UTC) <= when.astimezone(UTC):
+        resume = resume.replace(fold=1)
     return resume.astimezone(when.tzinfo)
+
+
+def rolling_peak(times: Iterable[datetime], at: datetime, period: timedelta) -> int:
+    nearby = sorted(moment for moment in times if at - period < moment < at + period)
+    starts = [moment for moment in nearby if moment <= at] + [at]
+    return max(bisect_left(nearby, start + period) - bisect_left(nearby, start) for start in starts)
 
 
 def locale_candidates(preferred: str | None, default: str) -> list[str]:

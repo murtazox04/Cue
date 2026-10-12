@@ -34,10 +34,48 @@ Run `cuectl check` to validate a configuration.
 | `cors_origins` | `[]` | Origins allowed to call the API from a browser. |
 | `docs` | `true` | Serve `/docs`, `/redoc` and `/openapi.json`. |
 | `root_path` | `""` | When mounted under a path prefix behind a proxy. |
-| `public_url` | none | Public base URL (with any path prefix). Enables [preference and unsubscribe links](../concepts/preferences.md). |
+| `public_url` | none | Public base URL (with any path prefix). Enables [preference and unsubscribe links](../concepts/preferences.md). Requires `secret_key`. |
+| `secret_key` | none | Signs preference tokens, so the database never holds a working link. At least 32 characters; required with `public_url`. Set it as `CUE_API__SECRET_KEY`. See [below](#apisecret_key). |
 | `product_name` | none | Shown on the hosted preference page. |
 | `max_body_bytes` | `1048576` | Larger request bodies get `413` before anything reads them. |
-| `max_broadcast_body_bytes` | `67108864` | The same limit for `POST /v1/broadcasts`, whose audience can list a million ids. |
+| `max_broadcast_body_bytes` | `67108864` | The same limit for `POST /v1/broadcasts` with an admin key, whose audience can list a million ids. Without one, `max_body_bytes` applies. |
+| `trusted_proxies` | `[]` | Addresses or networks (`10.0.0.0/8`) of your reverse proxies. Only requests from them have `X-Forwarded-For` believed when rate limiting. |
+
+`public_url` with plain `http://` (other than `localhost`) logs a warning at startup and
+fails `cuectl check`: the links it builds carry tokens.
+
+### `api.secret_key`
+
+Generate it once and keep it in your secret store:
+
+```bash
+python -c 'import secrets; print(secrets.token_urlsafe(32))'
+```
+
+- **Required with `public_url`.** Without it Cue refuses to start. It can be set on its
+  own too: then `preference_token` and templates' `links.token` work for your own
+  preference screen, without hosted links.
+- **Shared.** Give the same value to every API and worker process. A link signed by one
+  process must verify on all the others.
+- **Rotation.** Changing it invalidates every preference and unsubscribe link signed with
+  the old value, including those in e-mails already delivered. Rotate it only if it
+  leaks; to cut off one person's links, rotate their token instead
+  (`POST /v1/recipients/{id}/preference-token`).
+- **Unset.** Without it, `preference_token` and `links.token` are `null` and messages
+  carry no preference or unsubscribe links.
+
+## `api.rate_limit`
+
+Per client address, in each process. Requests over a limit get `429` with `Retry-After`.
+
+| Key | Default | |
+|---|---|---|
+| `enabled` | `true` | |
+| `pages` | `{per_minute = 60, burst = 30}` | `/preferences/…`, `/review/…` and `/v1/preferences/…`. |
+| `tracking` | `{per_minute = 600, burst = 300}` | `/v1/track/…`. |
+| `inbound` | `{per_minute = 600, burst = 300}` | `/v1/inbound/…`. |
+| `failed_auth` | `{per_minute = 10, burst = 20}` | Responses `401` on `/v1`; once used up, requests from that address without a valid key get `429` on `/v1` until it refills. Valid keys are never blocked by it. |
+| `max_clients` | `100000` | Addresses remembered; the least recently seen are forgotten first. |
 
 ## `worker`
 
@@ -47,9 +85,11 @@ Run `cuectl check` to validate a configuration.
 | `concurrency` | `16` | Concurrent jobs per worker process. |
 | `poll_interval` | `1.0` | Seconds between polls when idle. |
 | `lease_seconds` | `300` | How long a claimed job is hidden from other workers. |
-| `max_attempts` | `10` | Attempts before a job is marked dead. |
+| `max_attempts` | `10` | Attempts before a job is marked dead. A job whose worker died this many times is marked dead when it is next claimed. |
 | `retry_base_seconds` / `retry_max_seconds` | `5` / `3600` | Exponential backoff with jitter. |
-| `shutdown_timeout` | `30` | Seconds to finish in-flight jobs on shutdown. |
+| `shutdown_timeout` | `30` | Seconds to finish in-flight jobs on shutdown; jobs still running are cancelled and handed back at once. |
+| `job_timeout` | `120` | Seconds a job may run before it is cancelled; a timeout is retried like any other failure. |
+| `max_defer_seconds` | `86400` | How long a job may keep deferring (rate limits, `Retry-After`) before it is marked dead. Deferrals do not count towards `max_attempts`. |
 
 ## `policy`
 

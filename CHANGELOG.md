@@ -6,6 +6,162 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-10-12
+
+A security and reliability release. Read **Upgrading** before deploying it: several
+defaults are stricter, and a public URL now needs a secret key.
+
+### Upgrading
+- Set `CUE_API__SECRET_KEY` (at least 32 random characters, the same value on every API
+  and worker process) before upgrading. It is required whenever `api.public_url` is set,
+  and without it `preference_token` and templates' `links.token` are `null` (guard them
+  with `{% if links.token %}` as you would `links.unsubscribe`).
+  Changing it later invalidates every preference link already sent. Generate it with
+  `python -c 'import secrets; print(secrets.token_urlsafe(32))'`; with Helm pass it
+  through `secretEnv`, and the Render Blueprint generates one.
+- `cuectl serve` now binds to `127.0.0.1` by default instead of `0.0.0.0`. The container
+  image, `compose.yaml`, the Helm chart and the Render Blueprint pass `--host 0.0.0.0`
+  explicitly; if you start `cuectl serve` yourself (Railway, Heroku, systemd…), add
+  `--host 0.0.0.0` to keep accepting outside connections.
+- Give the keys your people approve with the `approvals:decide` scope, for example
+  `cuectl keys create approvals-ui -s approvals:decide -s messages:read`. Keys with only
+  `messages:write` now get `403` on `…/approve` and `…/reject`.
+- Agent keys holding `recipients:*` or `approvals:decide` lose those scopes; recreate
+  them without, and give profile updates to your backend's own key.
+- Event producers that change people's region, attributes, addresses, locale or time
+  zone inline need `recipients:write`.
+- `cuectl check` exits with status 1 when it finds an unsafe setting (listed under
+  `warnings`), so CI or deploy scripts that run it may now fail until you fix it.
+- Behind a reverse proxy, set `api.trusted_proxies` so rate limits apply per client
+  instead of to the proxy's address.
+- Migration `0013` hashes existing preference tokens in place. It cannot be undone:
+  downgrading issues new random tokens, and links sent before then stop working.
+- `preference_token` in `GET /v1/recipients/{id}` is a new, longer token after the
+  upgrade; the old one still works until you rotate it, but it is no longer shown.
+
+### Security
+- `POST /v1/broadcasts` accepts bodies up to `api.max_broadcast_body_bytes` (64 MiB) only
+  with an admin key; the key is checked before the body is read. Anyone else gets the
+  ordinary `api.max_body_bytes` limit, for announced and streamed bodies alike.
+  Unauthenticated clients could make the server read 64 MiB per request before.
+- Per-client rate limits (token buckets, in each process) on the routes reachable
+  without a key — `/preferences/…`, `/review/…`, `/v1/preferences/…`, `/v1/track/…`,
+  `/v1/inbound/…` — and on failed authentication: after too many `401`s on `/v1`, requests
+  from that address get `429` with `Retry-After` until its budget refills, unless they
+  carry a valid key, so guessing cannot lock out a legitimate client sharing the address.
+  Configure with `api.rate_limit`; `X-Forwarded-For` is believed only from
+  `api.trusted_proxies`.
+- `cuectl mcp --transport streamable-http` refuses a non-loopback `--host` unless a bearer
+  token is set (`CUE_MCP_AUTH_TOKEN` or `--auth-token`, at least 32 characters), and then
+  requires `Authorization: Bearer <token>` on every request. Before, anyone who could
+  reach the port acted with the server's API key.
+- `cuectl mcp` warns when `--api-key` or `--auth-token` is given on the command line,
+  where other users can read it in `ps`; use `CUE_API_KEY` and `CUE_MCP_AUTH_TOKEN`.
+- A webhook channel with a fixed `url` and no `secret` logs a warning at startup and fails
+  `cuectl check`, since receivers cannot verify its requests. Set `allow_unsigned = true`
+  on the channel to accept that.
+- A plain-`http` `api.public_url` (other than `localhost`) logs a warning at startup and
+  fails `cuectl check`: preference, unsubscribe and review links carry tokens.
+- Release images are built without the GitHub Actions cache that pushes to `main` also
+  write, so a poisoned cache entry cannot reach a signed release. Manual release runs
+  are refused outside the default branch.
+- The docs workflow no longer leaves the token in the checkout; only the publishing step
+  receives it.
+- Approving or rejecting held messages and approval requests through the API needs the
+  new `approvals:decide` scope (or `admin`). Any key with `messages:write` could decide
+  before, including keys that only send. One-time review links keep working.
+- The MCP server no longer has a `review_message` tool: AI clients ask for approval,
+  people decide.
+- Keys bound to an agent can no longer hold `recipients:read`, `recipients:write` or
+  `approvals:decide` (nor `admin`, as before). Existing agent keys with these scopes are
+  denied them on every request.
+- Event producers can no longer rewrite profiles inline: `region`, `attributes` and
+  `addresses` on an event or direct send need `recipients:write`, and changing a stored
+  `locale` or `timezone` does too. Creating a recipient inline, filling an empty locale or
+  time zone, or repeating the stored values still works with `events:write`.
+- Review links are redacted for every non-admin key in every response that carries
+  message content or digest items: engagement reports, approve and reject responses and
+  `/v1/digests` showed them before.
+- Wildcard rules (`*`, `cue.*`) no longer match Cue's own `cue.*` events; a rule or
+  digest sees them only when it names the event exactly, so a catch-all rule cannot copy
+  review links into other messages.
+- Preference tokens are no longer stored. New tokens are signed with `api.secret_key`
+  (HMAC-SHA256 over a random per-recipient id) and verified on use; tokens issued before
+  this release are kept only as SHA-256 hashes, so links in e-mails already sent,
+  including one-click unsubscribe, keep working until the token is rotated.
+- Screening replaces preference, unsubscribe and review links and preference tokens with
+  fixed placeholders before the message reaches the screening model.
+
+### Added
+- `cuectl --version`, alongside `cuectl version`.
+- `worker.job_timeout` (120 s): a job running longer is cancelled and retried like any
+  other failure.
+- `worker.max_defer_seconds` (24 h): how long a job may keep deferring before it is
+  marked dead.
+- `cuectl prune --batch-size N` (1000), and indexes on `messages.created_at`,
+  `events.received_at` and `digests.message_id` for it (migration `0014`).
+
+### Changed
+- `cuectl keys create NAME --agent X` without `-s` gives the key `events:write`,
+  `messages:write` and `messages:read`, the scopes an agent key may hold. It defaulted to
+  `admin` before and was then refused. Keys without `--agent` still default to `admin`.
+- `cuectl serve` binds to `127.0.0.1` by default (see Upgrading).
+- `cuectl check` lists configuration warnings and exits with status 1 when there are any.
+- The body limit and rate limiter honour `api.root_path` only when the request path
+  starts with it.
+
+### Fixed
+- Waits that are part of the plan (a message held until quiet hours end, an approval
+  request waiting for its expiry) are no longer treated like provider throttling: they
+  keep their full delay instead of being capped at `worker.retry_max_seconds`, and they
+  never count toward `worker.max_defer_seconds`, so a request that expires in a week is
+  not given up on after a day.
+- `GET /v1/approvals` shows requests past their expiry as `expired`, and the `status`
+  filter agrees, even before the expiry job has run.
+- Quiet hours and US texting hours are checked again right before sending. A message
+  that comes due at a time no longer allowed (preferences changed, a retry backoff, a
+  slow queue) waits for the next allowed moment instead of going out.
+- Approving a held message schedules it for the next allowed moment; it could be sent
+  during quiet hours or outside legal texting hours before.
+- Legal texting hours could move a marketing text into the recipient's quiet hours.
+  Both are now applied together until neither moves the send time.
+- Frequency caps, cooldowns, agent budgets and the state texting caps counted every
+  message scheduled for later, so one send planned for next week could suppress
+  today's. They now count the messages within the period around the send time.
+- Quiet hours ending inside the repeated hour on the night clocks go back could resume
+  before the message was due, sending it during the second pass of quiet hours.
+- A daily digest opened during the repeated hour on the night clocks go back could be
+  scheduled in the past.
+- An address disabled by delivery (an unregistered push token, a blocked bot) came back
+  to life whenever your app sent the same value inline with an event or message, or in
+  a profile update. Only `POST /v1/recipients/{id}/addresses` re-enables it now.
+- `cuectl jobs retry-dead` did nothing useful: the job came back, but the event,
+  message, broadcast or digest it had marked failed stayed failed, so the job ended at
+  once. Retrying now reopens those rows in the same transaction, and only rows that job
+  itself gave up on.
+- A job that crashed its worker every time was claimed again forever. Once it has used
+  `max_attempts` it is marked dead when next claimed, and its failure is recorded.
+- A worker that lost a job's lease kept running it alongside the new owner. The
+  heartbeat now notices and cancels the job. On PostgreSQL, leases are measured with
+  the database clock, so workers with skewed clocks no longer steal running jobs.
+- If recording a job's outcome failed (the database went away), the error was lost. It
+  is now logged with the job id and kind, and the job runs again once its lease expires.
+- Rate-limit deferrals (`Retry-After`) used up a job's attempts, so a busy provider
+  could make a message fail. Deferrals are now free and bounded by
+  `worker.max_defer_seconds` instead (migration `0015`).
+- A `Retry-After` of `inf`, `nan` or a huge number broke the job's bookkeeping. Such
+  values are ignored, and deferrals are clamped to `worker.retry_max_seconds`.
+- When the expiry job of an approval request gave up, the request stayed pending
+  forever. It is now marked expired (and the callback sent), and reading a request past its
+  `expires_at` reports it as expired even before the job runs. The other approval and
+  review jobs log which request or message they gave up on.
+- A digest being flushed while a new event joined it could deadlock on PostgreSQL: the
+  flush now locks the recipient before the digest, in the same order as adding does.
+- Stopping a worker left the jobs it interrupted invisible for `lease_seconds`. They are
+  now handed back at once, without using up an attempt.
+- `cuectl prune` deleted everything in one transaction, holding locks for as long as it
+  ran on large tables. It now deletes in batches, each in its own transaction.
+
 ## [0.3.1] — 2026-10-11
 
 A security release: upgrade if agents or other less-trusted services hold API keys.
@@ -211,7 +367,8 @@ First public release of Cue, the attention layer between software, AI agents and
 - Line breaks in e-mail subjects are collapsed, and messages that cannot be built as
   e-mail fail over instead of retrying.
 
-[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/murtazox04/Cue/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/murtazox04/Cue/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/murtazox04/Cue/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/murtazox04/Cue/compare/v0.1.2...v0.2.0

@@ -19,8 +19,14 @@ Local development (SQLite, embedded worker, console delivery):
 ```bash
 export CUE_WORKER__EMBEDDED=true CUE_CHANNELS__PUSH__PROVIDER=console
 uvx cue-notify serve --migrate                 # API on http://127.0.0.1:8000, docs at /docs
-uvx cue-notify keys create backend -s admin    # prints the key once: ck_…
+uvx cue-notify keys create setup -s admin      # prints the key once: ck_…
+uvx cue-notify keys create backend -s events:write -s messages:write -s messages:read \
+  -s recipients:write
 ```
+
+The `setup` key configures categories, templates and rules (step 3); keep it with the
+operator, never in the app or an AI client. The app gets the `backend` key, which can
+report events, send, read results and keep profiles in sync (step 4).
 
 Production: PostgreSQL (`CUE_DATABASE__URL=postgresql+asyncpg://…`), `cuectl serve` and a
 separate `cuectl worker`; the repository's `compose.yaml` and Docker image show the setup.
@@ -46,7 +52,7 @@ app, set `List-Unsubscribe: <links.unsubscribe>` and
 
 ## 3. Model the notifications
 
-All with the admin key, `Authorization: Bearer ck_…`:
+All with the `setup` key, `Authorization: Bearer ck_…`:
 
 1. **Categories** carry policy. `transactional` (no caps, no opt-out) and `marketing`
    exist. Add others, e.g. `{"key": "social", "frequency_caps": [{"period": "P1D",
@@ -109,7 +115,9 @@ Direct sends (codes, receipts) use `POST /v1/messages` with `template`, `channel
 
 ## 5. Preferences and unsubscribe
 
-Set `api.public_url` (`CUE_API__PUBLIC_URL`). Then every message carries
+Set `api.public_url` (`CUE_API__PUBLIC_URL`) and `api.secret_key`
+(`CUE_API__SECRET_KEY`, at least 32 random characters, the same on every process). Then
+every message carries
 `links.preferences` and, for categories people may leave, `links.unsubscribe`; put them
 in templates (`{% if links.unsubscribe %}…{% endif %}`). The hosted page needs no work.
 For an in-app settings screen, call `GET/PUT /v1/preferences/{token}` with the
@@ -118,10 +126,16 @@ recipient's `preference_token` (from `GET /v1/recipients/{id}`).
 ## 6. AI agents that notify people
 
 Register each agent (`POST /v1/agents` with `frequency_caps`, `max_importance`,
-`categories`, `approval`) and create its key with `"agent": "<key>"`. Give that key to
-the agent, ideally through the MCP server (`uvx cue-notify mcp` with `CUE_URL` and
-`CUE_API_KEY`). Messages matching the approval policy wait in `pending_approval` until
-someone calls `POST /v1/messages/{id}/approve` or `/reject`. For agents that write their
+`categories`, `approval`, `reviewers`) and create its key bound to it, with the least it
+needs: `uvx cue-notify keys create support-bot-key --agent support-bot -s events:write
+-s messages:read` (add `-s messages:write` only if it picks templates or asks for
+approvals; with `--agent` and no `-s` the key gets all three). Never give an AI client an `admin` key; agent-bound keys cannot hold
+`admin`, `recipients:*` or `approvals:decide`. Give that key to the agent, ideally
+through the MCP server (`uvx cue-notify mcp` with `CUE_URL` and `CUE_API_KEY`). Messages
+matching the approval policy wait in `pending_approval` until a person decides: from the
+one-time `review_url` sent to the agent's `reviewers` (add a rule for the exact event
+`cue.approval_requested`), or through the app's own UI calling
+`POST /v1/messages/{id}/approve` or `/reject` with a key that holds `approvals:decide`. For agents that write their
 own copy, turn on `[screening]` (needs `TYPESAFE_API_KEY`): a decision model holds
 messages that pressure, deceive or leak secrets, and lowers overstated importance.
 

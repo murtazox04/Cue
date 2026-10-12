@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -78,3 +78,30 @@ def test_rollout_is_deterministic_and_monotonic() -> None:
 def test_zone_falls_back_for_unknown_names() -> None:
     assert policy.zone("Mars/Olympus", "Asia/Tashkent") == TASHKENT
     assert policy.zone(None, "nope") == ZoneInfo("UTC")
+
+
+def test_quiet_hours_ending_in_the_repeated_hour_never_resume_in_the_past() -> None:
+    short_night = QuietHours(start=time(23), end=time(1, 30))
+    second_ten_past_one = datetime(2026, 11, 1, 6, 10, tzinfo=UTC)
+    result = policy.defer_past_quiet_hours(second_ten_past_one, NEW_YORK, short_night)
+    assert result == datetime(2026, 11, 1, 6, 30, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    ("offsets", "expected"),
+    [
+        ([], 0),
+        ([timedelta(days=10)], 0),
+        ([timedelta(days=-1), timedelta(days=1)], 0),
+        ([timedelta(hours=-20), timedelta(hours=20)], 1),
+        ([timedelta(hours=-1), timedelta(hours=1)], 2),
+        ([timedelta(hours=-23), timedelta(hours=-22), timedelta(hours=20)], 2),
+        ([timedelta(0), timedelta(hours=5), timedelta(hours=23)], 3),
+    ],
+)
+def test_rolling_peak_counts_the_busiest_window_around_a_moment(
+    offsets: list[timedelta], expected: int
+) -> None:
+    at = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
+    times = [at + offset for offset in offsets]
+    assert policy.rolling_peak(times, at, timedelta(days=1)) == expected

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
 import httpx
+from pydantic import SecretStr
+from typer.testing import CliRunner
 
 from cue_notify.ai import Copy, GenerationError, PersonalizationRequest, PersonalizationResult
 from cue_notify.channels.base import (
@@ -16,8 +19,11 @@ from cue_notify.channels.base import (
     InvalidAddressError,
     Receipt,
 )
+from cue_notify.cli import app
 from cue_notify.jobs import create_worker
 from cue_notify.runtime import Runtime
+
+TEST_SECRET_KEY = SecretStr("cue-test-secret-key-0123456789abcdef")
 
 # --------------------------------------------------------------------------- fake channel
 
@@ -56,6 +62,12 @@ class FakeChannel(Channel[FakeConfig]):
 async def drain(runtime: Runtime) -> int:
     """Run every job that is due now."""
     return await create_worker(runtime, name="test").run_until_idle()
+
+
+async def run_cli(runner: CliRunner, *args: str) -> str:
+    result = await asyncio.to_thread(runner.invoke, app, list(args))
+    assert result.exit_code == 0, result.output
+    return result.output
 
 
 # --------------------------------------------------------------------------- fake AI

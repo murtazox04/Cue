@@ -20,6 +20,9 @@ rules and expiry all still apply. An agent can only ever be *more* restricted th
 own backend. Its keys can never:
 
 - hold the `admin` scope, which would let it loosen its own limits;
+- hold `recipients:read` or `recipients:write`, or `approvals:decide`: such keys are
+  refused when created, and a key that already has one of these scopes is denied it on
+  every request;
 - change, reset or delete anyone's preferences, rotate preference tokens or see them (they
   are redacted from recipients and message content it reads);
 - create or change recipient profiles or addresses, inline or through
@@ -45,8 +48,13 @@ POST /v1/agents
 Then give the agent its own key:
 
 ```bash
-cuectl keys create support-bot-key -s messages:write -s messages:read --agent support-bot
+cuectl keys create support-bot-key --agent support-bot -s messages:write -s messages:read
 ```
+
+Without `-s`, `--agent` gives the key `events:write`, `messages:write` and
+`messages:read`, every scope an agent key may hold. Narrow it to what the agent does:
+`events:write` to report events, `messages:write` to send templates directly or ask for
+approval, `messages:read` to check what happened.
 
 Everything sent with that key is attributed to the agent (`"agent": "support-bot"` on
 the message) and filtered by `GET /v1/messages?agent=support-bot`. Hand the key to the
@@ -71,8 +79,8 @@ The condition sees:
 
 Matching messages are stored with status `pending_approval`. They are not sent, but they
 count against the agent's budget, so an agent cannot flood the review queue. A person
-then decides, with a key that is not bound to an agent (your admin UI or backend, or
-Claude acting with such a key):
+then decides, from the one-time review link in their notification or through your own
+UI, with a key that holds the `approvals:decide` scope (or `admin`):
 
 ```http
 GET  /v1/messages?status=pending_approval
@@ -87,10 +95,11 @@ POST /v1/messages/{id}/reject   {"reason": "wrong customer"}
   instead (`suppressed`, `expired`).
 - **Record:** the reviewer's key name and the time are stored on the message
   (`reviewed_by`, `reviewed_at`).
-- **Only people review:** agent keys cannot approve or reject anything, not even
-  another agent's messages, so two agents can never approve each other.
+- **Only people review:** deciding needs `approvals:decide`, which agent keys can never
+  hold, so no agent can approve its own messages or another agent's. `messages:write`
+  alone is not enough.
 
-Over MCP, reviewers use the `review_message` tool.
+The MCP server has no review tool: AI clients ask for approval, people decide.
 
 ### Telling reviewers
 
@@ -104,6 +113,9 @@ POST /v1/rules
 {"key": "review-requests", "name": "Ask a reviewer", "event": "cue.approval_requested",
  "template": "review-request", "category": "transactional", "channels": ["push", "email"]}
 ```
+
+Rules and digests only see Cue's own `cue.*` events when they name them exactly: `*` or
+`cue.*` never match, so a catch-all rule cannot copy review links somewhere else.
 
 The event's `data` holds `message_id`, `agent`, `agent_name`, `recipient` (whom the agent
 wants to message), `category`, `importance`, `title`, `body` (the first 500 characters),

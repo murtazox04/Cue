@@ -6,10 +6,10 @@ services:
     name: cue-api
     runtime: image
     image:
-      url: ghcr.io/murtazox04/cue:0.3.1
+      url: ghcr.io/murtazox04/cue:0.4
     # The image's entrypoint is `cuectl`; this replaces its arguments. The port comes
     # from Render's PORT variable. Migrations take a lock, so several instances are safe.
-    dockerCommand: serve --migrate
+    dockerCommand: serve --migrate --host 0.0.0.0
     healthCheckPath: /readyz
     envVars:
       - key: CUE_DATABASE__URL
@@ -19,12 +19,13 @@ services:
       - key: CUE_API__PUBLIC_URL
         sync: false # e.g. https://cue-api.onrender.com, for preference and review links
       - fromGroup: cue-channels
+      - fromGroup: cue-secrets
 
   - type: worker
     name: cue-worker
     runtime: image
     image:
-      url: ghcr.io/murtazox04/cue:0.3.1
+      url: ghcr.io/murtazox04/cue:0.4
     dockerCommand: worker
     envVars:
       - key: CUE_DATABASE__URL
@@ -34,12 +35,17 @@ services:
       - key: CUE_API__PUBLIC_URL
         sync: false
       - fromGroup: cue-channels
+      - fromGroup: cue-secrets
 
 databases:
   - name: cue-db
     databaseName: cue
 
 envVarGroups:
+  - name: cue-secrets
+    envVars:
+      - key: CUE_API__SECRET_KEY
+        generateValue: true
   # Console channels only log. Replace them with real connectors, for example
   # CUE_CHANNELS__EMAIL__PROVIDER=webhook and CUE_CHANNELS__EMAIL__URL=…
   - name: cue-channels

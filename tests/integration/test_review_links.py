@@ -19,7 +19,7 @@ from cue_notify.settings import (
     Settings,
     WorkerSettings,
 )
-from tests.helpers import FakeChannel, create_recipient, create_template, drain
+from tests.helpers import TEST_SECRET_KEY, FakeChannel, create_recipient, create_template, drain
 
 BASE = "https://notify.test"
 
@@ -31,7 +31,7 @@ def settings(database_url: str) -> Settings:
         database=DatabaseSettings(url=database_url, pool_size=5),
         worker=WorkerSettings(concurrency=4, retry_base_seconds=1, retry_max_seconds=2),
         policy=PolicySettings(default_locale="en", default_timezone="UTC", quiet_hours=None),
-        api=ApiSettings(public_url=f"{BASE}/"),
+        api=ApiSettings(public_url=f"{BASE}/", secret_key=TEST_SECRET_KEY),
     )
 
 

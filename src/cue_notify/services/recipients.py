@@ -8,12 +8,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cue_notify.core.ids import token, uuid7
+from cue_notify.core.ids import preference_token_id, uuid7
 from cue_notify.core.policy import RecipientPreferences
 from cue_notify.core.time import utcnow
 from cue_notify.db.dml import insert_ignore
 from cue_notify.db.models import Address, Recipient
-from cue_notify.services.errors import NotFoundError
+from cue_notify.services.errors import ForbiddenError, NotFoundError
 
 
 class AddressIn(BaseModel):
@@ -67,7 +67,7 @@ async def ensure(session: AsyncSession, external_id: str) -> Recipient:
             "external_id": external_id,
             "attributes": {},
             "preferences": {},
-            "preference_token": token(),
+            "preference_token_id": preference_token_id(),
             "created_at": now,
             "updated_at": now,
         },
@@ -93,8 +93,30 @@ async def lock(session: AsyncSession, external_id: str) -> Recipient:
     return recipient
 
 
-async def upsert(session: AsyncSession, data: RecipientIn) -> Recipient:
+def overwritten_fields(recipient: Recipient, data: RecipientIn) -> list[str]:
+    stored = {"locale": recipient.locale, "timezone": recipient.timezone}
+    wanted = {"locale": data.locale, "timezone": data.timezone}
+    return [
+        name
+        for name, value in wanted.items()
+        if value is not None and stored[name] is not None and stored[name] != value
+    ]
+
+
+async def upsert(
+    session: AsyncSession,
+    data: RecipientIn,
+    *,
+    revive_addresses: bool = False,
+    may_change_profile: bool = True,
+) -> Recipient:
     recipient = await lock(session, data.external_id)
+    overwritten = [] if may_change_profile else overwritten_fields(recipient, data)
+    if overwritten:
+        raise ForbiddenError(
+            f"changing the {' and '.join(overwritten)} of an existing recipient requires "
+            "the recipients:write scope"
+        )
     if data.locale is not None:
         recipient.locale = data.locale
     if data.timezone is not None:
@@ -104,18 +126,21 @@ async def upsert(session: AsyncSession, data: RecipientIn) -> Recipient:
     if data.attributes:
         recipient.attributes = {**recipient.attributes, **data.attributes}
     for address in data.addresses or []:
-        await add_address(session, recipient, address)
+        await add_address(session, recipient, address, revive=revive_addresses)
     recipient.updated_at = utcnow()
     await session.flush()
     return recipient
 
 
-async def add_address(session: AsyncSession, recipient: Recipient, data: AddressIn) -> Address:
+async def add_address(
+    session: AsyncSession, recipient: Recipient, data: AddressIn, *, revive: bool = True
+) -> Address:
     """Register an address; re-enables it if it exists but was disabled."""
     for existing in recipient.addresses:
         if existing.channel == data.channel and existing.value == data.value:
-            existing.enabled = True
-            existing.disabled_reason = None
+            if revive:
+                existing.enabled = True
+                existing.disabled_reason = None
             if data.label is not None:
                 existing.label = data.label
             return existing

@@ -20,7 +20,7 @@ import html
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import httpx
 
@@ -30,6 +30,17 @@ from cue_notify.settings import ScreeningSettings
 _HIDDEN = re.compile(r"<(script|style)\b.*?</\1\s*>", re.IGNORECASE | re.DOTALL)
 _TAG = re.compile(r"<[^>]*>")
 _HREF = re.compile(r"""\b(?:href|src)\s*=\s*["']?([^"'\s>]+)""", re.IGNORECASE)
+URL_PREFIX = r"""(?:https?://[^\s"'<>]*?)?"""
+LINK_QUERY = r"""(?:\?[^\s"'<>]*[^\s"'<>.,;:!?)\]])?"""
+PREFERENCE_LINK = re.compile(
+    URL_PREFIX + r"/preferences/[A-Za-z0-9_-]+(?P<unsubscribe>/unsubscribe)?" + LINK_QUERY
+)
+REVIEW_LINK = re.compile(URL_PREFIX + r"/review/[A-Za-z0-9_-]+")
+PREFERENCE_TOKEN = re.compile(r"(?<![A-Za-z0-9_-])[0-9a-f]{24}[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])")
+PREFERENCES_PLACEHOLDER = "[preferences-link]"
+UNSUBSCRIBE_PLACEHOLDER = "[unsubscribe-link]"
+REVIEW_PLACEHOLDER = "[review-link]"
+PREFERENCE_CREDENTIAL_PLACEHOLDER = "[preference-token]"
 
 URGENCY_LEVELS: dict[Importance, str] = {
     Importance.LOW: "Can wait: informational, no action or time pressure",
@@ -60,6 +71,24 @@ class ScreeningError(Exception):
     """The screening backend could not give an answer."""
 
 
+def link_placeholder(match: re.Match[str]) -> str:
+    return UNSUBSCRIBE_PLACEHOLDER if match.group("unsubscribe") else PREFERENCES_PLACEHOLDER
+
+
+def without_credentials(value: Any) -> Any:
+    if isinstance(value, str):
+        value = PREFERENCE_LINK.sub(link_placeholder, value)
+        value = REVIEW_LINK.sub(REVIEW_PLACEHOLDER, value)
+        return PREFERENCE_TOKEN.sub(PREFERENCE_CREDENTIAL_PLACEHOLDER, value)
+    if isinstance(value, dict):
+        mapping = cast("dict[str, Any]", value)
+        return {name: without_credentials(item) for name, item in mapping.items()}
+    if isinstance(value, list):
+        items = cast("list[Any]", value)
+        return [without_credentials(item) for item in items]
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class ScreeningRequest:
     agent: str
@@ -69,8 +98,10 @@ class ScreeningRequest:
     content: dict[str, dict[str, Any]]
     """Rendered variants of the message, keyed by variant name."""
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "content", without_credentials(self.content))
+
     def state(self) -> dict[str, Any]:
-        """What the model reads: the sender, the claim and the words, never recipient data."""
         variants: list[dict[str, Any]] = []
         for variant in self.content.values():
             # Everything a person may see or tap: an HTML body or a push payload link

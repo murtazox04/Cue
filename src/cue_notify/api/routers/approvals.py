@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Query, status
 
 from cue_notify.api.deps import (
+    ApprovalsDecider,
     MessagesReader,
     MessagesWriter,
     PageDep,
@@ -41,9 +42,12 @@ async def list_approvals(
 ) -> Page[ApprovalOut]:
     stmt = approvals.visible_to(key)
     if status_ is not None:
-        stmt = stmt.where(Approval.status == status_)
+        stmt = approvals.with_status(stmt, status_)
     items, cursor = await paginate(session, stmt, Approval.id, page)
-    return Page(items=[ApprovalOut.model_validate(item) for item in items], next_cursor=cursor)
+    return Page(
+        items=[ApprovalOut.model_validate(approvals.as_read(session, item)) for item in items],
+        next_cursor=cursor,
+    )
 
 
 @router.get("/{approval_id}", summary="Get an approval request and its decision")
@@ -54,7 +58,7 @@ async def get_approval(approval_id: UUID, key: MessagesReader, session: SessionD
 @router.post("/{approval_id}/approve", summary="Approve a request")
 async def approve(
     approval_id: UUID,
-    key: MessagesWriter,
+    key: ApprovalsDecider,
     session: SessionDep,
     runtime: RuntimeDep,
     body: ReviewIn | None = None,
@@ -68,7 +72,7 @@ async def approve(
 @router.post("/{approval_id}/reject", summary="Reject a request")
 async def reject(
     approval_id: UUID,
-    key: MessagesWriter,
+    key: ApprovalsDecider,
     session: SessionDep,
     runtime: RuntimeDep,
     body: ReviewIn | None = None,

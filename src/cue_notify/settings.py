@@ -13,11 +13,13 @@ best supplied through the environment.
 
 from __future__ import annotations
 
+import ipaddress
 import os
 from datetime import time
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal, Self
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import (
@@ -72,6 +74,73 @@ class DatabaseSettings(BaseModel):
         return self.url.startswith("sqlite")
 
 
+LOOPBACK_NAMES = ("localhost", "localhost.localdomain")
+
+
+def is_loopback_host(host: str) -> bool:
+    name = host.strip("[]").lower()
+    if name in LOOPBACK_NAMES or name.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(name).is_loopback
+    except ValueError:
+        return False
+
+
+class TokenBucketSettings(BaseModel):
+    per_minute: int = Field(ge=1, description="Sustained requests per minute from one client.")
+    burst: int = Field(ge=1, description="Requests one client may make in a burst.")
+
+
+class PageRateLimit(TokenBucketSettings):
+    per_minute: int = Field(default=60, ge=1)
+    burst: int = Field(default=30, ge=1)
+
+
+class MachineRateLimit(TokenBucketSettings):
+    per_minute: int = Field(default=600, ge=1)
+    burst: int = Field(default=300, ge=1)
+
+
+class FailedAuthRateLimit(TokenBucketSettings):
+    per_minute: int = Field(default=10, ge=1)
+    burst: int = Field(default=20, ge=1)
+
+
+class RateLimitSettings(BaseModel):
+    enabled: bool = Field(
+        default=True,
+        description=(
+            "Limit requests per client address to the routes reachable without an API key, "
+            "and failed authentication on /v1. The limits are kept per process."
+        ),
+    )
+    pages: PageRateLimit = Field(
+        default_factory=PageRateLimit,
+        description="Preference pages, review pages and /v1/preferences.",
+    )
+    tracking: MachineRateLimit = Field(
+        default_factory=MachineRateLimit,
+        description="Engagement tracking at /v1/track.",
+    )
+    inbound: MachineRateLimit = Field(
+        default_factory=MachineRateLimit,
+        description="Provider webhooks and replies at /v1/inbound.",
+    )
+    failed_auth: FailedAuthRateLimit = Field(
+        default_factory=FailedAuthRateLimit,
+        description=(
+            "Requests to /v1 answered 401. A client that uses them up gets 429 on /v1 until "
+            "they refill."
+        ),
+    )
+    max_clients: int = Field(
+        default=100_000,
+        ge=1_000,
+        description="Client addresses remembered per process; the least recent are dropped.",
+    )
+
+
 class ApiSettings(BaseModel):
     cors_origins: list[str] = Field(default_factory=list)
     docs: bool = Field(default=True, description="Serve interactive docs at /docs.")
@@ -84,6 +153,14 @@ class ApiSettings(BaseModel):
         ),
         examples=["https://notify.example.com"],
     )
+    secret_key: SecretStr | None = Field(
+        default=None,
+        description=(
+            "Signs preference tokens, so the database alone never holds a working link. "
+            "At least 32 characters; required with public_url. Changing it invalidates every "
+            "preference and unsubscribe link issued with the old value."
+        ),
+    )
     product_name: str | None = Field(
         default=None, max_length=100, description="Shown on the hosted preference page."
     )
@@ -93,8 +170,35 @@ class ApiSettings(BaseModel):
     max_broadcast_body_bytes: int = Field(
         default=64 * 1_048_576,
         ge=65_536,
-        description="Limit for POST /v1/broadcasts, whose audience can list a million ids.",
+        description=(
+            "Limit for POST /v1/broadcasts with an admin key, whose audience can list a "
+            "million ids. Other requests to it get max_body_bytes."
+        ),
     )
+    rate_limit: RateLimitSettings = Field(default_factory=RateLimitSettings)
+    trusted_proxies: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Addresses or networks of reverse proxies whose X-Forwarded-For header is "
+            "believed when identifying clients for rate limiting. Empty: the header is ignored."
+        ),
+        examples=[["10.0.0.0/8"]],
+    )
+
+    @field_validator("trusted_proxies")
+    @classmethod
+    def valid_trusted_proxies(cls, value: list[str]) -> list[str]:
+        try:
+            return [str(ipaddress.ip_network(entry.strip(), strict=False)) for entry in value]
+        except ValueError as exc:
+            raise ValueError(f"trusted_proxies: {exc}") from exc
+
+    @property
+    def plaintext_public_url(self) -> bool:
+        if self.public_url is None:
+            return False
+        parts = urlsplit(self.public_url)
+        return parts.scheme == "http" and not is_loopback_host(parts.hostname or "")
 
     @field_validator("public_url")
     @classmethod
@@ -105,6 +209,17 @@ class ApiSettings(BaseModel):
         if url.query or url.fragment:
             raise ValueError("public_url must not have a query or fragment")
         return str(url).rstrip("/")
+
+    @model_validator(mode="after")
+    def require_secret_with_public_url(self) -> Self:
+        if self.secret_key is not None and len(self.secret_key.get_secret_value()) < 32:
+            raise ValueError("api.secret_key must be at least 32 characters")
+        if self.public_url is not None and self.secret_key is None:
+            raise ValueError(
+                "api.secret_key is required with api.public_url; generate one with "
+                "`python -c 'import secrets; print(secrets.token_urlsafe(32))'`"
+            )
+        return self
 
 
 class WorkerSettings(BaseModel):
@@ -121,6 +236,19 @@ class WorkerSettings(BaseModel):
     retry_base_seconds: float = Field(default=5.0, gt=0)
     retry_max_seconds: float = Field(default=3600.0, gt=0)
     shutdown_timeout: float = Field(default=30.0, ge=0)
+    job_timeout: float = Field(
+        default=120.0,
+        gt=0,
+        description="Seconds a job may run before it is cancelled and retried like a failure.",
+    )
+    max_defer_seconds: float = Field(
+        default=86_400.0,
+        gt=0,
+        description=(
+            "How long a job may keep asking to run later (rate limits, Retry-After) before it "
+            "is marked dead. Deferrals do not count towards max_attempts."
+        ),
+    )
 
 
 class PolicySettings(BaseModel):

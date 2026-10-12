@@ -1,10 +1,12 @@
 # Cue
 
-**The attention layer between software, AI agents and people.** Your product and your
-agents report what happened; Cue decides whether it is worth someone's attention, what to
-say, when and over which route, renders a ready-to-send message, and hands it to the
-delivery you plug in — your own service through a signed webhook, or a ready-made
-connector.
+**Self-hosted notification decision engine: quiet hours, time zones, digests, frequency
+caps and preferences in front of the sender you already have.**
+
+Your product and your agents report what happened; Cue decides whether it is worth a
+notification, what to say, when and over which route, renders a ready-to-send message,
+and hands it to the delivery you plug in: your own service through a signed webhook, or
+a ready-made connector.
 
 ```mermaid
 flowchart LR
@@ -50,11 +52,12 @@ Cue moves that logic into one place:
   attributes you allow-list are ever sent to the model.
 - **Agent-ready.** An [MCP server](guides/ai-agents.md) lets AI agents send
   notifications and inspect delivery with scoped credentials.
-- **Simple to run.** One Python service and PostgreSQL (or SQLite). No Redis, no message
-  broker, no cron — the job queue lives in your database.
+- **Runs on your database.** An API process and a worker process (or the worker
+  embedded in the API) with PostgreSQL or SQLite. No Redis or message broker: the job
+  queue lives in the database. Retention (`cuectl prune`) is a command you schedule.
 
 ## Next steps
 
-- [Getting started](getting-started.md) — running locally in five minutes.
-- [Events and rules](concepts/events-and-rules.md) — the core model.
-- [Deployment](guides/deployment.md) — production checklist.
+- [Getting started](getting-started.md): run Cue locally and see a message delivered.
+- [Events and rules](concepts/events-and-rules.md): the core model.
+- [Deployment](guides/deployment.md): production checklist.
