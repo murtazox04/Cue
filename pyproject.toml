@@ -62,13 +62,17 @@ dependencies = [
 postgres = ["asyncpg>=0.30"]
 # Firebase Cloud Messaging (service-account OAuth signing).
 fcm = ["pyjwt[crypto]>=2.10"]
+# Apple Push Notification service: HTTP/2 and ES256 token signing.
+apns = ["pyjwt[crypto]>=2.10", "h2>=4.1"]
+# Amazon SES: verifying the SNS notifications that carry bounces and complaints.
+ses = ["cryptography>=44"]
 # AI copy personalisation through any Pydantic AI provider.
 ai = ["pydantic-ai-slim[openai,anthropic,google,groq,mistral]>=2.0"]
 # Prometheus metrics endpoint.
 metrics = ["prometheus-client>=0.21"]
 # Kept so `cue-notify[mcp]` from older docs still resolves; the MCP server is now core.
 mcp = []
-all = ["cue-notify[postgres,fcm,ai,metrics]"]
+all = ["cue-notify[postgres,fcm,apns,ses,ai,metrics]"]
 
 [project.scripts]
 cuectl = "cue_notify.cli:main"

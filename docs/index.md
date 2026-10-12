@@ -15,7 +15,7 @@ flowchart LR
     C --> D[Templates<br/>+ optional AI]
     D --> E{Your delivery}
     E --> F[Webhook → your service]
-    E --> G[Connectors<br/>FCM · Twilio · SMTP · Telegram]
+    E --> G[Connectors<br/>FCM · APNs · Twilio · SMTP · SES · Resend · Slack · Telegram]
     E --> H[Your own plugin]
 ```
 

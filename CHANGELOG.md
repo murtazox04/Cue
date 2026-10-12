@@ -21,6 +21,13 @@ All notable changes to this project are documented here. The format follows
   exact URL with its query string, matched by `MessageSid` across the Twilio channels of
   the account, counted once when repeated, and limited by their own
   `api.rate_limit.feedback` bucket.
+- Connectors for Slack (`slack`), Resend (`resend`), Amazon SES (`ses`, API v2 signed
+  with SigV4, no AWS SDK) and APNs (`apns`, HTTP/2 with ES256 provider tokens). New
+  extras `apns` and `ses`; the container image includes both.
+- Resend webhooks (`/v1/inbound/resend/<channel>`, Svix signatures) and SES
+  notifications through Amazon SNS (`/v1/inbound/ses/<channel>`: signatures checked
+  against Amazon's certificate, only the topics in `sns_topic_arns`, subscriptions
+  confirmed automatically) feed delivery feedback.
 - Channel health: a channel with `delivery.breaker_failures` transient failures in a
   row is skipped for `delivery.breaker_cooldown_seconds` by messages that have another
   channel planned, instead of every message waiting to retry it. After the cooldown one

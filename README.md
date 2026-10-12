@@ -69,8 +69,8 @@ made in one place, stored, and explainable, on their own infrastructure.
 
 - an in-app inbox or notification feed: planned, not built;
 - an admin UI: today you configure Cue through the HTTP API, the CLI and `cue.toml`;
-- APNs, Amazon SES, Resend or Slack connectors: planned. Today's connectors are FCM,
-  Twilio, SMTP, Telegram, a signed webhook and console, plus any you write;
+- a connector Cue does not have yet. Today's are FCM, APNs, Twilio, SMTP, Amazon SES,
+  Resend, Slack, Telegram, a signed webhook and console, plus any you write;
 - a hosted service: Cue is self-hosted only;
 - a visual journey builder for marketing campaigns: not planned.
 

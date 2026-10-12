@@ -151,6 +151,81 @@ Sends a text part, plus an HTML part when the template has `html`. With
 [`api.public_url`](preferences.md) set, messages in categories people may leave carry
 `List-Unsubscribe` and `List-Unsubscribe-Post` headers for one-click unsubscribe.
 
+### `resend` — e-mail through Resend
+
+Address: e-mail address.
+
+| Option | |
+|---|---|
+| `api_key` | Resend API key. |
+| `from_address`, `from_name`, `reply_to` | `from_address` must be on a domain verified in Resend. |
+| `webhook_secret` | Signing secret (`whsec_…`) of the webhook below. |
+
+Same message as `smtp`: text and HTML parts, the importance header and one-click
+unsubscribe. The message id is the request's `Idempotency-Key`, so a retried job cannot
+send twice. For [delivery feedback](#delivery-feedback), add a webhook in Resend for
+`email.delivered`, `email.bounced`, `email.delivery_delayed`, `email.complained` and
+`email.suppressed`, pointing at `<api.public_url>/v1/inbound/resend/<channel name>`.
+
+### `ses` — e-mail through Amazon SES
+
+Requires `pip install 'cue-notify[ses]'` for feedback. Address: e-mail address.
+
+| Option | |
+|---|---|
+| `region` | e.g. `eu-west-1`. |
+| `from_address`, `from_name`, `reply_to` | `from_address` must be a verified identity. |
+| `access_key_id`, `secret_access_key`, `session_token` | Default to `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`. |
+| `configuration_set` | The configuration set whose event destination publishes to SNS. |
+| `sns_topic_arns` | SNS topics allowed to report feedback for this channel. |
+
+Uses the SES v2 API, signed with Signature Version 4; no AWS SDK is needed. The key
+needs `ses:SendEmail`. Credentials come from the options or the environment only; for
+roles (IRSA, ECS task roles) export them into the environment or use the `smtp`
+connector with SES's SMTP interface.
+
+For [delivery feedback](#delivery-feedback), have the configuration set (or the
+identity) publish bounces, complaints, deliveries and delivery delays to an SNS topic,
+list the topic in `sns_topic_arns`, and subscribe
+`<api.public_url>/v1/inbound/ses/<channel name>` to it over HTTPS. Cue confirms the
+subscription itself, checks each message's signature against Amazon's certificate and
+ignores topics you did not list (anyone can create an SNS topic).
+
+### `slack` — Slack
+
+Address: a member id (`U…`), delivered as a direct message from your app, or a channel id
+(`C…`) your bot is in.
+
+| Option | Default | |
+|---|---|---|
+| `bot_token` | — | Bot token (`xoxb-…`) with `chat:write` (and `im:write` for direct messages). |
+| `unfurl_links` | `false` | Let Slack preview links. |
+
+The title becomes a header, the body a section (with `<`, `>` and `&` escaped, so event
+data cannot mention `@channel`), and the URL and actions become buttons. A context line
+links to the person's notification settings. Members who left, archived channels and
+channels the bot is not in disable the address.
+
+### `apns` — Apple Push Notification service
+
+Requires `pip install 'cue-notify[apns]'`. Address: device token (hexadecimal).
+
+| Option | Default | |
+|---|---|---|
+| `team_id`, `key_id` | — | From your Apple Developer account. |
+| `key_file` / `key` | — | The `AuthKey_….p8` token-signing key (exactly one). |
+| `bundle_id` | — | Sent as `apns-topic`. |
+| `environment` | `production` | `sandbox` for development builds. |
+| `sound` | `default` | `null` for silent. |
+| `category` | — | A notification category your app registered, for action buttons. |
+| `ttl_seconds` | — | Expiry when the message has none. |
+
+Talks to APNs directly over HTTP/2 with a token Cue signs (ES256) and renews. Importance
+maps to the interruption level (`passive`, `active`, `time-sensitive`) and priority;
+`thread` to `thread-id`; `expires_at` to `apns-expiration`. The payload carries your
+template's `data`, `url`, `cue_actions`, `cue_message_id` and `cue_tracking_token`.
+Unregistered and invalid tokens disable the address.
+
 ### `telegram` — Telegram bots
 
 Address: the chat id. Option: `bot_token`, `disable_notification`, `link_preview`,

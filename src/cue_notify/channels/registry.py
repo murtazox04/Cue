@@ -32,6 +32,10 @@ BUILTIN_PROVIDERS = {
     "twilio": "cue_notify.channels.twilio:TwilioChannel",
     "smtp": "cue_notify.channels.smtp:SmtpChannel",
     "telegram": "cue_notify.channels.telegram:TelegramChannel",
+    "slack": "cue_notify.channels.slack:SlackChannel",
+    "resend": "cue_notify.channels.resend:ResendChannel",
+    "ses": "cue_notify.channels.ses:SesChannel",
+    "apns": "cue_notify.channels.apns:ApnsChannel",
 }
 
 
