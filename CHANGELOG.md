@@ -6,31 +6,38 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-10-11
+
+A security and reliability release. Read **Upgrading** before deploying it: several
+defaults are stricter, and a public URL now needs a secret key.
+
 ### Upgrading
-- `cuectl serve` now binds to `127.0.0.1` by default instead of `0.0.0.0`. The container
-  image, `compose.yaml`, the Helm chart and the Render Blueprint pass `--host 0.0.0.0`
-  explicitly; if you start `cuectl serve` yourself (Railway, Heroku, systemd…), add
-  `--host 0.0.0.0` to keep accepting outside connections.
-- `cuectl check` exits with status 1 when it finds an unsafe setting (listed under
-  `warnings`), so CI or deploy scripts that run it may now fail until you fix it.
-- Behind a reverse proxy, set `api.trusted_proxies` so rate limits apply per client
-  instead of to the proxy's address.
-- Give the keys your people approve with the `approvals:decide` scope, for example
-  `cuectl keys create approvals-ui -s approvals:decide -s messages:read`. Keys with only
-  `messages:write` now get `403` on `…/approve` and `…/reject`.
 - Set `CUE_API__SECRET_KEY` (at least 32 random characters, the same value on every API
   and worker process) before upgrading. It is required whenever `api.public_url` is set,
   and without it `preference_token` and templates' `links.token` are `null` (guard them
   with `{% if links.token %}` as you would `links.unsubscribe`).
-  Changing it later invalidates every preference link already sent.
-- Migration `0013` hashes existing preference tokens in place. It cannot be undone:
-  downgrading issues new random tokens, and links sent before then stop working.
-- `preference_token` in `GET /v1/recipients/{id}` is a new, longer token after the
-  upgrade; the old one still works until you rotate it, but it is no longer shown.
+  Changing it later invalidates every preference link already sent. Generate it with
+  `python -c 'import secrets; print(secrets.token_urlsafe(32))'`; with Helm pass it
+  through `secretEnv`, and the Render Blueprint generates one.
+- `cuectl serve` now binds to `127.0.0.1` by default instead of `0.0.0.0`. The container
+  image, `compose.yaml`, the Helm chart and the Render Blueprint pass `--host 0.0.0.0`
+  explicitly; if you start `cuectl serve` yourself (Railway, Heroku, systemd…), add
+  `--host 0.0.0.0` to keep accepting outside connections.
+- Give the keys your people approve with the `approvals:decide` scope, for example
+  `cuectl keys create approvals-ui -s approvals:decide -s messages:read`. Keys with only
+  `messages:write` now get `403` on `…/approve` and `…/reject`.
 - Agent keys holding `recipients:*` or `approvals:decide` lose those scopes; recreate
   them without, and give profile updates to your backend's own key.
 - Event producers that change people's region, attributes, addresses, locale or time
   zone inline need `recipients:write`.
+- `cuectl check` exits with status 1 when it finds an unsafe setting (listed under
+  `warnings`), so CI or deploy scripts that run it may now fail until you fix it.
+- Behind a reverse proxy, set `api.trusted_proxies` so rate limits apply per client
+  instead of to the proxy's address.
+- Migration `0013` hashes existing preference tokens in place. It cannot be undone:
+  downgrading issues new random tokens, and links sent before then stop working.
+- `preference_token` in `GET /v1/recipients/{id}` is a new, longer token after the
+  upgrade; the old one still works until you rotate it, but it is no longer shown.
 
 ### Security
 - `POST /v1/broadcasts` accepts bodies up to `api.max_broadcast_body_bytes` (64 MiB) only
@@ -360,7 +367,8 @@ First public release of Cue, the attention layer between software, AI agents and
 - Line breaks in e-mail subjects are collapsed, and messages that cannot be built as
   e-mail fail over instead of retrying.
 
-[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/murtazox04/Cue/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/murtazox04/Cue/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/murtazox04/Cue/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/murtazox04/Cue/compare/v0.1.2...v0.2.0
