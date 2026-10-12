@@ -63,7 +63,7 @@ postgres = ["asyncpg>=0.30"]
 # Firebase Cloud Messaging (service-account OAuth signing).
 fcm = ["pyjwt[crypto]>=2.10"]
 # Apple Push Notification service: HTTP/2 and ES256 token signing.
-apns = ["pyjwt[crypto]>=2.10", "h2>=4.1"]
+apns = ["pyjwt[crypto]>=2.10", "httpx[http2]>=0.28"]
 # Amazon SES: verifying the SNS notifications that carry bounces and complaints.
 ses = ["cryptography>=44"]
 # AI copy personalisation through any Pydantic AI provider.
@@ -142,6 +142,8 @@ ignore = [
 "tests/**" = ["S104", "S105", "S106", "S311", "PT018", "DTZ001"]
 "sdks/python/tests/**" = ["S105", "S106"]
 "src/cue_notify/db/migrations/**" = ["N999"]
+"src/cue_notify/channels/ses.py" = ["S303"]
+"tests/unit/test_connectors.py" = ["S303"]
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header", "fastapi.Security"]

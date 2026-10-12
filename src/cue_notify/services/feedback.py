@@ -147,12 +147,7 @@ async def apply(
     *,
     require_message: bool = False,
 ) -> FeedbackResult:
-    if data.report_id and not await insert_ignore(
-        session,
-        FeedbackReport,
-        {"report_id": data.report_id, "received_at": utcnow()},
-        ["report_id"],
-    ):
+    if data.report_id and not await first_report(session, data.report_id):
         return FeedbackResult(duplicate=True)
     subject = await find_subject(session, data)
     message = subject.message
@@ -208,6 +203,12 @@ async def apply(
         {a.recipient_id for a in addresses} | ({message.recipient_id} if message else set()),
     )
     return result
+
+
+async def first_report(session: AsyncSession, report_id: str) -> bool:
+    return await insert_ignore(
+        session, FeedbackReport, {"report_id": report_id, "received_at": utcnow()}, ["report_id"]
+    )
 
 
 async def every_delivery_bounced(session: AsyncSession, message: Message) -> bool:

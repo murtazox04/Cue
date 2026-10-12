@@ -18,7 +18,7 @@ API_PREFIX = "/v1"
 PAGE_PREFIXES = ("/preferences", "/review", "/v1/preferences")
 TRACKING_PREFIX = "/v1/track"
 INBOUND_PREFIX = "/v1/inbound"
-FEEDBACK_PREFIXES = ("/v1/inbound/twilio/status",)
+FEEDBACK_PREFIXES = ("/v1/inbound/twilio/status", "/v1/inbound/resend", "/v1/inbound/ses")
 
 
 def under(path: str, prefix: str) -> bool:

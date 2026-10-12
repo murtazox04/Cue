@@ -1,14 +1,9 @@
-"""Apple Push Notification service, directly over HTTP/2. The address is a device token.
-
-Authenticates with a token-signing key (``.p8``) from the Apple Developer account, so no
-certificates expire. Requires the ``apns`` extra (``pip install 'cue-notify[apns]'``) for
-HTTP/2 and ES256 signing.
-"""
-
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import json
+import logging
 import re
 import time
 from pathlib import Path
@@ -31,16 +26,28 @@ from cue_notify.channels.base import (
 from cue_notify.channels.fcm import INTERRUPTION_LEVELS
 from cue_notify.core.enums import Importance
 
+logger = logging.getLogger(__name__)
+
 HOSTS = {
     "production": "https://api.push.apple.com",
     "sandbox": "https://api.sandbox.push.apple.com",
 }
 DEVICE_TOKEN = re.compile(r"[0-9a-fA-F]{32,200}")
-TOKEN_LIFETIME = 50 * 60  # Apple accepts a token for an hour; refresh before that
+TOKEN_REFRESH_SECONDS = 50 * 60
 MAX_PAYLOAD = 4096
-# https://developer.apple.com/documentation/usernotifications/handling-notification-responses-from-apns
-DEAD_TOKEN_REASONS = frozenset({"BadDeviceToken", "DeviceTokenNotForTopic", "Unregistered"})
-STALE_AUTH_REASONS = frozenset({"ExpiredProviderToken", "InvalidProviderToken"})
+DEAD_TOKEN_REASONS = frozenset({"BadDeviceToken", "Unregistered", "ExpiredToken"})
+CONFIG_REASONS = frozenset(
+    {
+        "DeviceTokenNotForTopic",
+        "InvalidProviderToken",
+        "BadTopic",
+        "TopicDisallowed",
+        "BadEnvironmentKeyIdInToken",
+        "MissingProviderToken",
+        "Forbidden",
+    }
+)
+STALE_SIGNATURE_REASON = "ExpiredProviderToken"
 
 
 class ApnsConfig(ChannelConfig):
@@ -57,7 +64,7 @@ class ApnsConfig(ChannelConfig):
     ttl_seconds: int | None = Field(default=None, ge=0, description="Default expiry.")
 
     @model_validator(mode="after")
-    def _one_key(self) -> Self:
+    def exactly_one_key(self) -> Self:
         if (self.key_file is None) == (self.key is None):
             raise ValueError("set exactly one of key_file or key")
         return self
@@ -65,7 +72,9 @@ class ApnsConfig(ChannelConfig):
     def signing_key(self) -> str:
         if self.key_file is not None:
             return Path(self.key_file).read_text()
-        return self.key.get_secret_value()  # type: ignore[union-attr]
+        if self.key is None:
+            raise ValueError("set exactly one of key_file or key")
+        return self.key.get_secret_value()
 
 
 def payload(delivery: Delivery, config: ApnsConfig) -> dict[str, Any]:
@@ -84,8 +93,8 @@ def payload(delivery: Delivery, config: ApnsConfig) -> dict[str, Any]:
     if config.category:
         aps["category"] = config.category
     if content.image_url:
-        aps["mutable-content"] = 1  # lets a notification service extension fetch it
-    body: dict[str, Any] = {"aps": aps, **flatten_data(content.data), **delivery.metadata}
+        aps["mutable-content"] = 1
+    body: dict[str, Any] = {**flatten_data(content.data), **delivery.metadata}
     if content.url:
         body["url"] = content.url
     if content.image_url:
@@ -95,38 +104,38 @@ def payload(delivery: Delivery, config: ApnsConfig) -> dict[str, Any]:
             {"id": a.id, "label": a.label, **({"url": a.url} if a.url else {})}
             for a in content.actions
         ]
+    body["aps"] = aps
     return body
 
 
-class _ProviderToken:
-    """An ES256 JWT, reused for most of its hour and signed again when Apple rejects it."""
-
+class ProviderToken:
     def __init__(self, config: ApnsConfig) -> None:
-        self._config = config
-        self._token: str | None = None
-        self._issued_at = 0.0
-        self._lock = asyncio.Lock()
+        self.config = config
+        self.token: str | None = None
+        self.issued_at = 0.0
+        self.lock = asyncio.Lock()
 
-    def invalidate(self) -> None:
-        self._token = None
+    def invalidate(self, rejected: str) -> None:
+        if self.token == rejected:
+            self.token = None
 
     async def get(self) -> str:
-        async with self._lock:
+        async with self.lock:
             now = time.time()
-            if self._token and now - self._issued_at < TOKEN_LIFETIME:
-                return self._token
+            if self.token and now - self.issued_at < TOKEN_REFRESH_SECONDS:
+                return self.token
             try:
                 import jwt
-            except ImportError as exc:  # pragma: no cover
+            except ImportError as exc:
                 raise DeliveryError("APNs requires: pip install 'cue-notify[apns]'") from exc
-            self._token = jwt.encode(
-                {"iss": self._config.team_id, "iat": int(now)},
-                self._config.signing_key(),
+            self.token = jwt.encode(
+                {"iss": self.config.team_id, "iat": int(now)},
+                self.config.signing_key(),
                 algorithm="ES256",
-                headers={"kid": self._config.key_id},
+                headers={"kid": self.config.key_id},
             )
-            self._issued_at = now
-            return self._token
+            self.issued_at = now
+            return self.token
 
 
 class ApnsChannel(Channel[ApnsConfig]):
@@ -135,19 +144,16 @@ class ApnsChannel(Channel[ApnsConfig]):
 
     def __init__(self, name: str, config: ApnsConfig, http: httpx.AsyncClient) -> None:
         super().__init__(name, config, http)
-        self._token = _ProviderToken(config)
-        self._client = self.make_client()
+        self.provider_token = ProviderToken(config)
+        self.client = self.make_client()
 
     def make_client(self) -> httpx.AsyncClient:
-        """APNs speaks only HTTP/2, so the channel keeps its own client."""
-        try:
-            import h2  # noqa: F401  # pyright: ignore[reportUnusedImport]
-        except ImportError as exc:
-            raise ValueError("APNs requires: pip install 'cue-notify[apns]'") from exc
+        if importlib.util.find_spec("h2") is None:
+            raise ValueError("APNs requires: pip install 'cue-notify[apns]'")
         return httpx.AsyncClient(http2=True, timeout=httpx.Timeout(15.0))
 
     async def aclose(self) -> None:
-        await self._client.aclose()
+        await self.client.aclose()
 
     def headers(self, delivery: Delivery) -> dict[str, str]:
         headers = {
@@ -162,6 +168,14 @@ class ApnsChannel(Channel[ApnsConfig]):
             headers["apns-expiration"] = str(int(time.time()) + self.config.ttl_seconds)
         return headers
 
+    async def post(self, url: str, body: bytes, delivery: Delivery) -> tuple[httpx.Response, str]:
+        token = await self.provider_token.get()
+        headers = {**self.headers(delivery), "authorization": f"bearer {token}"}
+        try:
+            return await self.client.post(url, content=body, headers=headers), token
+        except httpx.HTTPError as exc:
+            raise transport_error(exc) from exc
+
     async def send(self, delivery: Delivery) -> Receipt:
         body = json.dumps(
             payload(delivery, self.config), ensure_ascii=False, separators=(",", ":")
@@ -171,31 +185,36 @@ class ApnsChannel(Channel[ApnsConfig]):
         if not DEVICE_TOKEN.fullmatch(delivery.address):
             raise InvalidAddressError("not an APNs device token (hexadecimal)")
         url = f"{HOSTS[self.config.environment]}/3/device/{delivery.address}"
-        for attempt in range(2):
-            headers = self.headers(delivery)
-            headers["authorization"] = f"bearer {await self._token.get()}"
-            try:
-                response = await self._client.post(url, content=body, headers=headers)
-            except httpx.HTTPError as exc:
-                raise transport_error(exc) from exc
-            if response.is_success:
-                return Receipt(provider_message_id=response.headers.get("apns-id"))
-            reason = _reason(response)
-            if reason in STALE_AUTH_REASONS and attempt == 0:
-                self._token.invalidate()  # sign a fresh token and try once more
-                continue
-            detail = f"apns {response.status_code}: {reason}"
-            if response.status_code == 429 or response.status_code >= 500:
-                retry_after = finite_delay(response.headers.get("retry-after"))
-                raise DeliveryError(detail, retryable=True, retry_after=retry_after)
-            if response.status_code == 410 or reason in DEAD_TOKEN_REASONS:
-                raise InvalidAddressError(detail)
+        response, token = await self.post(url, body, delivery)
+        if reason_of(response) == STALE_SIGNATURE_REASON:
+            self.provider_token.invalidate(token)
+            response, token = await self.post(url, body, delivery)
+        if response.is_success:
+            return Receipt(provider_message_id=response.headers.get("apns-id"))
+        reason = reason_of(response)
+        detail = f"apns {response.status_code}: {reason}"
+        if response.status_code == 429 or response.status_code >= 500:
+            retry_after = finite_delay(response.headers.get("retry-after"))
+            raise DeliveryError(detail, retryable=True, retry_after=retry_after)
+        if reason in CONFIG_REASONS:
+            logger.error(
+                "APNs refused the channel's configuration (%s); check bundle_id, environment "
+                "and the signing key",
+                reason,
+                extra={"channel": self.name, "message_id": str(delivery.message_id)},
+            )
             raise DeliveryError(detail)
-        raise DeliveryError("apns: provider token rejected")  # pragma: no cover
+        if response.status_code == 410 or reason in DEAD_TOKEN_REASONS:
+            raise InvalidAddressError(detail)
+        raise DeliveryError(detail)
 
 
-def _reason(response: httpx.Response) -> str:
+def reason_of(response: httpx.Response) -> str:
+    if response.is_success:
+        return ""
     try:
-        return str(response.json().get("reason", "")) or f"HTTP {response.status_code}"
+        data: Any = response.json()
     except ValueError:
         return f"HTTP {response.status_code}"
+    reason = data.get("reason", "") if isinstance(data, dict) else ""
+    return str(reason) or f"HTTP {response.status_code}"

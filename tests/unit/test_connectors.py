@@ -1,10 +1,11 @@
-"""Slack, Resend, Amazon SES (with SNS) and APNs connectors."""
-
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
+import logging
 from datetime import UTC, datetime, timedelta
+from email.utils import formataddr
 from typing import Any
 from uuid import uuid4
 
@@ -16,8 +17,8 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 from cryptography.x509.oid import NameOID
 
-from cue_notify.channels import resend, ses
-from cue_notify.channels.apns import ApnsChannel, ApnsConfig
+from cue_notify.channels import resend, ses, slack
+from cue_notify.channels.apns import ApnsChannel, ApnsConfig, ProviderToken, payload
 from cue_notify.channels.base import Delivery, DeliveryError, InvalidAddressError
 from cue_notify.channels.resend import ResendChannel, ResendConfig
 from cue_notify.channels.ses import SesChannel, SesConfig
@@ -28,11 +29,11 @@ from cue_notify.core.enums import FeedbackType, Importance
 Handler = Any
 
 
-def _client(handler: Handler) -> httpx.AsyncClient:
+def mock_client(handler: Handler) -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
 
-def _delivery(address: str, **content: Any) -> Delivery:
+def make_delivery(address: str, **content: Any) -> Delivery:
     return Delivery(
         message_id=uuid4(),
         address=address,
@@ -46,11 +47,8 @@ def _delivery(address: str, **content: Any) -> Delivery:
     )
 
 
-# --------------------------------------------------------------------------- Slack
-
-
-def _slack_error(error: str) -> httpx.Response:
-    return httpx.Response(200, json={"ok": False, "error": error})
+def slack_error(error: str, **headers: str) -> httpx.Response:
+    return httpx.Response(200, json={"ok": False, "error": error}, headers=headers)
 
 
 async def test_slack_posts_blocks_with_escaped_text_and_buttons() -> None:
@@ -61,9 +59,10 @@ async def test_slack_posts_blocks_with_escaped_text_and_buttons() -> None:
         return httpx.Response(200, json={"ok": True, "channel": "D1", "ts": "1.2"})
 
     actions = [Action(id="track", label="Track", url="https://shop.test/t")]
-    async with _client(handler) as http:
+    async with mock_client(handler) as http:
         channel = SlackChannel("slack", SlackConfig(bot_token="xoxb-1"), http)
-        receipt = await channel.send(_delivery("U123", url="https://shop.test/o", actions=actions))
+        delivery = make_delivery("U123", url="https://shop.test/o", actions=actions)
+        receipt = await channel.send(delivery)
     assert receipt.provider_message_id == "D1:1.2"
     request = seen[0]
     assert request.headers["authorization"] == "Bearer xoxb-1"
@@ -78,32 +77,100 @@ async def test_slack_posts_blocks_with_escaped_text_and_buttons() -> None:
     ]
 
 
+def test_slack_mentions_in_event_data_stay_literal() -> None:
+    delivery = make_delivery("U123")
+    delivery = Delivery(
+        delivery.message_id,
+        "U123",
+        Content(body="ping @channel and <!here> and <!channel>"),
+        links=delivery.links,
+    )
+    built = slack.blocks(delivery)
+    section = built[0]["text"]
+    assert section == {
+        "type": "mrkdwn",
+        "text": "ping @channel and &lt;!here&gt; and &lt;!channel&gt;",
+        "verbatim": True,
+    }
+    assert built[-1]["elements"][0]["verbatim"] is True
+
+
+def test_slack_block_limits() -> None:
+    long_url = "https://shop.test/" + "x" * 3000
+    content = Content.model_construct(
+        title="t" * 2500,
+        body="&" * 2000,
+        url=long_url,
+        image_url=long_url,
+        actions=[
+            Action(id="open", label="Open it", url="https://shop.test/a"),
+            Action(id="next", label="Next", url="https://shop.test/b"),
+        ],
+        data={},
+        thread=None,
+        html=None,
+    )
+    built = slack.blocks(Delivery(uuid4(), "U1", content))
+    text = built[1]["text"]["text"]
+    assert len(text) <= slack.MAX_TEXT
+    assert text.endswith("&amp;…")
+    assert "image" not in [block["type"] for block in built]
+    [actions] = [block for block in built if block["type"] == "actions"]
+    ids = [element["action_id"] for element in actions["elements"]]
+    assert ids == ["cue_open", "cue_next"]
+    with_image = Content.model_construct(
+        title="t" * 2500,
+        body="hi",
+        url="https://shop.test/o",
+        image_url="https://shop.test/i.png",
+        actions=[Action(id="open", label="Open it", url="https://shop.test/a")],
+        data={},
+        thread=None,
+        html=None,
+    )
+    built = slack.blocks(Delivery(uuid4(), "U1", with_image))
+    [image] = [block for block in built if block["type"] == "image"]
+    assert len(image["alt_text"]) == slack.MAX_ALT_TEXT
+    [actions] = [block for block in built if block["type"] == "actions"]
+    assert [element["action_id"] for element in actions["elements"]] == ["cue_open", "cue_open_1"]
+
+
 @pytest.mark.parametrize(
-    ("response", "error", "retryable"),
+    ("response", "error", "retryable", "retry_after"),
     [
-        (_slack_error("user_not_found"), InvalidAddressError, False),
-        (_slack_error("invalid_auth"), DeliveryError, False),
-        (_slack_error("internal_error"), DeliveryError, True),
-        (httpx.Response(429, headers={"Retry-After": "7"}), DeliveryError, True),
+        (slack_error("channel_not_found"), InvalidAddressError, False, None),
+        (slack_error("account_inactive"), DeliveryError, False, None),
+        (slack_error("invalid_auth"), DeliveryError, False, None),
+        (slack_error("token_revoked"), DeliveryError, False, None),
+        (slack_error("internal_error"), DeliveryError, True, None),
+        (slack_error("rate_limited"), DeliveryError, True, None),
+        (slack_error("ratelimited", **{"Retry-After": "9"}), DeliveryError, True, 9),
+        (httpx.Response(429, headers={"Retry-After": "7"}), DeliveryError, True, 7),
     ],
 )
 async def test_slack_errors_are_classified(
-    response: httpx.Response, error: type[Exception], retryable: bool
+    response: httpx.Response, error: type[Exception], retryable: bool, retry_after: float | None
 ) -> None:
-    async with _client(lambda _: response) as http:
+    async with mock_client(lambda _: response) as http:
         channel = SlackChannel("slack", SlackConfig(bot_token="xoxb-1"), http)
         with pytest.raises(error) as raised:
-            await channel.send(_delivery("U123"))
+            await channel.send(make_delivery("U123"))
     assert isinstance(raised.value, DeliveryError)
+    assert type(raised.value) is error
     assert raised.value.retryable is retryable
-    if response.status_code == 429:
-        assert raised.value.retry_after == 7
+    assert raised.value.retry_after == retry_after
 
 
-# --------------------------------------------------------------------------- Resend
+async def test_slack_accepted_without_json_counts_as_sent(caplog: pytest.LogCaptureFixture) -> None:
+    async with mock_client(lambda _: httpx.Response(200, text="ok")) as http:
+        channel = SlackChannel("slack", SlackConfig(bot_token="xoxb-1"), http)
+        with caplog.at_level(logging.WARNING):
+            receipt = await channel.send(make_delivery("U123"))
+    assert receipt.provider_message_id is None
+    assert "without a JSON answer" in caplog.text
 
 
-async def test_resend_sends_once_with_unsubscribe_headers() -> None:
+async def test_resend_sends_once_per_address_with_unsubscribe_headers() -> None:
     seen: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -111,13 +178,20 @@ async def test_resend_sends_once_with_unsubscribe_headers() -> None:
         return httpx.Response(200, json={"id": "em-1"})
 
     config = ResendConfig(api_key="re_1", from_address="hi@shop.test", from_name="Shop")
-    async with _client(handler) as http:
-        delivery = _delivery("ann@example.test", html="<p>hi</p>")
-        receipt = await ResendChannel("email", config, http).send(delivery)
+    async with mock_client(handler) as http:
+        delivery = make_delivery("ann@example.test", html="<p>hi</p>")
+        channel = ResendChannel("email", config, http)
+        receipt = await channel.send(delivery)
+        await channel.send(delivery)
+        other = Delivery(delivery.message_id, "bob@example.test", delivery.content)
+        await channel.send(other)
     assert receipt.provider_message_id == "em-1"
-    request = seen[0]
-    assert request.headers["idempotency-key"] == str(delivery.message_id)
-    body = json.loads(request.content)
+    keys = [request.headers["idempotency-key"] for request in seen]
+    digest = hashlib.sha256(b"ann@example.test").hexdigest()
+    assert keys[0] == keys[1] == f"{delivery.message_id}:{digest}"
+    assert keys[2] != keys[0]
+    assert all(len(key) <= 256 for key in keys)
+    body = json.loads(seen[0].content)
     assert body["from"] == "Shop <hi@shop.test>"
     assert body["to"] == ["ann@example.test"]
     assert body["html"] == "<p>hi</p>"
@@ -125,23 +199,50 @@ async def test_resend_sends_once_with_unsubscribe_headers() -> None:
     assert body["headers"]["Importance"] == "high"
 
 
+@pytest.mark.parametrize("name", ["Café Crème", 'Shop, "the best" Ltd'])
+async def test_email_display_names_are_encoded(name: str) -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if request.url.host == "api.resend.com":
+            return httpx.Response(200, json={"id": "em-1"})
+        return httpx.Response(200, json={"MessageId": "0100-1"})
+
+    expected = formataddr((name, "hi@shop.test"))
+    async with mock_client(handler) as http:
+        resend_config = ResendConfig(api_key="re_1", from_address="hi@shop.test", from_name=name)
+        await ResendChannel("email", resend_config, http).send(make_delivery("a@x.test"))
+        await SesChannel("ses", ses_config(from_name=name), http).send(make_delivery("a@x.test"))
+    assert json.loads(seen[0].content)["from"] == expected
+    assert json.loads(seen[1].content)["FromEmailAddress"] == expected
+    assert expected.isascii()
+
+
 async def test_resend_errors_and_addresses() -> None:
-    responses = iter([httpx.Response(422, json={"message": "bad"}), httpx.Response(503)])
+    responses = iter(
+        [
+            httpx.Response(422, json={"message": "bad"}),
+            httpx.Response(503),
+            httpx.Response(409, json={"name": "concurrent_idempotent_requests"}),
+            httpx.Response(409, json={"name": "resource_locked"}),
+            httpx.Response(409, json={"name": "invalid_idempotent_request"}),
+            httpx.Response(200, text=""),
+        ]
+    )
     config = ResendConfig(api_key="re_1", from_address="hi@shop.test")
-    async with _client(lambda _: next(responses)) as http:
+    async with mock_client(lambda _: next(responses)) as http:
         channel = ResendChannel("email", config, http)
         with pytest.raises(InvalidAddressError):
-            await channel.send(_delivery("a@x.test, b@y.test"))
-        with pytest.raises(DeliveryError) as permanent:
-            await channel.send(_delivery("ann@example.test"))
-        assert not permanent.value.retryable
-        with pytest.raises(DeliveryError) as transient:
-            await channel.send(_delivery("ann@example.test"))
-        assert transient.value.retryable
+            await channel.send(make_delivery("a@x.test, b@y.test"))
+        for retryable in (False, True, True, True, False):
+            with pytest.raises(DeliveryError) as raised:
+                await channel.send(make_delivery("ann@example.test"))
+            assert raised.value.retryable is retryable
+        assert (await channel.send(make_delivery("ann@example.test"))).provider_message_id is None
 
 
 def test_resend_webhook_signature_matches_svix() -> None:
-    # The example from Svix's documentation of manual verification.
     secret = "whsec_plJ3nmyCDGBKInavdOK15jsl"
     body = b'{"event_type":"ping","data":{"success":true}}'
     headers = {
@@ -152,6 +253,7 @@ def test_resend_webhook_signature_matches_svix() -> None:
     assert resend.verify_webhook(secret, headers, body, now=1731705121)
     assert not resend.verify_webhook(secret, headers, body + b" ", now=1731705121)
     assert not resend.verify_webhook(secret, headers, body, now=1731705121 + 301)
+    assert not resend.verify_webhook(secret, headers, body, now=1731705121 - 301)
     assert not resend.verify_webhook("whsec_###", headers, body, now=1731705121)
     junk = {**headers, "svix-signature": "v1,é"}
     assert not resend.verify_webhook(secret, junk, body, now=1731705121)
@@ -166,7 +268,7 @@ def test_resend_webhook_signature_matches_svix() -> None:
             {"type": "email.bounced", "data": {"bounce": {"type": "Temporary"}}},
             FeedbackType.SOFT_BOUNCE,
         ),
-        ({"type": "email.delivery_delayed"}, FeedbackType.SOFT_BOUNCE),
+        ({"type": "email.delivery_delayed"}, None),
         ({"type": "email.complained"}, FeedbackType.COMPLAINT),
         ({"type": "email.suppressed"}, FeedbackType.BOUNCE),
         ({"type": "email.opened"}, None),
@@ -180,11 +282,7 @@ def test_resend_events_map_to_feedback(event: dict[str, Any], kind: FeedbackType
         assert report[2:] == ("em-1", ["ann@example.test"])
 
 
-# --------------------------------------------------------------------------- SES
-
-
 def test_sigv4_matches_botocore() -> None:
-    # Computed with botocore's SigV4Auth for the same request.
     headers = ses.sign_v4(
         "POST",
         "https://email.eu-west-1.amazonaws.com/v2/email/outbound-emails",
@@ -202,7 +300,7 @@ def test_sigv4_matches_botocore() -> None:
     assert headers["x-amz-security-token"] == "session-token"
 
 
-def _ses_config(**options: Any) -> SesConfig:
+def ses_config(**options: Any) -> SesConfig:
     return SesConfig(
         region="eu-west-1",
         from_address="hi@shop.test",
@@ -220,8 +318,10 @@ async def test_ses_sends_a_signed_simple_message() -> None:
         seen.append(request)
         return httpx.Response(200, json={"MessageId": "0100-1"})
 
-    async with _client(handler) as http:
-        receipt = await SesChannel("email", _ses_config(), http).send(_delivery("ann@example.test"))
+    async with mock_client(handler) as http:
+        receipt = await SesChannel("email", ses_config(), http).send(
+            make_delivery("ann@example.test")
+        )
     assert receipt.provider_message_id == "0100-1"
     request = seen[0]
     assert str(request.url) == "https://email.eu-west-1.amazonaws.com/v2/email/outbound-emails"
@@ -248,15 +348,34 @@ async def test_ses_sends_a_signed_simple_message() -> None:
             False,
         ),
         (httpx.Response(429, headers={"x-amzn-ErrorType": "TooManyRequestsException"}), True),
-        (httpx.Response(400, json={"__type": "com.amazon#LimitExceededException"}), True),
+        (httpx.Response(400, json={"__type": "com.amazon#LimitExceededException"}), False),
+        (httpx.Response(400, json={"__type": "com.amazon#ThrottlingException"}), True),
+        (httpx.Response(408, headers={"x-amzn-ErrorType": "RequestTimeoutException"}), True),
+        (httpx.Response(502, text="<html>bad gateway</html>"), True),
+        (httpx.Response(400, json={"__type": "SendingPausedException"}), False),
+        (httpx.Response(400, json={"__type": "AccountSuspendedException"}), False),
     ],
 )
 async def test_ses_errors_are_classified(response: httpx.Response, retryable: bool) -> None:
-    async with _client(lambda _: response) as http:
+    async with mock_client(lambda _: response) as http:
         with pytest.raises(DeliveryError) as raised:
-            await SesChannel("email", _ses_config(), http).send(_delivery("ann@example.test"))
+            await SesChannel("email", ses_config(), http).send(make_delivery("ann@example.test"))
     assert raised.value.retryable is retryable
     assert not isinstance(raised.value, InvalidAddressError)
+
+
+async def test_ses_account_problems_are_logged(caplog: pytest.LogCaptureFixture) -> None:
+    response = httpx.Response(400, json={"__type": "SendingPausedException", "message": "paused"})
+    async with mock_client(lambda _: response) as http:
+        with caplog.at_level(logging.ERROR), pytest.raises(DeliveryError):
+            await SesChannel("email", ses_config(), http).send(make_delivery("ann@example.test"))
+    assert "SES refuses to send for this account" in caplog.text
+
+
+async def test_ses_accepted_without_json_counts_as_sent() -> None:
+    async with mock_client(lambda _: httpx.Response(200, text="accepted")) as http:
+        receipt = await SesChannel("email", ses_config(), http).send(make_delivery("a@x.test"))
+    assert receipt.provider_message_id is None
 
 
 def test_ses_needs_both_keys_or_none(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -273,7 +392,6 @@ def test_ses_needs_both_keys_or_none(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def sns_signer() -> tuple[bytes, Any]:
-    """A self-signed certificate and a function that signs SNS messages with its key."""
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "sns.amazonaws.com")])
     now = datetime.now(UTC)
@@ -290,7 +408,7 @@ def sns_signer() -> tuple[bytes, Any]:
 
     def sign(message: dict[str, Any], version: str = "2") -> dict[str, Any]:
         signed = {**message, "SignatureVersion": version}
-        algorithm = hashes.SHA256() if version == "2" else hashes.SHA1()  # noqa: S303
+        algorithm = hashes.SHA256() if version == "2" else hashes.SHA1()
         signature = key.sign(ses.string_to_sign(signed), padding.PKCS1v15(), algorithm)
         return {**signed, "Signature": base64.b64encode(signature).decode()}
 
@@ -315,6 +433,15 @@ def test_sns_signatures_are_verified(version: str) -> None:
         ses.verify_signature({**message, "Message": '{"eventType":"Delivery"}'}, pem)
     with pytest.raises(ses.SnsError):
         ses.verify_signature({**message, "SignatureVersion": "3"}, pem)
+
+
+def test_sns_messages_older_than_an_hour_are_stale() -> None:
+    now = datetime(2026, 10, 12, 12, 0, tzinfo=UTC)
+    assert ses.is_fresh({"Timestamp": "2026-10-12T11:30:00.000Z"}, now=now)
+    assert not ses.is_fresh({"Timestamp": "2026-10-12T10:59:59.000Z"}, now=now)
+    assert not ses.is_fresh({"Timestamp": "2026-10-12T11:30:00"}, now=now)
+    assert not ses.is_fresh({"Timestamp": "yesterday"}, now=now)
+    assert not ses.is_fresh({}, now=now)
 
 
 @pytest.mark.parametrize(
@@ -354,15 +481,19 @@ def test_ses_events_map_to_feedback() -> None:
     assert ses.feedback(complaint)[0][0] is FeedbackType.COMPLAINT
     delivery = {**mail, "eventType": "Delivery", "delivery": {"recipients": ["a@x.test"]}}
     assert ses.feedback(delivery) == [(FeedbackType.DELIVERED, "delivered", "0100-1", "a@x.test")]
+    delay = {
+        **mail,
+        "eventType": "DeliveryDelay",
+        "deliveryDelay": {"delayedRecipients": [{"emailAddress": "a@x.test"}]},
+    }
+    assert ses.feedback(delay) == []
     assert ses.feedback({**mail, "eventType": "Open"}) == []
 
-
-# --------------------------------------------------------------------------- APNs
 
 TOKEN = "a" * 64
 
 
-def _apns_key() -> tuple[str, Any]:
+def apns_key() -> tuple[str, Any]:
     key = ec.generate_private_key(ec.SECP256R1())
     pem = key.private_bytes(
         serialization.Encoding.PEM,
@@ -372,31 +503,30 @@ def _apns_key() -> tuple[str, Any]:
     return pem, key.public_key()
 
 
-class _TestApns(ApnsChannel):
-    handler: Handler = None
-
-    def make_client(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(transport=httpx.MockTransport(self.handler))
-
-
-def _apns(handler: Handler, pem: str, **options: Any) -> ApnsChannel:
-    _TestApns.handler = staticmethod(handler)  # type: ignore[assignment]
-    config = ApnsConfig(
+def apns_config(pem: str, **options: Any) -> ApnsConfig:
+    return ApnsConfig(
         team_id="TEAM123456", key_id="KEY1234567", key=pem, bundle_id="test.shop", **options
     )
-    return _TestApns("ios", config, httpx.AsyncClient())
+
+
+def apns_channel(handler: Handler, pem: str, **options: Any) -> ApnsChannel:
+    class MockedApns(ApnsChannel):
+        def make_client(self) -> httpx.AsyncClient:
+            return mock_client(handler)
+
+    return MockedApns("ios", apns_config(pem, **options), httpx.AsyncClient())
 
 
 async def test_apns_sends_an_alert_with_a_signed_token() -> None:
-    pem, public = _apns_key()
+    pem, public = apns_key()
     seen: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(request)
         return httpx.Response(200, headers={"apns-id": "A-1"})
 
-    channel = _apns(handler, pem, category="ORDER")
-    delivery = _delivery(TOKEN, thread="order-1", url="https://shop.test/o")
+    channel = apns_channel(handler, pem, category="ORDER")
+    delivery = make_delivery(TOKEN, thread="order-1", url="https://shop.test/o")
     receipt = await channel.send(delivery)
     await channel.aclose()
     assert receipt.provider_message_id == "A-1"
@@ -417,8 +547,22 @@ async def test_apns_sends_an_alert_with_a_signed_token() -> None:
     assert body["cue_message_id"] == "m-1"
 
 
+def test_apns_data_cannot_replace_aps() -> None:
+    pem, _ = apns_key()
+    delivery = Delivery(
+        uuid4(),
+        TOKEN,
+        Content(body="hi", data={"aps": '{"alert":"spoofed"}', "order": "A-1"}),
+        metadata={"aps": "spoofed"},
+    )
+    built = payload(delivery, apns_config(pem))
+    assert built["aps"]["alert"] == {"body": "hi"}
+    assert built["order"] == "A-1"
+
+
 async def test_apns_errors_are_classified_and_tokens_refreshed() -> None:
-    pem, _ = _apns_key()
+    pem, _ = apns_key()
+    seen: list[httpx.Request] = []
     responses = iter(
         [
             httpx.Response(403, json={"reason": "ExpiredProviderToken"}),
@@ -427,23 +571,44 @@ async def test_apns_errors_are_classified_and_tokens_refreshed() -> None:
             httpx.Response(400, json={"reason": "BadDeviceToken"}),
             httpx.Response(429, json={"reason": "TooManyRequests"}),
             httpx.Response(400, json={"reason": "PayloadTooLarge"}),
+            httpx.Response(400, json={"reason": "DeviceTokenNotForTopic"}),
+            httpx.Response(403, json={"reason": "InvalidProviderToken"}),
         ]
     )
-    channel = _apns(lambda _: next(responses), pem)
-    assert (await channel.send(_delivery(TOKEN))).provider_message_id == "A-2"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return next(responses)
+
+    channel = apns_channel(handler, pem)
+    assert (await channel.send(make_delivery(TOKEN))).provider_message_id == "A-2"
+    assert len(seen) == 2
     for error, retryable in (
         (InvalidAddressError, False),
         (InvalidAddressError, False),
         (DeliveryError, True),
         (DeliveryError, False),
+        (DeliveryError, False),
+        (DeliveryError, False),
     ):
         with pytest.raises(error) as raised:
-            await channel.send(_delivery(TOKEN))
-        assert isinstance(raised.value, DeliveryError)
+            await channel.send(make_delivery(TOKEN))
+        assert type(raised.value) is error
         assert raised.value.retryable is retryable
+    assert len(seen) == 8
     with pytest.raises(InvalidAddressError):
-        await channel.send(_delivery("../../2/admin"))
+        await channel.send(make_delivery("../../2/admin"))
     await channel.aclose()
+
+
+async def test_only_the_rejected_provider_token_is_dropped() -> None:
+    pem, _ = apns_key()
+    tokens = ProviderToken(apns_config(pem))
+    first = await tokens.get()
+    tokens.invalidate("an older token")
+    assert await tokens.get() == first
+    tokens.invalidate(first)
+    assert tokens.token is None
 
 
 def test_apns_needs_exactly_one_key() -> None:

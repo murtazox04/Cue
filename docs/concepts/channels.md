@@ -162,10 +162,14 @@ Address: e-mail address.
 | `webhook_secret` | Signing secret (`whsec_…`) of the webhook below. |
 
 Same message as `smtp`: text and HTML parts, the importance header and one-click
-unsubscribe. The message id is the request's `Idempotency-Key`, so a retried job cannot
-send twice. For [delivery feedback](#delivery-feedback), add a webhook in Resend for
-`email.delivered`, `email.bounced`, `email.delivery_delayed`, `email.complained` and
-`email.suppressed`, pointing at `<api.public_url>/v1/inbound/resend/<channel name>`.
+unsubscribe. The message id and a hash of the address make the request's
+`Idempotency-Key`, so a retried job cannot send twice and each address of a message gets
+its own e-mail. Resend's `409 concurrent_idempotent_requests` and `resource_locked` are
+retried. For [delivery feedback](#delivery-feedback), add a webhook in Resend for
+`email.delivered`, `email.bounced`, `email.complained` and `email.suppressed`, pointing
+at `<api.public_url>/v1/inbound/resend/<channel name>`. Signatures older or newer than
+five minutes are refused, a repeated `svix-id` is applied once, and
+`email.delivery_delayed` is ignored: a delay is not a bounce.
 
 ### `ses` — e-mail through Amazon SES
 
@@ -185,11 +189,18 @@ roles (IRSA, ECS task roles) export them into the environment or use the `smtp`
 connector with SES's SMTP interface.
 
 For [delivery feedback](#delivery-feedback), have the configuration set (or the
-identity) publish bounces, complaints, deliveries and delivery delays to an SNS topic,
-list the topic in `sns_topic_arns`, and subscribe
-`<api.public_url>/v1/inbound/ses/<channel name>` to it over HTTPS. Cue confirms the
-subscription itself, checks each message's signature against Amazon's certificate and
-ignores topics you did not list (anyone can create an SNS topic).
+identity) publish bounces, complaints and deliveries to an SNS topic, list the topic in
+`sns_topic_arns`, and subscribe `<api.public_url>/v1/inbound/ses/<channel name>` to it
+over HTTPS. Leave **raw message delivery off**: it strips the signature, and Cue refuses
+such messages. Cue confirms the subscription itself, checks each message's signature
+against Amazon's certificate, refuses topics you did not list (anyone can create an SNS
+topic) and messages more than an hour old, and applies a repeated `MessageId` once.
+Delivery delays are ignored. When Amazon's certificate or confirmation URL cannot be
+reached, Cue answers `503` so SNS retries.
+
+Throttling (`TooManyRequestsException`, `ThrottlingException`), `RequestTimeoutException`
+and `5xx` answers are retried. `SendingPausedException` and `AccountSuspendedException`
+fail the message and are logged as errors: the account cannot send until you fix it.
 
 ### `slack` — Slack
 
@@ -201,10 +212,21 @@ Address: a member id (`U…`), delivered as a direct message from your app, or a
 | `bot_token` | — | Bot token (`xoxb-…`) with `chat:write` (and `im:write` for direct messages). |
 | `unfurl_links` | `false` | Let Slack preview links. |
 
-The title becomes a header, the body a section (with `<`, `>` and `&` escaped, so event
-data cannot mention `@channel`), and the URL and actions become buttons. A context line
-links to the person's notification settings. Members who left, archived channels and
-channels the bot is not in disable the address.
+The title becomes a header, the body a section, and the URL and actions become buttons.
+Text from event data is escaped (`<`, `>`, `&`) and sent with `verbatim: true`, so it
+cannot mention `@channel` or `@here`. Links longer than Slack's 3000 characters are left
+out. A context line links to the person's notification settings.
+
+The address is disabled on the `chat.postMessage` errors that mean it cannot be reached:
+`channel_not_found`, `is_archived`, `not_in_channel` and `messages_tab_disabled`. Token
+problems (`account_inactive`, `invalid_auth`, `token_revoked`, `token_expired`,
+`missing_scope`) fail the message without touching addresses, and are logged as errors.
+
+!!! warning "A bot token from the wrong workspace looks like dead addresses"
+    Slack also answers `channel_not_found` when the bot cannot open a direct message with
+    the member, for example because the token belongs to another workspace. Every
+    address would then be disabled. Check the token with a test message before pointing
+    real traffic at a new channel.
 
 ### `apns` — Apple Push Notification service
 
@@ -224,7 +246,17 @@ Talks to APNs directly over HTTP/2 with a token Cue signs (ES256) and renews. Im
 maps to the interruption level (`passive`, `active`, `time-sensitive`) and priority;
 `thread` to `thread-id`; `expires_at` to `apns-expiration`. The payload carries your
 template's `data`, `url`, `cue_actions`, `cue_message_id` and `cue_tracking_token`.
-Unregistered and invalid tokens disable the address.
+`Unregistered`, `ExpiredToken` (410) and `BadDeviceToken` disable the address. An
+`ExpiredProviderToken` makes Cue sign a new token once; `InvalidProviderToken`,
+`DeviceTokenNotForTopic`, `BadTopic` and other configuration errors fail the message
+without disabling anything, and are logged as errors.
+
+!!! warning "Match the environment and the bundle id to the app build"
+    Tokens from development builds only work with `environment: sandbox`, tokens from
+    TestFlight and App Store builds only with `production`. Apple answers a token from the
+    other environment with `BadDeviceToken`, which disables the address, so a wrong
+    `environment` disables every address the channel sends to. `bundle_id` must be the
+    bundle id of the app that registered the tokens.
 
 ### `telegram` — Telegram bots
 

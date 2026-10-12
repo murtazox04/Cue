@@ -1,17 +1,12 @@
-"""E-mail through Resend's API. The address is an e-mail address.
-
-Resend reports deliveries, bounces and spam complaints to a webhook: point one at
-``<api.public_url>/v1/inbound/resend/<channel>`` and set ``webhook_secret`` to its
-signing secret (``whsec_…``).
-"""
-
 from __future__ import annotations
 
 import base64
 import binascii
 import hashlib
 import hmac
+import logging
 import time
+from email.utils import formataddr
 from typing import Any, ClassVar
 
 import httpx
@@ -30,9 +25,12 @@ from cue_notify.channels.base import (
 from cue_notify.channels.smtp import single_address
 from cue_notify.core.enums import FeedbackType
 
+logger = logging.getLogger(__name__)
+
 API = "https://api.resend.com"
 WEBHOOK_TOLERANCE = 300
 SIGNATURE_HEADERS = ("svix-id", "svix-timestamp", "svix-signature")
+RETRYABLE_CONFLICTS = frozenset({"concurrent_idempotent_requests", "resource_locked"})
 
 
 class ResendConfig(ChannelConfig):
@@ -52,13 +50,8 @@ class ResendChannel(Channel[ResendConfig]):
 
     async def send(self, delivery: Delivery) -> Receipt:
         config = self.config
-        sender = (
-            f"{config.from_name} <{config.from_address}>"
-            if config.from_name
-            else (config.from_address)
-        )
         payload: dict[str, Any] = {
-            "from": sender,
+            "from": formataddr((config.from_name or "", config.from_address)),
             "to": [single_address(delivery.address)],
             "subject": mail.subject(delivery),
             "text": mail.text_body(delivery),
@@ -71,8 +64,7 @@ class ResendChannel(Channel[ResendConfig]):
             payload["reply_to"] = config.reply_to
         headers = {
             "Authorization": f"Bearer {config.api_key.get_secret_value()}",
-            # Resend drops a repeat within 24 hours, so a retried job cannot send twice.
-            "Idempotency-Key": str(delivery.message_id),
+            "Idempotency-Key": idempotency_key(delivery),
         }
         try:
             response = await self.http.post(
@@ -80,18 +72,35 @@ class ResendChannel(Channel[ResendConfig]):
             )
         except httpx.HTTPError as exc:
             raise transport_error(exc) from exc
+        data = json_object(response)
+        if response.status_code == 409 and data.get("name") in RETRYABLE_CONFLICTS:
+            raise DeliveryError(f"resend 409: {data.get('name')}", retryable=True)
         raise_for_http(response)
-        data: dict[str, Any] = response.json() if response.content else {}
         if not data.get("id"):
-            raise DeliveryError("resend: no id in the response")
+            logger.warning(
+                "resend accepted the message without an id",
+                extra={"channel": self.name, "message_id": str(delivery.message_id)},
+            )
+            return Receipt()
         return Receipt(provider_message_id=str(data["id"]))
+
+
+def idempotency_key(delivery: Delivery) -> str:
+    address = hashlib.sha256(delivery.address.encode()).hexdigest()
+    return f"{delivery.message_id}:{address}"
+
+
+def json_object(response: httpx.Response) -> dict[str, Any]:
+    try:
+        data: Any = response.json()
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def verify_webhook(
     secret: str, headers: dict[str, str], body: bytes, *, now: float | None = None
 ) -> bool:
-    """Resend signs webhooks the Svix way: HMAC-SHA256 over ``id.timestamp.body`` with
-    the base64 part of ``whsec_…``; ``svix-signature`` lists ``v1,<base64>`` values."""
     msg_id = headers.get("svix-id", "")
     timestamp = headers.get("svix-timestamp", "")
     if not msg_id or not timestamp.isdigit():
@@ -115,11 +124,10 @@ def verify_webhook(
 
 
 def feedback(event: dict[str, Any]) -> tuple[FeedbackType, str, str, list[str]] | None:
-    """(type, reason, Resend email id, addresses) for the events Cue acts on."""
     data: dict[str, Any] = event.get("data") or {}
     email_id = str(data.get("email_id") or "")
     raw_to = data.get("to")
-    to = [str(a) for a in raw_to] if isinstance(raw_to, list) else []  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
+    to = [str(a) for a in raw_to] if isinstance(raw_to, list) else []
     match event.get("type"):
         case "email.delivered":
             return FeedbackType.DELIVERED, "delivered", email_id, to
@@ -132,10 +140,7 @@ def feedback(event: dict[str, Any]) -> tuple[FeedbackType, str, str, list[str]] 
                 else FeedbackType.SOFT_BOUNCE
             )
             return kind, reason, email_id, to
-        case "email.delivery_delayed":
-            return FeedbackType.SOFT_BOUNCE, "delivery delayed", email_id, to
         case "email.suppressed":
-            # Resend refuses the address after an earlier hard bounce or complaint.
             return FeedbackType.BOUNCE, "suppressed by Resend", email_id, to
         case "email.complained":
             return FeedbackType.COMPLAINT, "marked as spam", email_id, to

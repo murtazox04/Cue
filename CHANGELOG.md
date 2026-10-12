@@ -27,7 +27,10 @@ All notable changes to this project are documented here. The format follows
 - Resend webhooks (`/v1/inbound/resend/<channel>`, Svix signatures) and SES
   notifications through Amazon SNS (`/v1/inbound/ses/<channel>`: signatures checked
   against Amazon's certificate, only the topics in `sns_topic_arns`, subscriptions
-  confirmed automatically) feed delivery feedback.
+  confirmed automatically) feed delivery feedback. SNS messages more than an hour old
+  are refused, and a repeated SNS `MessageId` or Svix `svix-id` is applied once. Delivery
+  delays are not soft bounces. When Amazon's certificate or confirmation URL is
+  unreachable Cue answers `503`, so SNS retries.
 - Channel health: a channel with `delivery.breaker_failures` transient failures in a
   row is skipped for `delivery.breaker_cooldown_seconds` by messages that have another
   channel planned, instead of every message waiting to retry it. After the cooldown one

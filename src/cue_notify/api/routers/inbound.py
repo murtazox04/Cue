@@ -1,15 +1,9 @@
-"""What comes back after sending: replies, delivery statuses, bounces and complaints.
-
-Replies from people: STOP and START keywords sent back to your text messages.
+"""Replies from people: STOP and START keywords sent back to your text messages.
 
 `POST /v1/inbound/sms` takes a reply from any provider, called by your backend. Twilio
 can call `POST /v1/inbound/twilio` directly: point the number's (or messaging service's)
 incoming-message webhook there. Twilio's request signature is checked against the
 Twilio channel's auth token.
-
-Delivery feedback from providers (see :mod:`cue_notify.services.feedback`): Twilio's
-status callback, Resend's webhooks and Amazon SNS notifications for SES, each verified
-with the provider's own signature.
 """
 
 from __future__ import annotations
@@ -32,7 +26,12 @@ from cue_notify.channels import resend, ses
 from cue_notify.channels.twilio import delivery_feedback
 from cue_notify.core.enums import FeedbackType
 from cue_notify.services import agents, feedback, inbound
-from cue_notify.services.errors import ForbiddenError, NotFoundError, UnprocessableError
+from cue_notify.services.errors import (
+    ForbiddenError,
+    NotFoundError,
+    ServiceUnavailableError,
+    UnprocessableError,
+)
 
 router = APIRouter(prefix="/inbound", tags=["inbound"])
 logger = logging.getLogger(__name__)
@@ -176,19 +175,17 @@ async def twilio_status(request: Request, session: SessionDep, runtime: RuntimeD
     return Response(status_code=204)
 
 
-# --------------------------------------------------------------------------- e-mail providers
-
-_SNS_CERTIFICATES: dict[str, bytes] = {}
+SNS_CERTIFICATES: dict[str, bytes] = {}
 
 
-def _provider_channel(runtime: RuntimeDep, name: str, provider: str) -> Any:
+def provider_channel(runtime: RuntimeDep, name: str, provider: str) -> Any:
     channel = runtime.channels.get(name) if name in runtime.channels else None
     if channel is None or channel.provider != provider:
         raise NotFoundError(f"{provider} channel", name)
     return channel
 
 
-async def _apply_reports(
+async def apply_reports(
     session: SessionDep,
     runtime: RuntimeDep,
     channel: str,
@@ -210,14 +207,18 @@ async def _apply_reports(
         )
 
 
-@router.post("/resend/{channel}", summary="Resend webhook", include_in_schema=False)
+@router.post(
+    "/resend/{channel}",
+    summary="Resend webhook",
+    description="Point a Resend webhook here (`email.delivered`, `email.bounced`, "
+    "`email.complained`, `email.suppressed`) and set the channel's `webhook_secret`. A "
+    "repeated delivery (same `svix-id`) is applied once.",
+    include_in_schema=False,
+)
 async def resend_webhook(
     channel: str, request: Request, session: SessionDep, runtime: RuntimeDep
 ) -> Response:
-    """Point a Resend webhook here (`email.delivered`, `email.bounced`,
-    `email.delivery_delayed`, `email.complained`, `email.suppressed`) and set the
-    channel's `webhook_secret`."""
-    config: Any = _provider_channel(runtime, channel, "resend").config
+    config: Any = provider_channel(runtime, channel, "resend").config
     if config.webhook_secret is None:
         raise UnprocessableError(f"set webhook_secret on channel {channel!r}")
     body = await request.body()
@@ -225,79 +226,92 @@ async def resend_webhook(
     if not resend.verify_webhook(config.webhook_secret.get_secret_value(), headers, body):
         raise ForbiddenError("invalid Resend signature")
     try:
-        event = json.loads(body)
+        event: Any = json.loads(body)
     except ValueError as exc:
         raise UnprocessableError("the body is not JSON") from exc
     report = resend.feedback(event if isinstance(event, dict) else {})
-    if report is not None:
+    report_id = f"resend:{channel}:{headers['svix-id']}"[:255]
+    if report is not None and await feedback.first_report(session, report_id):
         kind, reason, email_id, addresses = report
         reports = [(kind, reason, email_id, address) for address in addresses[:50]]
-        await _apply_reports(session, runtime, channel, reports, "resend")
+        await apply_reports(session, runtime, channel, reports, "resend")
     return Response(status_code=204)
 
 
-@router.post("/ses/{channel}", summary="Amazon SNS notifications for SES", include_in_schema=False)
+@router.post(
+    "/ses/{channel}",
+    summary="Amazon SNS notifications for SES",
+    description="Subscribe this URL (HTTPS, raw message delivery off) to the SNS topic that "
+    "SES publishes bounces, complaints and deliveries to, and list the topic in the "
+    "channel's `sns_topic_arns`. Subscriptions are confirmed automatically for listed "
+    "topics. A repeated notification (same `MessageId`) is applied once.",
+    include_in_schema=False,
+)
 async def ses_notification(
     channel: str, request: Request, session: SessionDep, runtime: RuntimeDep
 ) -> Response:
-    """Subscribe this URL (HTTPS) to the SNS topic that SES publishes bounces,
-    complaints and deliveries to, and list the topic in the channel's `sns_topic_arns`.
-    Subscriptions are confirmed automatically for listed topics."""
-    ses_channel = _provider_channel(runtime, channel, "ses")
-    config: Any = ses_channel.config
+    config: Any = provider_channel(runtime, channel, "ses").config
+    if request.headers.get("x-amz-sns-rawdelivery", "").lower() == "true":
+        raise ForbiddenError("turn raw message delivery off; it removes the SNS signature")
     try:
-        message = json.loads(await request.body())
+        message: Any = json.loads(await request.body())
     except ValueError as exc:
         raise UnprocessableError("the body is not JSON") from exc
     if not isinstance(message, dict):
         raise UnprocessableError("the body is not an SNS message")
-    sns: dict[str, Any] = message  # pyright: ignore[reportUnknownVariableType]
-    # Anyone can make an SNS topic and point it here; only the configured ones count.
+    sns: dict[str, Any] = message
     if sns.get("TopicArn") not in config.sns_topic_arns:
         raise ForbiddenError("unknown SNS topic")
     certificate_url = str(sns.get("SigningCertURL", ""))
     if not ses.is_sns_url(certificate_url, suffix=".pem"):
         raise ForbiddenError("the signing certificate is not Amazon SNS's")
     try:
-        ses.verify_signature(sns, await _sns_certificate(runtime, certificate_url))
+        ses.verify_signature(sns, await sns_certificate(runtime, certificate_url))
     except ses.SnsError as exc:
         raise ForbiddenError(str(exc)) from exc
+    if not ses.is_fresh(sns):
+        raise ForbiddenError("the SNS message is more than an hour old")
 
     kind = sns.get("Type")
     if kind == "SubscriptionConfirmation":
-        subscribe_url = str(sns.get("SubscribeURL", ""))
-        if not ses.is_sns_url(subscribe_url):
-            raise ForbiddenError("the subscription URL is not Amazon SNS's")
-        try:
-            response = await runtime.http.get(subscribe_url)
-        except httpx.HTTPError as exc:
-            raise UnprocessableError(f"could not confirm the subscription: {exc}") from exc
-        if not response.is_success:
-            raise UnprocessableError(f"SNS refused the confirmation: HTTP {response.status_code}")
-        # The configured name, not the request path: nothing from the request is logged.
-        logger.info("confirmed SNS subscription", extra={"channel": ses_channel.name})
+        await confirm_subscription(runtime, channel, str(sns.get("SubscribeURL", "")))
     elif kind == "Notification":
+        report_id = f"sns:{sns.get('TopicArn')}:{sns.get('MessageId')}"[:255]
         try:
-            notification = json.loads(str(sns.get("Message", "")))
+            notification: Any = json.loads(str(sns.get("Message", "")))
         except ValueError:
             notification = None
-        if isinstance(notification, dict):
-            reports = ses.feedback(notification)  # pyright: ignore[reportUnknownArgumentType]
-            await _apply_reports(session, runtime, channel, reports[:50], "ses")
+        if isinstance(notification, dict) and await feedback.first_report(session, report_id):
+            reports = ses.feedback(notification)
+            await apply_reports(session, runtime, channel, reports[:50], "ses")
     return Response(status_code=204)
 
 
-async def _sns_certificate(runtime: RuntimeDep, url: str) -> bytes:
-    cached = _SNS_CERTIFICATES.get(url)
+async def confirm_subscription(runtime: RuntimeDep, channel: str, subscribe_url: str) -> None:
+    if not ses.is_sns_url(subscribe_url):
+        raise ForbiddenError("the subscription URL is not Amazon SNS's")
+    try:
+        response = await runtime.http.get(subscribe_url)
+    except httpx.HTTPError as exc:
+        raise ServiceUnavailableError(f"could not confirm the subscription: {exc}") from exc
+    if not response.is_success:
+        raise ServiceUnavailableError(f"SNS refused the confirmation: HTTP {response.status_code}")
+    logger.info("confirmed SNS subscription", extra={"channel": channel})
+
+
+async def sns_certificate(runtime: RuntimeDep, url: str) -> bytes:
+    cached = SNS_CERTIFICATES.get(url)
     if cached is not None:
         return cached
     try:
         response = await runtime.http.get(url)
     except httpx.HTTPError as exc:
-        raise ForbiddenError(f"could not fetch the SNS certificate: {exc}") from exc
+        raise ServiceUnavailableError(f"could not fetch the SNS certificate: {exc}") from exc
     if not response.is_success:
-        raise ForbiddenError(f"could not fetch the SNS certificate: HTTP {response.status_code}")
-    if len(_SNS_CERTIFICATES) >= 32:
-        _SNS_CERTIFICATES.clear()
-    _SNS_CERTIFICATES[url] = response.content
+        raise ServiceUnavailableError(
+            f"could not fetch the SNS certificate: HTTP {response.status_code}"
+        )
+    if len(SNS_CERTIFICATES) >= 32:
+        SNS_CERTIFICATES.clear()
+    SNS_CERTIFICATES[url] = response.content
     return response.content

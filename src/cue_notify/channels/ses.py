@@ -1,25 +1,14 @@
-"""E-mail through Amazon SES (API v2, ``SendEmail``). The address is an e-mail address.
-
-Requests are signed with AWS Signature Version 4 using the channel's keys, or the
-standard ``AWS_ACCESS_KEY_ID``, ``AWS_SECRET_ACCESS_KEY`` and ``AWS_SESSION_TOKEN``
-environment variables, so no AWS SDK is needed.
-
-SES reports bounces, complaints and deliveries through Amazon SNS: subscribe
-``<api.public_url>/v1/inbound/ses/<channel>`` (HTTPS) to the topic and list the topic in
-``sns_topic_arns``. Cue checks each notification's signature against Amazon's
-certificate, accepts only the listed topics, and confirms the subscription itself.
-Verifying signatures needs the ``ses`` extra (``pip install 'cue-notify[ses]'``).
-"""
-
 from __future__ import annotations
 
 import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from email.utils import formataddr
 from typing import Any, ClassVar, Self
 from urllib.parse import urlsplit
 
@@ -39,10 +28,14 @@ from cue_notify.channels.base import (
 from cue_notify.channels.smtp import single_address
 from cue_notify.core.enums import FeedbackType
 
+logger = logging.getLogger(__name__)
+
 SERVICE = "ses"
 TRANSIENT_ERRORS = frozenset(
-    {"TooManyRequestsException", "LimitExceededException", "ThrottlingException"}
+    {"TooManyRequestsException", "ThrottlingException", "RequestTimeoutException"}
 )
+ACCOUNT_ERRORS = frozenset({"SendingPausedException", "AccountSuspendedException"})
+SNS_MAX_AGE = timedelta(hours=1)
 
 
 class SesConfig(ChannelConfig):
@@ -67,7 +60,7 @@ class SesConfig(ChannelConfig):
     endpoint: str | None = Field(default=None, description="Override for tests or a VPC endpoint.")
 
     @model_validator(mode="after")
-    def _credentials(self) -> Self:
+    def both_keys_or_none(self) -> Self:
         if (self.access_key_id is None) != (self.secret_access_key is None):
             raise ValueError("set both access_key_id and secret_access_key, or neither")
         return self
@@ -92,7 +85,6 @@ def sign_v4(
     credentials: tuple[str, str, str | None],
     now: datetime | None = None,
 ) -> dict[str, str]:
-    """Headers that sign a request with AWS Signature Version 4."""
     access_key, secret_key, token = credentials
     moment = now or datetime.now(UTC)
     amz_date = moment.strftime("%Y%m%dT%H%M%SZ")
@@ -130,7 +122,7 @@ def sign_v4(
         f"AWS4-HMAC-SHA256 Credential={access_key}/{scope}, "
         f"SignedHeaders={';'.join(names)}, Signature={signature}"
     )
-    del headers["host"]  # httpx sets it from the URL
+    del headers["host"]
     return headers
 
 
@@ -145,11 +137,7 @@ class SesChannel(Channel[SesConfig]):
 
     def payload(self, delivery: Delivery) -> dict[str, Any]:
         config = self.config
-        sender = (
-            f"{config.from_name} <{config.from_address}>"
-            if config.from_name
-            else config.from_address
-        )
+        sender = formataddr((config.from_name or "", config.from_address))
         body: dict[str, Any] = {"Text": {"Data": mail.text_body(delivery), "Charset": "UTF-8"}}
         if delivery.content.html:
             body["Html"] = {"Data": delivery.content.html, "Charset": "UTF-8"}
@@ -188,28 +176,44 @@ class SesChannel(Channel[SesConfig]):
             response = await self.http.post(self.url, content=body, headers=headers)
         except httpx.HTTPError as exc:
             raise transport_error(exc) from exc
-        data: dict[str, Any] = response.json() if response.content else {}
+        data = json_object(response)
         if response.is_success:
-            return Receipt(provider_message_id=str(data.get("MessageId") or "") or None)
+            message_id = str(data.get("MessageId") or "")
+            if not message_id:
+                logger.warning(
+                    "SES accepted the message without a MessageId",
+                    extra={"channel": self.name, "message_id": str(delivery.message_id)},
+                )
+            return Receipt(provider_message_id=message_id or None)
         error = (
             response.headers.get("x-amzn-errortype", "").split(":")[0]
             or str(data.get("__type", "")).rsplit("#", 1)[-1]
         )
         detail = f"ses {error or response.status_code}: {data.get('message', '')}"[:300]
-        if response.status_code == 429 or response.status_code >= 500 or error in TRANSIENT_ERRORS:
+        status = response.status_code
+        if status in (408, 429) or status >= 500 or error in TRANSIENT_ERRORS:
             retry_after = finite_delay(response.headers.get("retry-after"))
             raise DeliveryError(detail, retryable=True, retry_after=retry_after)
-        # MessageRejected is about the message or the account (sandbox, unverified
-        # sender), not the recipient; dead recipients arrive later as bounces through SNS.
+        if error in ACCOUNT_ERRORS:
+            logger.error(
+                "SES refuses to send for this account: %s",
+                detail,
+                extra={"channel": self.name, "message_id": str(delivery.message_id)},
+            )
         raise DeliveryError(detail)
 
 
-# --------------------------------------------------------------------------- SNS
+def json_object(response: httpx.Response) -> dict[str, Any]:
+    try:
+        data: Any = response.json()
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 CERT_HOST = re.compile(r"^sns\.[a-z0-9-]+\.amazonaws\.com(\.cn)?$")
-_NOTIFICATION_FIELDS = ("Message", "MessageId", "Subject", "Timestamp", "TopicArn", "Type")
-_SUBSCRIPTION_FIELDS = (
+NOTIFICATION_FIELDS = ("Message", "MessageId", "Subject", "Timestamp", "TopicArn", "Type")
+SUBSCRIPTION_FIELDS = (
     "Message",
     "MessageId",
     "SubscribeURL",
@@ -221,11 +225,10 @@ _SUBSCRIPTION_FIELDS = (
 
 
 class SnsError(Exception):
-    """The SNS message is not authentic or not for us."""
+    pass
 
 
 def is_sns_url(url: str, *, suffix: str = "") -> bool:
-    """Only Amazon SNS's own HTTPS endpoints may serve certificates or confirmations."""
     parts = urlsplit(url)
     return (
         parts.scheme == "https"
@@ -237,10 +240,20 @@ def is_sns_url(url: str, *, suffix: str = "") -> bool:
 
 def string_to_sign(message: dict[str, Any]) -> bytes:
     kind = message.get("Type")
-    fields = _NOTIFICATION_FIELDS if kind == "Notification" else _SUBSCRIPTION_FIELDS
+    fields = NOTIFICATION_FIELDS if kind == "Notification" else SUBSCRIPTION_FIELDS
     return "".join(
         f"{name}\n{message[name]}\n" for name in fields if message.get(name) is not None
     ).encode()
+
+
+def is_fresh(message: dict[str, Any], *, now: datetime | None = None) -> bool:
+    try:
+        sent = datetime.fromisoformat(str(message.get("Timestamp", "")))
+    except ValueError:
+        return False
+    if sent.tzinfo is None:
+        return False
+    return (now or datetime.now(UTC)) - sent <= SNS_MAX_AGE
 
 
 def verify_signature(message: dict[str, Any], certificate_pem: bytes) -> None:
@@ -249,7 +262,7 @@ def verify_signature(message: dict[str, Any], certificate_pem: bytes) -> None:
         from cryptography.exceptions import InvalidSignature
         from cryptography.hazmat.primitives import hashes
         from cryptography.hazmat.primitives.asymmetric import padding, rsa
-    except ImportError as exc:  # pragma: no cover
+    except ImportError as exc:
         raise SnsError("verifying SNS needs: pip install 'cue-notify[ses]'") from exc
     version = str(message.get("SignatureVersion", ""))
     if version not in ("1", "2"):
@@ -259,17 +272,13 @@ def verify_signature(message: dict[str, Any], certificate_pem: bytes) -> None:
         raise SnsError("unexpected certificate key type")
     try:
         signature = base64.b64decode(str(message.get("Signature", "")), validate=True)
-        algorithm = hashes.SHA1() if version == "1" else hashes.SHA256()  # noqa: S303 — SNS v1
+        algorithm = hashes.SHA256() if version == "2" else hashes.SHA1()
         key.verify(signature, string_to_sign(message), padding.PKCS1v15(), algorithm)
     except (InvalidSignature, ValueError) as exc:
         raise SnsError("invalid SNS signature") from exc
 
 
 def feedback(notification: dict[str, Any]) -> list[tuple[FeedbackType, str, str, str]]:
-    """(type, reason, SES message id, address) for each recipient an SES event names.
-
-    Accepts both event publishing (``eventType``) and identity notifications
-    (``notificationType``)."""
     kind = str(notification.get("eventType") or notification.get("notificationType") or "")
     message_id = str((notification.get("mail") or {}).get("messageId") or "")
     reports: list[tuple[FeedbackType, str, str, str]] = []
@@ -299,15 +308,4 @@ def feedback(notification: dict[str, Any]) -> list[tuple[FeedbackType, str, str,
         delivery: dict[str, Any] = notification.get("delivery") or {}
         for address in delivery.get("recipients") or []:
             reports.append((FeedbackType.DELIVERED, "delivered", message_id, str(address)))
-    elif kind == "DeliveryDelay":
-        delay: dict[str, Any] = notification.get("deliveryDelay") or {}
-        for recipient in delay.get("delayedRecipients") or []:
-            reports.append(
-                (
-                    FeedbackType.SOFT_BOUNCE,
-                    str(delay.get("delayType") or "delivery delayed"),
-                    message_id,
-                    str(recipient.get("emailAddress", "")),
-                )
-            )
     return [report for report in reports if report[3]]
