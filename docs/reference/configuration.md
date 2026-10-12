@@ -77,6 +77,16 @@ Per client address, in each process. Requests over a limit get `429` with `Retry
 | `failed_auth` | `{per_minute = 10, burst = 20}` | Responses `401` on `/v1`; once used up, requests from that address without a valid key get `429` on `/v1` until it refills. Valid keys are never blocked by it. |
 | `max_clients` | `100000` | Addresses remembered; the least recently seen are forgotten first. |
 
+## `delivery`
+
+[Delivery feedback](../concepts/channels.md#delivery-feedback) and channel health.
+
+| Key | Default | |
+|---|---|---|
+| `soft_bounce_limit` | `3` | Soft bounces in a row (no delivery between) that disable an address. |
+| `breaker_failures` | `5` | Transient failures in a row after which a channel is skipped when another is planned. `0` turns this off. |
+| `breaker_cooldown_seconds` | `60` | How long a failing channel is skipped before it is tried again. |
+
 ## `worker`
 
 | Key | Default | |

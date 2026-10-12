@@ -47,6 +47,8 @@ The complete, always-current reference is generated from the code: open
 | `GET`, `PUT /v1/preferences/{token}` | none (the token) | Self-service preferences for your own UI. |
 | `POST /v1/inbound/sms` | `recipients:write` | STOP/START replies from any SMS provider (not for agent keys). |
 | `POST /v1/inbound/twilio` | none (Twilio signature) | Twilio's incoming-message webhook; needs `api.public_url`. |
+| `POST /v1/inbound/twilio/status` | none (Twilio signature) | Twilio's delivery status callback: [delivery feedback](../concepts/channels.md#delivery-feedback). |
+| `POST /v1/feedback` | `recipients:write` | Report a delivery, bounce, soft bounce or spam complaint (not for agent keys). |
 | `/v1/templates[/{key}]`, `POST …/{key}/preview` | `admin` | |
 | `/v1/rules[/{key}]`, `POST /v1/rules/evaluate` | `admin` | |
 | `/v1/categories[/{key}]` | `admin` | |

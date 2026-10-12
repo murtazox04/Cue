@@ -14,6 +14,7 @@ import httpx
 from cue_client import __version__
 
 Importance = Literal["low", "normal", "high", "critical"]
+Feedback = Literal["delivered", "bounce", "soft_bounce", "complaint"]
 JSON = dict[str, Any]
 
 RETRY_STATUSES = frozenset({429, 502, 503, 504})
@@ -129,6 +130,26 @@ def _approval(
         "expires_in_seconds": expires_in_seconds,
         "metadata": dict(metadata or {}),
     }
+
+
+def _feedback(
+    type: Feedback,
+    channel: str,
+    address: str | None,
+    message_id: str | None,
+    provider_message_id: str | None,
+    reason: str | None,
+) -> JSON:
+    return _drop_none(
+        {
+            "type": type,
+            "channel": channel,
+            "address": address,
+            "message_id": message_id,
+            "provider_message_id": provider_message_id,
+            "reason": reason,
+        }
+    )
 
 
 def _headers(api_key: str) -> dict[str, str]:
@@ -253,6 +274,22 @@ class Cue:
         payload = _approval(title, reviewers, body, importance, expires_in_seconds, metadata)
         return self._request("POST", "/v1/approvals", json=payload, safe=False)
 
+    def report_feedback(
+        self,
+        type: Feedback,
+        channel: str,
+        *,
+        address: str | None = None,
+        message_id: str | None = None,
+        provider_message_id: str | None = None,
+        reason: str | None = None,
+    ) -> JSON:
+        """Forward what a provider reported: a ``bounce`` disables the address, a
+        ``complaint`` unsubscribes the person from optional categories. Not retried: a
+        repeated ``soft_bounce`` would count twice."""
+        payload = _feedback(type, channel, address, message_id, provider_message_id, reason)
+        return self._request("POST", "/v1/feedback", json=payload, safe=False)
+
     def get_approval(self, approval_id: str) -> JSON:
         """``status`` is ``pending``, ``approved``, ``rejected`` or ``expired``."""
         return self._request("GET", f"/v1/approvals/{_segment(approval_id)}", safe=True)
@@ -369,6 +406,19 @@ class AsyncCue:
     ) -> JSON:
         payload = _approval(title, reviewers, body, importance, expires_in_seconds, metadata)
         return await self._request("POST", "/v1/approvals", json=payload, safe=False)
+
+    async def report_feedback(
+        self,
+        type: Feedback,
+        channel: str,
+        *,
+        address: str | None = None,
+        message_id: str | None = None,
+        provider_message_id: str | None = None,
+        reason: str | None = None,
+    ) -> JSON:
+        payload = _feedback(type, channel, address, message_id, provider_message_id, reason)
+        return await self._request("POST", "/v1/feedback", json=payload, safe=False)
 
     async def get_approval(self, approval_id: str) -> JSON:
         return await self._request("GET", f"/v1/approvals/{_segment(approval_id)}", safe=True)

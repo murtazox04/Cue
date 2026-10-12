@@ -45,6 +45,17 @@ export interface MessageInput {
   idempotencyKey?: string;
 }
 
+export type Feedback = "delivered" | "bounce" | "soft_bounce" | "complaint";
+
+export interface FeedbackInput {
+  type: Feedback;
+  channel: string;
+  address?: string;
+  messageId?: string;
+  providerMessageId?: string;
+  reason?: string;
+}
+
 export interface ApprovalInput {
   /** What needs a decision. */
   title: string;
@@ -168,6 +179,21 @@ export class Cue {
   }
 
   /** `status` is `pending`, `approved`, `rejected` or `expired`. */
+  /**
+   * Forward what a provider reported: a `bounce` disables the address, a `complaint`
+   * unsubscribes the person from optional categories. Not retried.
+   */
+  reportFeedback(feedback: FeedbackInput): Promise<Json> {
+    const body: Json = { type: feedback.type, channel: feedback.channel };
+    if (feedback.address !== undefined) body.address = feedback.address;
+    if (feedback.messageId !== undefined) body.message_id = feedback.messageId;
+    if (feedback.providerMessageId !== undefined) {
+      body.provider_message_id = feedback.providerMessageId;
+    }
+    if (feedback.reason !== undefined) body.reason = feedback.reason;
+    return this.#request("POST", "/v1/feedback", body, false);
+  }
+
   getApproval(id: string): Promise<Json> {
     return this.#request("GET", `/v1/approvals/${segment(id)}`, undefined, true);
   }

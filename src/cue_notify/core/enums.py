@@ -96,6 +96,21 @@ class PreferenceSource(StrEnum):
     """The person's mail client, through an RFC 8058 one-click unsubscribe."""
     SMS_KEYWORD = "sms_keyword"
     """The person replied STOP (or START) to a text message."""
+    COMPLAINT = "complaint"
+    """The person marked a message as spam; the provider reported it."""
+
+
+class FeedbackType(StrEnum):
+    """What a provider reports about a message after Cue handed it over."""
+
+    DELIVERED = "delivered"
+    """It reached the device or inbox."""
+    BOUNCE = "bounce"
+    """The address will never work (unknown mailbox, unregistered number)."""
+    SOFT_BOUNCE = "soft_bounce"
+    """It did not arrive this time (full mailbox, phone switched off)."""
+    COMPLAINT = "complaint"
+    """The person reported it as spam."""
 
 
 class DigestStatus(StrEnum):

@@ -222,6 +222,27 @@ class ApiSettings(BaseModel):
         return self
 
 
+class DeliverySettings(BaseModel):
+    """What Cue does with providers' feedback and with channels that keep failing."""
+
+    soft_bounce_limit: int = Field(
+        default=3,
+        ge=1,
+        description="Soft bounces in a row (with no delivery between) that disable an address.",
+    )
+    breaker_failures: int = Field(
+        default=5,
+        ge=0,
+        description=(
+            "Consecutive transient failures after which a channel counts as unhealthy and "
+            "messages go straight to their next channel. 0 turns this off."
+        ),
+    )
+    breaker_cooldown_seconds: float = Field(
+        default=60.0, gt=0, description="How long an unhealthy channel is skipped before a retry."
+    )
+
+
 class WorkerSettings(BaseModel):
     embedded: bool = Field(
         default=False,
@@ -423,6 +444,7 @@ class Settings(BaseSettings):
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     api: ApiSettings = Field(default_factory=ApiSettings)
     worker: WorkerSettings = Field(default_factory=WorkerSettings)
+    delivery: DeliverySettings = Field(default_factory=DeliverySettings)
     policy: PolicySettings = Field(default_factory=PolicySettings)
     ai: AISettings = Field(default_factory=AISettings)
     screening: ScreeningSettings = Field(default_factory=ScreeningSettings)

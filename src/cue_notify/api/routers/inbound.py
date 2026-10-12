@@ -18,7 +18,8 @@ from pydantic import BaseModel, Field
 
 from cue_notify.api.deps import RecipientsWriter, RuntimeDep, SessionDep
 from cue_notify.api.pages import form_fields
-from cue_notify.services import agents, inbound
+from cue_notify.channels.twilio import delivery_feedback
+from cue_notify.services import agents, feedback, inbound
 from cue_notify.services.errors import ForbiddenError, NotFoundError, UnprocessableError
 
 router = APIRouter(prefix="/inbound", tags=["inbound"])
@@ -62,6 +63,38 @@ def twilio_signature(auth_token: str, url: str, params: dict[str, list[str]]) ->
     return base64.b64encode(digest).decode()
 
 
+def _twilio_channel(runtime: RuntimeDep, account_sid: str) -> tuple[str, str]:
+    """(channel name, auth token) of the Twilio channel for ``account_sid``."""
+    for name in runtime.channels:
+        channel = runtime.channels.get(name)
+        config: Any = channel.config if channel is not None else None
+        if (
+            channel is not None
+            and channel.provider == "twilio"
+            and hmac.compare_digest(str(config.account_sid).encode(), account_sid.encode())
+        ):
+            return name, str(config.auth_token.get_secret_value())
+    raise NotFoundError("Twilio channel", "for this account")
+
+
+async def _signed_twilio_form(
+    request: Request, runtime: RuntimeDep, path: str, token: str | None
+) -> dict[str, list[str]]:
+    public_url = runtime.settings.api.public_url
+    if public_url is None:
+        raise UnprocessableError("set api.public_url so Twilio's signature can be checked")
+    params = await form_fields(request, keep_blank=True)  # Twilio signs empty fields too
+    if token is None:
+        token = _twilio_channel(runtime, (params.get("AccountSid") or [""])[0])[1]
+    url = f"{str(public_url).rstrip('/')}{path}"
+    expected = twilio_signature(token, url, params).encode()
+    # Bytes: compare_digest refuses non-ASCII str, which would turn a junk header into 500.
+    received = request.headers.get("X-Twilio-Signature", "").encode("latin-1")
+    if not hmac.compare_digest(expected, received):
+        raise ForbiddenError("invalid Twilio signature")
+    return params
+
+
 def _twilio_token(runtime: RuntimeDep) -> str:
     for name in runtime.settings.compliance.sms_channels:
         channel = runtime.channels.get(name) if name in runtime.channels else None
@@ -73,16 +106,9 @@ def _twilio_token(runtime: RuntimeDep) -> str:
 
 @router.post("/twilio", summary="Twilio incoming-message webhook", include_in_schema=False)
 async def inbound_twilio(request: Request, session: SessionDep, runtime: RuntimeDep) -> Response:
-    public_url = runtime.settings.api.public_url
-    if public_url is None:
-        raise UnprocessableError("set api.public_url so Twilio's signature can be checked")
-    params = await form_fields(request, keep_blank=True)  # Twilio signs empty fields too
-    url = f"{str(public_url).rstrip('/')}/v1/inbound/twilio"
-    expected = twilio_signature(_twilio_token(runtime), url, params).encode()
-    # Bytes: compare_digest refuses non-ASCII str, which would turn a junk header into 500.
-    received = request.headers.get("X-Twilio-Signature", "").encode("latin-1")
-    if not hmac.compare_digest(expected, received):
-        raise ForbiddenError("invalid Twilio signature")
+    params = await _signed_twilio_form(
+        request, runtime, "/v1/inbound/twilio", _twilio_token(runtime)
+    )
     phone = (params.get("From") or [""])[0]
     text = (params.get("Body") or [""])[0]
     provenance = {"method": "sms_reply", "provider": "twilio"}
@@ -90,3 +116,28 @@ async def inbound_twilio(request: Request, session: SessionDep, runtime: Runtime
         provenance["message_id"] = sid
     await inbound.handle(session, runtime, phone, text, provenance)
     return Response(EMPTY_TWIML, media_type="application/xml")
+
+
+@router.post("/twilio/status", summary="Twilio delivery status callback", include_in_schema=False)
+async def twilio_status(request: Request, session: SessionDep, runtime: RuntimeDep) -> Response:
+    """Set the Twilio channel's `status_callback` to `<public_url>/v1/inbound/twilio/status`.
+    Delivered texts are marked delivered; numbers that cannot receive texts are disabled."""
+    params = await _signed_twilio_form(request, runtime, "/v1/inbound/twilio/status", None)
+    fields = {name: values[0] for name, values in params.items() if values}
+    report = delivery_feedback(fields)
+    if report is not None and fields.get("MessageSid"):
+        kind, reason = report
+        channel, _ = _twilio_channel(runtime, fields.get("AccountSid", ""))
+        await feedback.apply(
+            session,
+            runtime,
+            feedback.FeedbackIn(
+                type=kind,
+                channel=channel,
+                address=fields.get("To") or None,
+                provider_message_id=fields["MessageSid"],
+                reason=reason,
+            ),
+            {"source": "twilio"},
+        )
+    return Response(status_code=204)

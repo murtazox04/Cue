@@ -10,7 +10,9 @@ Order of operations for one ``deliver`` job:
    enabled address (all of a user's devices); one success is enough.
    * dead addresses are disabled;
    * transient errors retry the job with backoff before falling back;
-   * permanent errors fall through to the next channel.
+   * permanent errors fall through to the next channel;
+   * a channel that keeps failing (see :mod:`cue_notify.services.health`) is skipped
+     while another channel is planned after it.
 5. Record the outcome.
 """
 
@@ -318,25 +320,46 @@ async def deliver(ctx: queue.JobContext) -> None:
     errors: list[str] = []
     invalid: list[tuple[str, str, str]] = []
     delivered: ChannelAttempt | None = None
-    for channel, addresses in targets.items():
-        if not addresses:
+    routes = [(channel, addresses) for channel, addresses in targets.items() if addresses]
+    skipped = False
+    health = runtime.health
+    for index, (channel, addresses) in enumerate(routes):
+        fallback = index + 1 < len(routes)
+        if fallback and not health.available(channel):
+            skipped = True
+            errors.append(f"{channel}: skipped, failing repeatedly")
             continue
         attempt = await _send_to_addresses(
             runtime, message, channel, addresses, _content_for(message, channel), links
         )
         invalid += [(channel, address, reason) for address, reason in attempt.invalid]
         if attempt.receipt is not None:
+            health.succeeded(channel)
             delivered = attempt
             break
-        if attempt.retryable is not None and not ctx.is_last_attempt:
-            # Waiting for a retry: hand the message back so it can still be cancelled.
-            await _disable_addresses(runtime, message.recipient_id, invalid)
-            await _release(runtime, message_id)
-            delay = attempt.retryable.retry_after
-            if delay is not None:
-                raise queue.RetryLater(delay, f"{channel}: {attempt.retryable}")
-            raise attempt.retryable
+        if attempt.retryable is not None:
+            health.failed(channel)
+            if fallback and not health.available(channel):
+                # The provider keeps failing: try the next channel now instead of waiting.
+                skipped = True
+                errors.append(f"{channel}: {attempt.retryable}")
+                continue
+            if not ctx.is_last_attempt:
+                # Waiting for a retry: hand the message back so it can still be cancelled.
+                await _disable_addresses(runtime, message.recipient_id, invalid)
+                await _release(runtime, message_id)
+                delay = attempt.retryable.retry_after
+                if delay is not None:
+                    raise queue.RetryLater(delay, f"{channel}: {attempt.retryable}")
+                raise attempt.retryable
         errors.append(f"{channel}: {attempt.error or attempt.retryable}")
+
+    if delivered is None and skipped and not ctx.is_last_attempt:
+        # Every other route failed too; the skipped channel may recover, so retry later
+        # rather than give up on the message.
+        await _disable_addresses(runtime, message.recipient_id, invalid)
+        await _release(runtime, message_id)
+        raise DeliveryError("; ".join(errors), retryable=True)
 
     await _disable_addresses(runtime, message.recipient_id, invalid)
     async with runtime.transaction() as session:

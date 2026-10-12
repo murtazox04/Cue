@@ -50,8 +50,48 @@ For each planned channel, in order:
   exponential backoff (honouring `Retry-After`). On the last attempt Cue falls back
   to the next channel instead.
 - **Permanent error** → the next channel is tried immediately.
+- **Unhealthy channel** → after `delivery.breaker_failures` (5) transient failures in a
+  row, a channel is skipped for `delivery.breaker_cooldown_seconds` (60) by messages
+  that have another channel planned after it, so a provider outage does not hold every
+  message back. A channel that is a message's only route is always tried. Each worker
+  process keeps its own count.
 
 If no channel succeeds the message is `failed` with the reasons in `status_reason`.
+
+## Delivery feedback
+
+What a provider learns after accepting a message (it bounced, it was marked as spam, it
+arrived) comes back to Cue, which acts on it so nobody has to clean lists by hand:
+
+| Report | Effect |
+|---|---|
+| `delivered` | The message becomes `delivered`; the address's soft-bounce count resets. |
+| `bounce` | The address is disabled (`disabled_reason: "bounced: …"`); a `sent` message becomes `failed`. |
+| `soft_bounce` | Counted; `delivery.soft_bounce_limit` (3) in a row, with no delivery between, disable the address. |
+| `complaint` | The person is unsubscribed from every optional category, recorded in the consent ledger with source `complaint`. Receipts and alerts still reach them. |
+
+Report from your backend or a provider's webhook handler (`recipients:write`):
+
+```http
+POST /v1/feedback
+{"type": "bounce", "channel": "email", "provider_message_id": "0100018c…",
+ "address": "ann@example.com", "reason": "550 5.1.1 user unknown"}
+```
+
+Name the message by Cue's `message_id` or the `provider_message_id` Cue stored when it
+sent it (with its `channel`), the address, or both. Without an address, a bounce only
+disables an address when the message's recipient has a single one on that channel.
+Disabled addresses come back only through `POST /v1/recipients/{id}/addresses`.
+
+The SDKs have `report_feedback` (Python) and `reportFeedback` (TypeScript).
+
+**Twilio** reports directly: set the channel's `status_callback` to
+`<api.public_url>/v1/inbound/twilio/status`. Delivered texts are marked delivered;
+numbers that cannot receive texts (unknown handset, landline, blocked, opted out) are
+disabled, and other failures count as soft bounces. The request signature is checked
+against the auth token of the Twilio channel for the request's `AccountSid`. Status
+callbacks share the `api.rate_limit.inbound` budget (600 a minute per address); raise
+it if you send more.
 
 ## Bundled connectors
 
@@ -78,7 +118,7 @@ Address: E.164 phone number.
 |---|---|
 | `account_sid`, `auth_token` | Credentials. |
 | `from_number` or `messaging_service_sid` | Sender. |
-| `status_callback` | Optional Twilio status webhook URL. |
+| `status_callback` | Delivery status webhook; set it to `<api.public_url>/v1/inbound/twilio/status` for [delivery feedback](#delivery-feedback). |
 | `include_title` | Prefix the body with the title (default `false`). |
 
 ### `smtp` — e-mail

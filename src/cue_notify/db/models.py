@@ -122,6 +122,8 @@ class Address(IdMixin, TimestampMixin, Base):
     label: Mapped[str | None] = mapped_column(String(100))
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     disabled_reason: Mapped[str | None] = mapped_column(String(255))
+    soft_bounces: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    """Soft bounces since the last delivery; enough in a row disable the address."""
 
     recipient: Mapped[Recipient] = relationship(back_populates="addresses")
 
@@ -210,6 +212,8 @@ class Message(IdMixin, TimestampMixin, Base):
         Index("ix_messages_cooldown", "recipient_id", "rule_id", "send_at"),
         Index("ix_messages_agent", "recipient_id", "agent_key", "send_at"),
         Index("ix_messages_created_at", "created_at"),
+        # Delivery feedback names the message by the provider's id.
+        Index("ix_messages_provider_id", "channel", "provider_message_id"),
     )
 
     recipient_id: Mapped[UUID] = mapped_column(ForeignKey("recipients.id", ondelete="CASCADE"))

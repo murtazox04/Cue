@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Delivery feedback: `POST /v1/feedback` takes deliveries, bounces, soft bounces and spam
+  complaints. A bounce disables the address (and fails a `sent` message), soft bounces
+  in a row disable it (`delivery.soft_bounce_limit`), a complaint unsubscribes the
+  person from every optional category with source `complaint` in the consent ledger, and
+  a delivery marks the message delivered. Python `report_feedback` and TypeScript
+  `reportFeedback` (migration `0016`).
+- Twilio delivery status callbacks at `/v1/inbound/twilio/status`, signed and applied
+  as delivery feedback.
+- Channel health: a channel with `delivery.breaker_failures` transient failures in a
+  row is skipped for `delivery.breaker_cooldown_seconds` by messages that have another
+  channel planned, instead of every message waiting to retry it.
+
 ## [0.4.0] — 2026-10-12
 
 A security and reliability release. Read **Upgrading** before deploying it: several
