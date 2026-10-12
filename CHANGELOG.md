@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-10-13
+
+### Security
+- The one-time review page sent an unknown form action back with a redirect to the raw
+  token from the URL, so a crafted link such as `/review/%5C%5Cexample.com` could
+  redirect a reviewer's browser to another site. It now redirects to the page's own path.
+- TypeScript SDK 0.3.1 trims trailing slashes from `baseUrl` without a regular
+  expression that could backtrack on long inputs.
+- The SDK release workflow pins the npm version it installs.
+
 ## [0.5.0] — 2026-10-12
 
 ### Upgrading
@@ -420,7 +430,8 @@ First public release of Cue, the attention layer between software, AI agents and
 - Line breaks in e-mail subjects are collapsed, and messages that cannot be built as
   e-mail fail over instead of retrying.
 
-[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/murtazox04/Cue/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/murtazox04/Cue/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/murtazox04/Cue/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/murtazox04/Cue/compare/v0.3.0...v0.3.1

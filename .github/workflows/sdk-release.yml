@@ -69,7 +69,7 @@ jobs:
           package-manager-cache: false # nothing cached may reach what we publish
           node-version: 22
           registry-url: https://registry.npmjs.org
-      - run: npm install -g npm@11 # zizmor: ignore[adhoc-packages] trusted publishing needs npm 11.5+
+      - run: npm install -g npm@11.21.0 # zizmor: ignore[adhoc-packages] trusted publishing needs npm 11.5+
       - name: Check the tag matches the version
         run: test "typescript-sdk-v$(node -p "require('./package.json').version")" = "$TAG"
       - run: npm ci

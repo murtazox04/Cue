@@ -199,3 +199,14 @@ async def test_agents_cannot_read_their_own_review_links(
         messages = (await agent.get("/v1/messages")).json()["items"]
         assert [m["id"] for m in messages] == [message_id]
         assert (await agent.get("/v1/digests")).status_code == 403
+
+
+@pytest.mark.parametrize("token", ["\\\\evil.example", "%5C%5Cevil.example", "evil.example"])
+async def test_an_unknown_action_redirects_back_to_the_same_page(
+    anon: httpx.AsyncClient, token: str
+) -> None:
+    response = await anon.post(f"/review/{token}", data={"action": "steal"})
+    assert response.status_code == 303
+    location = response.headers["location"]
+    assert location.startswith("/review/")
+    assert not location.startswith("//")

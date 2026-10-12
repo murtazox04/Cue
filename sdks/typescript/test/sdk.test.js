@@ -147,3 +147,17 @@ test("reports delivery feedback once", async () => {
     report_id: "evt-1",
   });
 });
+
+test("drops every trailing slash from the base URL", async () => {
+  const seen = [];
+  const cue = new Cue({
+    apiKey: "ck_test",
+    baseUrl: "http://cue.test///",
+    fetch: async (url) => {
+      seen.push(url);
+      return new Response(JSON.stringify({ id: "m1" }), { status: 200 });
+    },
+  });
+  await cue.getMessage("m1");
+  assert.equal(seen[0], "http://cue.test/v1/messages/m1");
+});

@@ -159,7 +159,7 @@ async def decide(
         form = await form_fields(request)
         action = (form.get("action") or [""])[0]
         if action not in ("approve", "reject"):
-            return RedirectResponse(token, status_code=303)  # back to this page
+            return RedirectResponse(request.url.path, status_code=303)
         approve = action == "approve"
         comment = (form.get("reason") or [""])[0].strip()[:400] or None
         # Not locked: the decision locks the target, and locking the link first would
