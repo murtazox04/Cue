@@ -58,5 +58,7 @@ nav:
   - Reference:
       - Configuration: reference/configuration.md
       - HTTP API: reference/api.md
+      - API key scopes: reference/scopes.md
+      - Statuses and reasons: reference/statuses.md
       - CLI: reference/cli.md
   - Architecture: architecture.md

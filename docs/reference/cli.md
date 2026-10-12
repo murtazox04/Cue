@@ -37,19 +37,14 @@ scope an agent key may hold instead: `events:write`, `messages:write` and
 `messages:read`. Pass `-s` to narrow it further, for example
 `cuectl keys create helper-key --agent helper -s events:write -s messages:read`. Agent
 keys cannot hold `admin`, `recipients:read`, `recipients:write` or `approvals:decide`;
-asking for one of them fails. See [API key scopes](#api-key-scopes).
+asking for one of them fails. See [API key scopes](scopes.md).
 
 `worker --once` processes every job that is due and exits — useful for cron-style
 deployments and debugging. All commands read the same [configuration](configuration.md).
 
+`prune` does not run by itself: schedule it (cron, a Kubernetes CronJob, your platform's
+scheduler), for example daily. See [deployment](../guides/deployment.md).
+
 ## API key scopes
 
-| Scope | Grants |
-|---|---|
-| `events:write` | Ingest events, report engagement. |
-| `messages:write` | Direct sends, cancel messages, ask for approvals. |
-| `messages:read` | Read messages and events. |
-| `recipients:write` | Create, update and erase recipients, addresses and preferences. |
-| `recipients:read` | Read recipients. |
-| `approvals:decide` | Approve or reject held messages and approval requests. Give it to the keys your people decide with. |
-| `admin` | Everything, including templates, rules, categories, broadcasts and keys. |
+Scopes and what each allows are listed in [API key scopes](scopes.md).
