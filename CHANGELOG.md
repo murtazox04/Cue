@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-10-12
+
+### Upgrading
+- Run the migrations (`cuectl db upgrade`, or `serve --migrate`): `0016` adds the
+  provider-id index and soft-bounce counts, `0017` adds per-address delivery records,
+  processed feedback reports and `complained_at` on addresses.
+- A spam complaint now marks the address (`complained_at`) and stops every optional
+  message to it, including categories created later. It no longer unsubscribes the
+  person from categories on their other channels.
+- SMTP `4xx` replies to `RCPT` are retried instead of disabling the address.
+- Provider callbacks (`/v1/inbound/twilio/status`, `/v1/inbound/resend/…`,
+  `/v1/inbound/ses/…`) have their own rate-limit bucket, `api.rate_limit.feedback`; tune it
+  if a high-volume sender sees `429` on them.
+- The new connectors need extras: `pip install 'cue-notify[apns]'` for APNs and
+  `'cue-notify[ses]'` for Amazon SES. The container image includes both.
+- Python SDK 0.4.0 and TypeScript SDK 0.3.0 add `report_feedback` / `reportFeedback`.
+
 ### Added
 - Delivery feedback: `POST /v1/feedback` takes deliveries, bounces, soft bounces and spam
   complaints. A bounce disables the address (and fails a `sent` message once every
@@ -403,7 +420,8 @@ First public release of Cue, the attention layer between software, AI agents and
 - Line breaks in e-mail subjects are collapsed, and messages that cannot be built as
   e-mail fail over instead of retrying.
 
-[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/murtazox04/Cue/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/murtazox04/Cue/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/murtazox04/Cue/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/murtazox04/Cue/compare/v0.2.0...v0.3.0
