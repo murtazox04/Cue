@@ -1,7 +1,7 @@
 # cue-client
 
-TypeScript client for [Cue](https://github.com/murtazox04/Cue), the attention layer
-between software, AI agents and people. It has no dependencies: it uses `fetch` and Web
+TypeScript client for [Cue](https://github.com/murtazox04/Cue), a self-hosted
+notification decision engine. It has no dependencies: it uses `fetch` and Web
 Crypto, so it runs on Node 18+, Deno, Bun, Cloudflare Workers and other edge runtimes.
 
 ```bash

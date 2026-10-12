@@ -7,7 +7,7 @@ flowchart TB
     subgraph API["cuectl serve (FastAPI)"]
         R[Routers] --> S[Services]
     end
-    subgraph W["cuectl worker"]
+    subgraph W["cuectl worker (or embedded in the API)"]
         Q[Job runner] --> S2[Services]
     end
     S -- "rows + jobs, one transaction" --> DB[(PostgreSQL / SQLite)]
@@ -53,11 +53,14 @@ sequenceDiagram
 **The database is the queue.** Jobs are rows written in the same transaction as the data
 they act on (transactional outbox), so there is no window where an event exists without
 its processing job or a message without its delivery. Delays and quiet hours are a
-future `run_at`, which survives restarts without a separate scheduler. Workers claim
+future `run_at`, which survives restarts without a separate scheduler. Retention is the
+exception: `cuectl prune` runs only when you schedule it. Workers claim
 with `SELECT … FOR UPDATE SKIP LOCKED` and a conditional update that doubles as a lease;
 crashed workers' jobs reappear when the lease expires. This removes Redis and a broker
-from the deployment at the cost of throughput in the low thousands of jobs per second
-per database — far beyond what notification volumes need.
+from the deployment at the cost of throughput: on the modest 4-vCPU machine in the
+[performance guide](guides/performance.md), Cue decided and delivered 56 events per
+second with one worker process and 164 with four. Measure on your own hardware with the
+bundled benchmark.
 
 **One composer.** Rules, direct sends and broadcasts all build an *intent* and pass it
 to `services.composer`. Policy cannot be bypassed by adding a new way to send.

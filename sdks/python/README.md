@@ -1,7 +1,7 @@
 # cue-notify-client
 
-Python client for [Cue](https://github.com/murtazox04/Cue), the attention layer between
-software, AI agents and people. Its only dependency is `httpx`.
+Python client for [Cue](https://github.com/murtazox04/Cue), a self-hosted notification
+decision engine. Its only dependency is `httpx`.
 
 ```bash
 pip install cue-notify-client

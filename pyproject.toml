@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "cue-notify"
 dynamic = ["version"]
-description = "The attention layer between software, AI agents and people: decides whether, what, when and where to notify."
+description = "Self-hosted notification decision engine: quiet hours, time zones, digests, frequency caps and preferences in front of the sender you already have."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
