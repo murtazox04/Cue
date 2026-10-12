@@ -16,9 +16,23 @@ An event is a fact about a recipient: `order.shipped`, `payment.failed`,
 
 Ingestion is fast and durable: the event and its processing job are written in one
 transaction, then evaluated asynchronously by the worker. The recipient is created
-automatically if it does not exist yet. An inline profile may set `locale`, `timezone`
-and `attributes`; adding `addresses` inline additionally requires the
-`recipients:write` scope, because addresses decide where messages are delivered.
+automatically if it does not exist yet.
+
+An inline profile, on an event or a direct send, is limited by the key's scopes, because a
+profile decides where and when everyone's messages to that person go. With
+`events:write` (or `messages:write` for a direct send):
+
+| Allowed | Also needs `recipients:write` |
+|---|---|
+| Create the recipient with `locale` and `timezone`. | `region`, `attributes` or `addresses` on the profile. |
+| Fill a `locale` or `timezone` the recipient does not have yet. | Change a stored `locale` or `timezone` to another value. |
+| Repeat the stored values unchanged. | |
+
+A request that needs `recipients:write` without it is refused with `403`. Keys bound to
+an [agent](agents.md) cannot send inline profiles at all; they refer to people by external
+id. Keep profiles in sync from your backend with `PUT /v1/recipients/{external_id}`.
+Addresses that delivery disabled (an unregistered push token) stay disabled when the same
+value arrives inline; only `POST /v1/recipients/{id}/addresses` re-enables them.
 
 If an event cannot be processed even after retries, it is marked `failed` with the
 reason in `error`.
@@ -32,6 +46,8 @@ considered:
   {"rule": "default-push", "matched": true, "status": "queued", "message_id": "…"}
 ]
 ```
+
+Every `reason` is listed in [statuses and reasons](../reference/statuses.md).
 
 ## Rules
 

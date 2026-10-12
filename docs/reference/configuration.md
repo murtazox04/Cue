@@ -35,7 +35,7 @@ Run `cuectl check` to validate a configuration.
 | `docs` | `true` | Serve `/docs`, `/redoc` and `/openapi.json`. |
 | `root_path` | `""` | When mounted under a path prefix behind a proxy. |
 | `public_url` | none | Public base URL (with any path prefix). Enables [preference and unsubscribe links](../concepts/preferences.md). Requires `secret_key`. |
-| `secret_key` | none | At least 32 characters; set it as `CUE_API__SECRET_KEY`. Signs preference tokens, so the database never holds a working link. Use the same value on every API and worker process; changing it invalidates every preference link already sent. |
+| `secret_key` | none | Signs preference tokens, so the database never holds a working link. At least 32 characters; required with `public_url`. Set it as `CUE_API__SECRET_KEY`. See [below](#apisecret_key). |
 | `product_name` | none | Shown on the hosted preference page. |
 | `max_body_bytes` | `1048576` | Larger request bodies get `413` before anything reads them. |
 | `max_broadcast_body_bytes` | `67108864` | The same limit for `POST /v1/broadcasts` with an admin key, whose audience can list a million ids. Without one, `max_body_bytes` applies. |
@@ -43,6 +43,26 @@ Run `cuectl check` to validate a configuration.
 
 `public_url` with plain `http://` (other than `localhost`) logs a warning at startup and
 fails `cuectl check`: the links it builds carry tokens.
+
+### `api.secret_key`
+
+Generate it once and keep it in your secret store:
+
+```bash
+python -c 'import secrets; print(secrets.token_urlsafe(32))'
+```
+
+- **Required with `public_url`.** Without it Cue refuses to start. It can be set on its
+  own too: then `preference_token` and templates' `links.token` work for your own
+  preference screen, without hosted links.
+- **Shared.** Give the same value to every API and worker process. A link signed by one
+  process must verify on all the others.
+- **Rotation.** Changing it invalidates every preference and unsubscribe link signed with
+  the old value, including those in e-mails already delivered. Rotate it only if it
+  leaks; to cut off one person's links, rotate their token instead
+  (`POST /v1/recipients/{id}/preference-token`).
+- **Unset.** Without it, `preference_token` and `links.token` are `null` and messages
+  carry no preference or unsubscribe links.
 
 ## `api.rate_limit`
 

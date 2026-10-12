@@ -12,24 +12,37 @@ honour it within two days. Cue gives you three pieces:
 
 ## Turn it on
 
-Tell Cue the public URL it is reachable at:
+Tell Cue the public URL it is reachable at, and give it a secret to sign preference
+tokens with:
 
 ```toml
 [api]
 public_url = "https://notify.example.com"   # include any path prefix
 product_name = "Acme"                       # shown on the hosted page
+# secret_key from CUE_API__SECRET_KEY
 ```
+
+```bash
+export CUE_API__SECRET_KEY=$(python -c 'import secrets; print(secrets.token_urlsafe(32))')
+```
+
+`api.secret_key` must be at least 32 characters and is required whenever `public_url` is
+set; Cue refuses to start without it. Use the same value on every API and worker process:
+both sign links, and a link signed by one process must verify on every other.
 
 From then on every message knows its links, and so does every template:
 
 | Variable | Contents |
 |---|---|
-| `links.preferences` | `https://notify.example.com/preferences/<token>`, the hosted page. |
-| `links.unsubscribe` | One-click unsubscribe from this message's category. `null` for categories people cannot leave (`allow_unsubscribe: false`, e.g. `transactional`). |
-| `links.token` | The raw token, to link to a preference screen in your own app. Always set, even without `public_url`. |
+| `links.preferences` | `https://notify.example.com/preferences/<token>`, the hosted page. `null` without `public_url`. |
+| `links.unsubscribe` | One-click unsubscribe from this message's category. `null` without `public_url`, and for categories people cannot leave (`allow_unsubscribe: false`, e.g. `transactional`). |
+| `links.token` | The token itself, to link to a preference screen in your own app. Set whenever `secret_key` is set, even without `public_url`; `null` otherwise. |
+
+Guard every link in templates, as they can be `null`:
 
 ```jinja
 {% if links.unsubscribe %}Don't want these? {{ links.unsubscribe }}{% endif %}
+{% if links.token %}Settings: https://app.example.com/notifications/{{ links.token }}{% endif %}
 ```
 
 ## What connectors do with the links
@@ -91,7 +104,8 @@ PUT /v1/preferences/{token}
 
 Omitted fields are left unchanged. Unknown categories or channels are rejected with `422`,
 as is unsubscribing from a category that does not allow it. Your backend gets the token
-from `GET /v1/recipients/{external_id}` (`preference_token`). If the browser calls Cue
+from `GET /v1/recipients/{external_id}` (`preference_token`, `null` until
+`api.secret_key` is set). If the browser calls Cue
 directly, list your app's origin in `api.cors_origins`.
 
 ## Consent ledger
@@ -118,13 +132,30 @@ GET /v1/recipients/user-42/preferences/history
 Change keys are `unsubscribed`, `resubscribed`, `muted`, `unmuted` and `quiet_hours`.
 Deleting a recipient erases their ledger along with their profile.
 
+## How tokens work
+
+A token is a random per-recipient id followed by an HMAC-SHA256 signature of it made with
+`api.secret_key`. Cue stores only the id and checks the signature when a link is used,
+so a copy of the database alone does not hold a working link.
+
+Tokens issued before 0.4.0 were random strings stored in the database. Migration `0013`
+replaces them with their SHA-256 hashes, so links in e-mails already sent, including
+one-click unsubscribe, keep working until the token is rotated. `GET /v1/recipients/{id}`
+shows the new, signed token from then on.
+
 ## Rotating a token
 
 Anyone who holds the link can change that person's preferences. That is the point of an
-unsubscribe link, but it is also why a forwarded e-mail is a risk. To cut off old links:
+unsubscribe link, but it is also why a forwarded e-mail is a risk. To cut off one
+person's old links:
 
 ```http
 POST /v1/recipients/{external_id}/preference-token
 ```
 
 Links in messages sent before the rotation then show "This link is no longer valid".
+
+Changing `api.secret_key` rotates every signed token at once: all preference and
+unsubscribe links sent with the old key stop working, including one-click unsubscribe
+links mailbox providers keep. Change it only when the key has leaked. Tokens from before
+0.4.0 that have not been rotated keep working, because they are checked by their hash.
