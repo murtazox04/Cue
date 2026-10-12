@@ -134,7 +134,10 @@ class RateLimitSettings(BaseModel):
     )
     feedback: FeedbackRateLimit = Field(
         default_factory=FeedbackRateLimit,
-        description="Delivery status callbacks at /v1/inbound/twilio/status.",
+        description=(
+            "Delivery status callbacks and provider webhooks: /v1/inbound/twilio/status, "
+            "/v1/inbound/resend and /v1/inbound/ses."
+        ),
     )
     failed_auth: FailedAuthRateLimit = Field(
         default_factory=FailedAuthRateLimit,

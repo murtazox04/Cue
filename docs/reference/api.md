@@ -48,6 +48,8 @@ The complete, always-current reference is generated from the code: open
 | `POST /v1/inbound/sms` | `recipients:write` | STOP/START replies from any SMS provider (not for agent keys). |
 | `POST /v1/inbound/twilio` | none (Twilio signature) | Twilio's incoming-message webhook; needs `api.public_url`. |
 | `POST /v1/inbound/twilio/status` | none (Twilio signature) | Twilio's delivery status callback: [delivery feedback](../concepts/channels.md#delivery-feedback). |
+| `POST /v1/inbound/resend/{channel}` | none (Svix signature) | Resend's webhook for a `resend` channel: delivery feedback. |
+| `POST /v1/inbound/ses/{channel}` | none (SNS signature, listed topics) | Amazon SNS notifications for an `ses` channel: delivery feedback. |
 | `POST /v1/feedback` | `recipients:write` | Report a delivery, bounce, soft bounce or spam complaint (not for agent keys). |
 | `/v1/templates[/{key}]`, `POST …/{key}/preview` | `admin` | |
 | `/v1/rules[/{key}]`, `POST /v1/rules/evaluate` | `admin` | |

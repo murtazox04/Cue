@@ -74,7 +74,7 @@ Per client address, in each process. Requests over a limit get `429` with `Retry
 | `pages` | `{per_minute = 60, burst = 30}` | `/preferences/…`, `/review/…` and `/v1/preferences/…`. |
 | `tracking` | `{per_minute = 600, burst = 300}` | `/v1/track/…`. |
 | `inbound` | `{per_minute = 600, burst = 300}` | `/v1/inbound/…`, except status callbacks. |
-| `feedback` | `{per_minute = 6000, burst = 3000}` | Delivery status callbacks: `/v1/inbound/twilio/status`. |
+| `feedback` | `{per_minute = 6000, burst = 3000}` | Delivery status callbacks and provider webhooks: `/v1/inbound/twilio/status`, `/v1/inbound/resend/…`, `/v1/inbound/ses/…`. |
 | `failed_auth` | `{per_minute = 10, burst = 20}` | Responses `401` on `/v1`; once used up, requests from that address without a valid key get `429` on `/v1` until it refills. Valid keys are never blocked by it. |
 | `max_clients` | `100000` | Addresses remembered; the least recently seen are forgotten first. |
 

@@ -48,3 +48,8 @@ class TooManyRequestsError(ServiceError):
 class GoneError(ServiceError):
     status_code = 410
     title = "Gone"
+
+
+class ServiceUnavailableError(ServiceError):
+    status_code = 503
+    title = "Service unavailable"

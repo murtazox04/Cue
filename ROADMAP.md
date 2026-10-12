@@ -11,7 +11,7 @@ a discussion to argue for a change in priorities.
       template editing with dry runs
 - [x] Delivery feedback: bounces and complaints suppress automatically; health-based
       route fallback
-- [ ] More connectors: APNs, Amazon SES, Resend, Slack
+- [x] More connectors: APNs, Amazon SES, Resend, Slack
 - [ ] Multi-tenancy: tenant-scoped rules, templates, branding, preferences and keys
 - [ ] OpenTelemetry traces and Grafana dashboards
 

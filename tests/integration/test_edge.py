@@ -92,6 +92,8 @@ async def test_status_callbacks_have_their_own_bucket(runtime: Runtime) -> None:
         assert (await http.post("/v1/inbound/twilio/status", data={})).status_code != 429
         assert (await http.post("/v1/inbound/twilio", data={})).status_code == 429
         assert (await http.post("/v1/inbound/twilio/status", data={})).status_code == 429
+        assert (await http.post("/v1/inbound/ses/email", json={})).status_code == 429
+        assert (await http.post("/v1/inbound/resend/email", json={})).status_code == 429
 
 
 async def test_failed_authentication_is_limited_per_address(

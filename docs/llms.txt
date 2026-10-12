@@ -5,7 +5,7 @@
 > the person's attention, what to say (localised templates, optional AI wording with
 > fact guardrails), when (quiet hours, digests, expiry), how important it is, and over
 > which route. It then hands a rendered message to the delivery the application plugs in
-> (a signed webhook, FCM, Twilio, SMTP or Telegram). Self-hosted, PostgreSQL or SQLite,
+> (a signed webhook, FCM, APNs, Twilio, SMTP, Amazon SES, Resend, Slack or Telegram). Self-hosted, PostgreSQL or SQLite,
 > MIT licensed, Python (FastAPI). Package: `cue-notify`; CLI: `cuectl`.
 
 Key facts for integrating Cue:
@@ -32,7 +32,7 @@ Key facts for integrating Cue:
 - [Preference centre](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/preferences.md): hosted page, JSON API, RFC 8058 one-click unsubscribe, consent ledger
 - [Approval requests](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/approvals.md): ask people to approve an agent's action; callbacks, CrewAI and Dapr
 - [Agents](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/agents.md): attention budgets, importance ceilings, approval and screening for AI agents
-- [Channels and connectors](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/channels.md): webhook payload and signature, FCM, Twilio, SMTP, Telegram
+- [Channels and connectors](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/channels.md): webhook payload and signature, FCM, APNs, Twilio, SMTP, SES, Resend, Slack, Telegram; delivery feedback
 - [AI personalisation](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/ai.md): rewording with any Pydantic AI model under guardrails and a token budget
 - [Engagement tracking](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/engagement.md): delivered, opened, clicked and converted signals
 - [Broadcasts](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/broadcasts.md): one message to an audience in resumable batches

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import smtplib
 import ssl
 from email.message import EmailMessage
@@ -12,6 +11,7 @@ from typing import ClassVar, Literal
 
 from pydantic import Field, SecretStr
 
+from cue_notify.channels import email as mail
 from cue_notify.channels.base import (
     Channel,
     ChannelConfig,
@@ -20,7 +20,6 @@ from cue_notify.channels.base import (
     InvalidAddressError,
     Receipt,
 )
-from cue_notify.core.enums import Importance
 
 SERVICE_CLOSING = 421
 
@@ -52,35 +51,19 @@ class SmtpChannel(Channel[SmtpConfig]):
     config_model: ClassVar[type[ChannelConfig]] = SmtpConfig
 
     def build(self, delivery: Delivery) -> EmailMessage:
-        content = delivery.content
         config = self.config
         email = EmailMessage()
-        # Rendered titles may contain line breaks from event data; headers cannot.
-        email["Subject"] = " ".join((content.title or "").split())
+        email["Subject"] = mail.subject(delivery)
         email["From"] = formataddr((config.from_name or "", config.from_address))
         email["To"] = single_address(delivery.address)
         email["Message-ID"] = make_msgid(idstring=str(delivery.message_id))
-        if content.thread:
-            # A stable root id per thread lets mail clients stack the conversation.
-            digest = hashlib.sha256(content.thread.encode()).hexdigest()[:32]
-            email["References"] = f"<{digest}@thread.cue>"
         if config.reply_to:
             email["Reply-To"] = config.reply_to
-        if unsubscribe := delivery.links.get("unsubscribe"):
-            # RFC 2369 + RFC 8058: the one-click unsubscribe Gmail and Yahoo require.
-            email["List-Unsubscribe"] = f"<{unsubscribe}>"
-            email["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
-        if delivery.importance in (Importance.HIGH, Importance.CRITICAL):
-            email["Importance"] = "high"
-        elif delivery.importance is Importance.LOW:
-            email["Importance"] = "low"
-        parts = [content.body]
-        if content.url:
-            parts.append(content.url)
-        parts += [f"{a.label}: {a.url}" for a in content.actions if a.url]
-        email.set_content("\n\n".join(parts))
-        if content.html:
-            email.add_alternative(content.html, subtype="html")
+        for name, value in mail.headers(delivery).items():
+            email[name] = value
+        email.set_content(mail.text_body(delivery))
+        if delivery.content.html:
+            email.add_alternative(delivery.content.html, subtype="html")
         return email
 
     def _send_blocking(self, email: EmailMessage) -> None:
