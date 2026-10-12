@@ -75,7 +75,7 @@ tz = ZoneInfo("Europe/Berlin")
 first = datetime(2026, 10, 25, 2, 30, tzinfo=tz, fold=0)
 second = datetime(2026, 10, 25, 2, 15, tzinfo=tz, fold=1)
 
-first > second                                  # True  (wall clock)
+first > second  # True  (wall clock)
 first.astimezone(UTC) > second.astimezone(UTC)  # False (00:30 vs 01:15 UTC)
 ```
 
