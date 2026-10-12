@@ -119,7 +119,9 @@ kubectl exec deploy/cue-api -- cuectl keys create admin
 
 [`render.yaml`](https://github.com/murtazox04/Cue/blob/main/render.yaml) is a Blueprint:
 **New → Blueprint →** this repository. It creates the API (migrating on start), a worker
-and a PostgreSQL database from the published image. Set `CUE_API__PUBLIC_URL` when Render
+and a PostgreSQL database from the published image (a `<major>.<minor>` tag, which follows patch
+releases; change it in `render.yaml` to pin or upgrade), and generates
+`CUE_API__SECRET_KEY` for both services. Set `CUE_API__PUBLIC_URL` when Render
 asks, then create a key in the API service's shell: `cuectl keys create admin`.
 
 ## Railway, Heroku and similar platforms
