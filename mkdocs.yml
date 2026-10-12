@@ -62,3 +62,5 @@ nav:
       - Statuses and reasons: reference/statuses.md
       - CLI: reference/cli.md
   - Architecture: architecture.md
+  - Notes:
+      - Quiet hours are harder than they look: notes/quiet-hours.md
