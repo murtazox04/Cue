@@ -127,9 +127,9 @@ recipient's `preference_token` (from `GET /v1/recipients/{id}`).
 
 Register each agent (`POST /v1/agents` with `frequency_caps`, `max_importance`,
 `categories`, `approval`, `reviewers`) and create its key bound to it, with the least it
-needs: `uvx cue-notify keys create support-bot-key -s events:write -s messages:read
---agent support-bot` (add `-s messages:write` only if it picks templates or asks for
-approvals). Never give an AI client an `admin` key; agent-bound keys cannot hold
+needs: `uvx cue-notify keys create support-bot-key --agent support-bot -s events:write
+-s messages:read` (add `-s messages:write` only if it picks templates or asks for
+approvals; with `--agent` and no `-s` the key gets all three). Never give an AI client an `admin` key; agent-bound keys cannot hold
 `admin`, `recipients:*` or `approvals:decide`. Give that key to the agent, ideally
 through the MCP server (`uvx cue-notify mcp` with `CUE_URL` and `CUE_API_KEY`). Messages
 matching the approval policy wait in `pending_approval` until a person decides: from the

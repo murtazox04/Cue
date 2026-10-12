@@ -48,8 +48,13 @@ POST /v1/agents
 Then give the agent its own key:
 
 ```bash
-cuectl keys create support-bot-key -s messages:write -s messages:read --agent support-bot
+cuectl keys create support-bot-key --agent support-bot -s messages:write -s messages:read
 ```
+
+Without `-s`, `--agent` gives the key `events:write`, `messages:write` and
+`messages:read`, every scope an agent key may hold. Narrow it to what the agent does:
+`events:write` to report events, `messages:write` to send templates directly or ask for
+approval, `messages:read` to check what happened.
 
 Everything sent with that key is attributed to the agent (`"agent": "support-bot"` on
 the message) and filtered by `GET /v1/messages?agent=support-bot`. Hand the key to the

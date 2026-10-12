@@ -4,13 +4,19 @@ Cue ships a [Model Context Protocol](https://modelcontextprotocol.io) server, so
 agents — Claude, Cursor, your own agent framework — can notify people and check what
 happened, through the same rules, policy and audit trail as the rest of your system.
 
-Register the AI client as an [agent](../concepts/agents.md) and give it a key bound to
-that agent, with only the scopes its tools need:
+Register the AI client as an [agent](../concepts/agents.md) (`POST /v1/agents` with
+`"key": "support-agent"`), then, where Cue runs (for example
+`docker compose exec api …`), give it a key bound to that agent with only the scopes
+its tools need:
 
 ```bash
-pip install cue-notify
-cuectl keys create support-agent-key -s events:write -s messages:read --agent support-agent
+cuectl keys create support-agent-key --agent support-agent -s events:write -s messages:read
 ```
+
+Without `-s`, a key created with `--agent` gets `events:write`, `messages:write` and
+`messages:read`, which covers every tool an agent key can use. The MCP server itself
+runs wherever the AI client does: `uvx cue-notify mcp`, or `cuectl mcp` after
+`uv tool install cue-notify`.
 
 A key bound with `--agent` gets a per-person attention budget, an importance ceiling and
 approval for anything you want a person to check first. It can never hold `admin`,
