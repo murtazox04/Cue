@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.4.0] — 2026-10-11
+## [0.4.0] — 2026-10-12
 
 A security and reliability release. Read **Upgrading** before deploying it: several
 defaults are stricter, and a public URL now needs a secret key.
