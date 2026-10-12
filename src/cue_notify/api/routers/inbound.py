@@ -250,7 +250,8 @@ async def resend_webhook(
 async def ses_notification(
     channel: str, request: Request, session: SessionDep, runtime: RuntimeDep
 ) -> Response:
-    config: Any = provider_channel(runtime, channel, "ses").config
+    ses_channel = provider_channel(runtime, channel, "ses")
+    config: Any = ses_channel.config
     if request.headers.get("x-amz-sns-rawdelivery", "").lower() == "true":
         raise ForbiddenError("turn raw message delivery off; it removes the SNS signature")
     try:
@@ -274,7 +275,8 @@ async def ses_notification(
 
     kind = sns.get("Type")
     if kind == "SubscriptionConfirmation":
-        await confirm_subscription(runtime, channel, str(sns.get("SubscribeURL", "")))
+        # The configured name, not the request path: nothing from the request is logged.
+        await confirm_subscription(runtime, ses_channel.name, str(sns.get("SubscribeURL", "")))
     elif kind == "Notification":
         report_id = f"sns:{sns.get('TopicArn')}:{sns.get('MessageId')}"[:255]
         try:
