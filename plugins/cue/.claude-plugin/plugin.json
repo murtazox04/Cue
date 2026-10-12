@@ -1,6 +1,6 @@
 {
   "name": "cue",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Add Cue notifications to your app, and let Claude notify people through Cue's MCP server.",
   "author": { "name": "Murtazo Xurramov" },
   "license": "MIT",

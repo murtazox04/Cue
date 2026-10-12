@@ -103,6 +103,12 @@ function segment(value: string): string {
   return encodeURIComponent(value);
 }
 
+function withoutTrailingSlashes(url: string): string {
+  let end = url.length;
+  while (end > 0 && url[end - 1] === "/") end -= 1;
+  return url.slice(0, end);
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -116,7 +122,7 @@ export class Cue {
 
   constructor(options: CueOptions) {
     this.#apiKey = options.apiKey;
-    this.#baseUrl = (options.baseUrl ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
+    this.#baseUrl = withoutTrailingSlashes(options.baseUrl ?? "http://127.0.0.1:8000");
     this.#timeout = options.timeout ?? 10_000;
     this.#retries = options.retries ?? 2;
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
