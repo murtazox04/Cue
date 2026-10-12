@@ -243,7 +243,8 @@ async def ses_notification(
     """Subscribe this URL (HTTPS) to the SNS topic that SES publishes bounces,
     complaints and deliveries to, and list the topic in the channel's `sns_topic_arns`.
     Subscriptions are confirmed automatically for listed topics."""
-    config: Any = _provider_channel(runtime, channel, "ses").config
+    ses_channel = _provider_channel(runtime, channel, "ses")
+    config: Any = ses_channel.config
     try:
         message = json.loads(await request.body())
     except ValueError as exc:
@@ -273,7 +274,8 @@ async def ses_notification(
             raise UnprocessableError(f"could not confirm the subscription: {exc}") from exc
         if not response.is_success:
             raise UnprocessableError(f"SNS refused the confirmation: HTTP {response.status_code}")
-        logger.info("confirmed SNS subscription", extra={"channel": channel})
+        # The configured name, not the request path: nothing from the request is logged.
+        logger.info("confirmed SNS subscription", extra={"channel": ses_channel.name})
     elif kind == "Notification":
         try:
             notification = json.loads(str(sns.get("Message", "")))
