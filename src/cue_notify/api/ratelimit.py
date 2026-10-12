@@ -18,6 +18,7 @@ API_PREFIX = "/v1"
 PAGE_PREFIXES = ("/preferences", "/review", "/v1/preferences")
 TRACKING_PREFIX = "/v1/track"
 INBOUND_PREFIX = "/v1/inbound"
+FEEDBACK_PREFIXES = ("/v1/inbound/twilio/status",)
 
 
 def under(path: str, prefix: str) -> bool:
@@ -77,6 +78,7 @@ class RateLimit:
         self.pages = buckets(settings.pages)
         self.tracking = buckets(settings.tracking)
         self.inbound = buckets(settings.inbound)
+        self.feedback = buckets(settings.feedback)
         self.failed_auth = buckets(settings.failed_auth)
         self.trusted: list[Network] = [
             ipaddress.ip_network(entry, strict=False) for entry in trusted_proxies
@@ -87,6 +89,8 @@ class RateLimit:
             return self.pages
         if under(path, TRACKING_PREFIX):
             return self.tracking
+        if any(under(path, prefix) for prefix in FEEDBACK_PREFIXES):
+            return self.feedback
         if under(path, INBOUND_PREFIX):
             return self.inbound
         return None

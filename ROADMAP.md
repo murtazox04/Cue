@@ -9,7 +9,7 @@ a discussion to argue for a change in priorities.
 
 - [ ] Decision explorer and admin UI: "why didn't this person get it?", rule and
       template editing with dry runs
-- [ ] Delivery feedback: bounces and complaints suppress automatically; health-based
+- [x] Delivery feedback: bounces and complaints suppress automatically; health-based
       route fallback
 - [ ] More connectors: APNs, Amazon SES, Resend, Slack
 - [ ] Multi-tenancy: tenant-scoped rules, templates, branding, preferences and keys

@@ -411,6 +411,7 @@ def prune(
         Approval,
         Digest,
         Event,
+        FeedbackReport,
         Job,
         Message,
         PreferenceChange,
@@ -447,6 +448,11 @@ def prune(
             "review link": (ReviewLink, ReviewLink.token_hash, ReviewLink.expires_at < cutoff),
             # Payloads and errors of jobs that gave up.
             "dead job": (Job, Job.id, and_(Job.dead.is_(True), Job.created_at < cutoff)),
+            "feedback report id": (
+                FeedbackReport,
+                FeedbackReport.report_id,
+                FeedbackReport.received_at < cutoff,
+            ),
         }
         if ledger_older_than is not None:
             targets["consent-ledger entry"] = (

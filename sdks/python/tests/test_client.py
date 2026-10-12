@@ -54,6 +54,30 @@ def test_safe_requests_are_retried_and_unsafe_ones_are_not(
     assert len(calls) == 1
 
 
+def test_feedback_is_sent_once_with_only_what_was_given() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"disabled": 1})
+
+    with _mock(handler) as cue:
+        result = cue.report_feedback(
+            "bounce",
+            "email",
+            address="a@b.test",
+            report_id="evt-1",
+            reason="550 mailbox unavailable",
+        )
+    assert result == {"disabled": 1}
+    [request] = seen
+    assert request.url.path == "/v1/feedback"
+    assert request.read() == (
+        b'{"type":"bounce","channel":"email","address":"a@b.test","report_id":"evt-1",'
+        b'"reason":"550 mailbox unavailable"}'
+    )
+
+
 def test_ids_are_escaped_in_paths() -> None:
     paths: list[str] = []
 

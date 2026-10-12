@@ -96,6 +96,14 @@ class PreferenceSource(StrEnum):
     """The person's mail client, through an RFC 8058 one-click unsubscribe."""
     SMS_KEYWORD = "sms_keyword"
     """The person replied STOP (or START) to a text message."""
+    COMPLAINT = "complaint"
+
+
+class FeedbackType(StrEnum):
+    DELIVERED = "delivered"
+    BOUNCE = "bounce"
+    SOFT_BOUNCE = "soft_bounce"
+    COMPLAINT = "complaint"
 
 
 class DigestStatus(StrEnum):

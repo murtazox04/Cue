@@ -73,9 +73,20 @@ Per client address, in each process. Requests over a limit get `429` with `Retry
 | `enabled` | `true` | |
 | `pages` | `{per_minute = 60, burst = 30}` | `/preferences/…`, `/review/…` and `/v1/preferences/…`. |
 | `tracking` | `{per_minute = 600, burst = 300}` | `/v1/track/…`. |
-| `inbound` | `{per_minute = 600, burst = 300}` | `/v1/inbound/…`. |
+| `inbound` | `{per_minute = 600, burst = 300}` | `/v1/inbound/…`, except status callbacks. |
+| `feedback` | `{per_minute = 6000, burst = 3000}` | Delivery status callbacks: `/v1/inbound/twilio/status`. |
 | `failed_auth` | `{per_minute = 10, burst = 20}` | Responses `401` on `/v1`; once used up, requests from that address without a valid key get `429` on `/v1` until it refills. Valid keys are never blocked by it. |
 | `max_clients` | `100000` | Addresses remembered; the least recently seen are forgotten first. |
+
+## `delivery`
+
+[Delivery feedback](../concepts/channels.md#delivery-feedback) and channel health.
+
+| Key | Default | |
+|---|---|---|
+| `soft_bounce_limit` | `3` | Soft bounces in a row (no delivery between) that disable an address. |
+| `breaker_failures` | `5` | Transient failures in a row after which a channel is skipped when another is planned. `0` turns this off. |
+| `breaker_cooldown_seconds` | `60` | How long a failing channel is skipped. Then one message at a time tries it: a success closes the breaker, a failure skips it for another cooldown. |
 
 ## `worker`
 

@@ -24,7 +24,16 @@ from cue_notify.core.enums import COUNTED_STATUSES, Importance, MessageStatus, S
 from cue_notify.core.policy import Fatigue, FrequencyCap
 from cue_notify.core.templating import RenderError
 from cue_notify.core.time import utcnow
-from cue_notify.db.models import Agent, Category, Event, Message, Recipient, Rule, Template
+from cue_notify.db.models import (
+    Address,
+    Agent,
+    Category,
+    Event,
+    Message,
+    Recipient,
+    Rule,
+    Template,
+)
 from cue_notify.runtime import Runtime
 from cue_notify.services import preferences
 from cue_notify.services import recipients as recipient_service
@@ -176,21 +185,31 @@ def allowed_send_time(
     return when if window is None else legal.next_allowed(earliest, tz, window)
 
 
-def usable_channels(message: Message, recipient: Recipient, runtime: Runtime) -> list[str]:
+def receives(address: Address, category: Category | None) -> bool:
+    if not address.enabled:
+        return False
+    return address.complained_at is None or (
+        category is not None and not category.allow_unsubscribe
+    )
+
+
+def usable_channels(
+    message: Message, recipient: Recipient, category: Category, runtime: Runtime
+) -> list[str]:
     muted = recipient_service.preferences(recipient).muted_channels
     return [
         channel
         for channel in message.channels
         if channel in runtime.channels
         and channel not in muted
-        and any(a.channel == channel and a.enabled for a in recipient.addresses)
+        and any(a.channel == channel and receives(a, category) for a in recipient.addresses)
     ]
 
 
 def message_send_time(
     when: datetime, message: Message, recipient: Recipient, category: Category, runtime: Runtime
 ) -> datetime:
-    channels = usable_channels(message, recipient, runtime)
+    channels = usable_channels(message, recipient, category, runtime)
     return allowed_send_time(
         when, recipient, category, message.importance, channels, runtime.settings
     )
@@ -287,7 +306,7 @@ async def decide(session: AsyncSession, runtime: Runtime, intent: Intent) -> Dec
     reachable = {
         address.channel
         for address in recipient.addresses
-        if address.enabled
+        if receives(address, category)
         and address.channel in runtime.channels
         and address.channel not in prefs.muted_channels
     }

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
@@ -15,6 +15,7 @@ from cue_notify.ai.screening import Screener, create_screener
 from cue_notify.channels.registry import AnyChannel, ChannelRegistry
 from cue_notify.db.session import SessionFactory, create_engine, create_session_factory
 from cue_notify.observability import Metrics
+from cue_notify.services.health import ChannelHealth
 from cue_notify.settings import Settings
 
 
@@ -28,6 +29,7 @@ class Runtime:
     generator: ContentGenerator | None
     metrics: Metrics
     screener: Screener | None = None
+    health: ChannelHealth = field(default_factory=lambda: ChannelHealth(0, 60.0))
 
     @classmethod
     def create(
@@ -67,6 +69,9 @@ class Runtime:
             screener=screener
             if screener is not None
             else create_screener(settings.screening, client),
+            health=ChannelHealth(
+                settings.delivery.breaker_failures, settings.delivery.breaker_cooldown_seconds
+            ),
         )
 
     @asynccontextmanager

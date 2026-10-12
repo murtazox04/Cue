@@ -77,10 +77,18 @@ def finite_delay(value: object) -> float | None:
 
 
 class DeliveryError(Exception):
-    def __init__(self, message: str, *, retryable: bool = False, retry_after: float | None = None):
+    def __init__(
+        self,
+        message: str,
+        *,
+        retryable: bool = False,
+        retry_after: float | None = None,
+        deferred: bool = False,
+    ):
         super().__init__(message)
         self.retryable = retryable
         self.retry_after = finite_delay(retry_after)
+        self.deferred = deferred
 
 
 class InvalidAddressError(DeliveryError):

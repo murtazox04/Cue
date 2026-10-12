@@ -6,6 +6,32 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Delivery feedback: `POST /v1/feedback` takes deliveries, bounces, soft bounces and spam
+  complaints. A bounce disables the address (and fails a `sent` message once every
+  address it went to bounced), soft bounces in a row disable it
+  (`delivery.soft_bounce_limit`, one per message and address), a complaint stops every
+  optional message to the address, in categories that exist now and later
+  (`complained_at`, source `complaint` in the consent ledger), and the first delivery
+  marks the message delivered. Provider ids are kept per address, so a report about any
+  address of a message finds it. A repeated `report_id` is ignored. Recipient ids in the
+  response need `recipients:read`. Migrations `0016` and `0017`.
+- Python SDK 0.4.0 `report_feedback` and TypeScript SDK 0.3.0 `reportFeedback`.
+- Twilio delivery status callbacks at `/v1/inbound/twilio/status`: signed over the
+  exact URL with its query string, matched by `MessageSid` across the Twilio channels of
+  the account, counted once when repeated, and limited by their own
+  `api.rate_limit.feedback` bucket.
+- Channel health: a channel with `delivery.breaker_failures` transient failures in a
+  row is skipped for `delivery.breaker_cooldown_seconds` by messages that have another
+  channel planned, instead of every message waiting to retry it. After the cooldown one
+  message probes it; the last attempt of a message always tries its first choice.
+
+### Changed
+- SMTP: a `4xx` reply to `RCPT` (greylisting, a full mailbox) is retried instead of
+  disabling the address. `4xx` replies to `RCPT` and `DATA`, other than `421`, do not
+  count against the channel's health.
+- Re-adding an address clears its soft-bounce count.
+
 ## [0.4.0] — 2026-10-12
 
 A security and reliability release. Read **Upgrading** before deploying it: several

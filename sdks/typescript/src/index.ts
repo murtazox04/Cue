@@ -5,7 +5,7 @@
  * Cloudflare Workers and in browsers (keep API keys on the server).
  */
 
-export const VERSION = "0.2.0";
+export const VERSION = "0.3.0";
 export const SIGNATURE_HEADER = "Cue-Signature";
 
 export type Importance = "low" | "normal" | "high" | "critical";
@@ -43,6 +43,18 @@ export interface MessageInput {
   expiresAt?: Date;
   sendAt?: Date;
   idempotencyKey?: string;
+}
+
+export type Feedback = "delivered" | "bounce" | "soft_bounce" | "complaint";
+
+export interface FeedbackInput {
+  type: Feedback;
+  channel: string;
+  address?: string;
+  messageId?: string;
+  providerMessageId?: string;
+  reportId?: string;
+  reason?: string;
 }
 
 export interface ApprovalInput {
@@ -165,6 +177,18 @@ export class Cue {
       metadata: approval.metadata ?? {},
     };
     return this.#request("POST", "/v1/approvals", body, false);
+  }
+
+  reportFeedback(feedback: FeedbackInput): Promise<Json> {
+    const body: Json = { type: feedback.type, channel: feedback.channel };
+    if (feedback.address !== undefined) body.address = feedback.address;
+    if (feedback.messageId !== undefined) body.message_id = feedback.messageId;
+    if (feedback.providerMessageId !== undefined) {
+      body.provider_message_id = feedback.providerMessageId;
+    }
+    if (feedback.reportId !== undefined) body.report_id = feedback.reportId;
+    if (feedback.reason !== undefined) body.reason = feedback.reason;
+    return this.#request("POST", "/v1/feedback", body, false);
   }
 
   /** `status` is `pending`, `approved`, `rejected` or `expired`. */

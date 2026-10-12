@@ -24,6 +24,7 @@ from cue_notify.api.routers import (
     categories,
     digests,
     events,
+    feedback,
     health,
     inbound,
     messages,
@@ -62,6 +63,7 @@ TAGS = [
     {"name": "categories", "description": "Delivery policy: caps, quiet hours, opt-outs."},
     {"name": "broadcasts", "description": "One message to many recipients, in batches."},
     {"name": "agents", "description": "Automated senders with attention budgets and approval."},
+    {"name": "feedback", "description": "Deliveries, bounces and spam complaints from providers."},
     {"name": "api keys", "description": "Scoped credentials for the API."},
     {"name": "health", "description": "Probes for orchestrators and load balancers."},
 ]
@@ -154,6 +156,7 @@ def create_app(settings: Settings | None = None, runtime: Runtime | None = None)
         agents,
         approvals,
         inbound,
+        feedback,
         api_keys,
     ):
         v1.include_router(module.router)
