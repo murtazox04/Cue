@@ -13,7 +13,13 @@ from cue_notify.core.time import utcnow
 from cue_notify.db.models import ApiKey
 from cue_notify.runtime import Runtime
 from cue_notify.services import api_keys
-from cue_notify.settings import FailedAuthRateLimit, PageRateLimit, RateLimitSettings
+from cue_notify.settings import (
+    FailedAuthRateLimit,
+    FeedbackRateLimit,
+    MachineRateLimit,
+    PageRateLimit,
+    RateLimitSettings,
+)
 
 TWO_MEGABYTES = 2_000_000
 
@@ -74,6 +80,18 @@ async def test_unauthenticated_routes_are_rate_limited(runtime: Runtime) -> None
         assert refused.json()["title"] == "Too many requests"
         tracked = await http.post("/v1/track/unknown-token", json={"type": "opened"})
         assert tracked.status_code != 429
+
+
+async def test_status_callbacks_have_their_own_bucket(runtime: Runtime) -> None:
+    runtime.settings.api.rate_limit = RateLimitSettings(
+        inbound=MachineRateLimit(per_minute=1, burst=1),
+        feedback=FeedbackRateLimit(per_minute=1, burst=1),
+    )
+    async with connect(runtime) as http:
+        assert (await http.post("/v1/inbound/twilio", data={})).status_code != 429
+        assert (await http.post("/v1/inbound/twilio/status", data={})).status_code != 429
+        assert (await http.post("/v1/inbound/twilio", data={})).status_code == 429
+        assert (await http.post("/v1/inbound/twilio/status", data={})).status_code == 429
 
 
 async def test_failed_authentication_is_limited_per_address(

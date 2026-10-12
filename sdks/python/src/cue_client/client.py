@@ -132,12 +132,13 @@ def _approval(
     }
 
 
-def _feedback(
+def feedback_payload(
     type: Feedback,
     channel: str,
     address: str | None,
     message_id: str | None,
     provider_message_id: str | None,
+    report_id: str | None,
     reason: str | None,
 ) -> JSON:
     return _drop_none(
@@ -147,6 +148,7 @@ def _feedback(
             "address": address,
             "message_id": message_id,
             "provider_message_id": provider_message_id,
+            "report_id": report_id,
             "reason": reason,
         }
     )
@@ -282,12 +284,12 @@ class Cue:
         address: str | None = None,
         message_id: str | None = None,
         provider_message_id: str | None = None,
+        report_id: str | None = None,
         reason: str | None = None,
     ) -> JSON:
-        """Forward what a provider reported: a ``bounce`` disables the address, a
-        ``complaint`` unsubscribes the person from optional categories. Not retried: a
-        repeated ``soft_bounce`` would count twice."""
-        payload = _feedback(type, channel, address, message_id, provider_message_id, reason)
+        payload = feedback_payload(
+            type, channel, address, message_id, provider_message_id, report_id, reason
+        )
         return self._request("POST", "/v1/feedback", json=payload, safe=False)
 
     def get_approval(self, approval_id: str) -> JSON:
@@ -415,9 +417,12 @@ class AsyncCue:
         address: str | None = None,
         message_id: str | None = None,
         provider_message_id: str | None = None,
+        report_id: str | None = None,
         reason: str | None = None,
     ) -> JSON:
-        payload = _feedback(type, channel, address, message_id, provider_message_id, reason)
+        payload = feedback_payload(
+            type, channel, address, message_id, provider_message_id, report_id, reason
+        )
         return await self._request("POST", "/v1/feedback", json=payload, safe=False)
 
     async def get_approval(self, approval_id: str) -> JSON:

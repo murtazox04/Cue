@@ -123,7 +123,7 @@ class Address(IdMixin, TimestampMixin, Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     disabled_reason: Mapped[str | None] = mapped_column(String(255))
     soft_bounces: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
-    """Soft bounces since the last delivery; enough in a row disable the address."""
+    complained_at: Mapped[datetime | None]
 
     recipient: Mapped[Recipient] = relationship(back_populates="addresses")
 
@@ -212,7 +212,6 @@ class Message(IdMixin, TimestampMixin, Base):
         Index("ix_messages_cooldown", "recipient_id", "rule_id", "send_at"),
         Index("ix_messages_agent", "recipient_id", "agent_key", "send_at"),
         Index("ix_messages_created_at", "created_at"),
-        # Delivery feedback names the message by the provider's id.
         Index("ix_messages_provider_id", "channel", "provider_message_id"),
     )
 
@@ -321,6 +320,28 @@ class Digest(IdMixin, TimestampMixin, Base):
     message_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("messages.id", ondelete="SET NULL"), index=True
     )
+
+
+class MessageDelivery(IdMixin, Base):
+    __tablename__ = "message_deliveries"
+    __table_args__ = (Index("ix_message_deliveries_provider_id", "channel", "provider_message_id"),)
+
+    message_id: Mapped[UUID] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"), index=True
+    )
+    channel: Mapped[str] = mapped_column(String(64))
+    address: Mapped[str] = mapped_column(String(2048))
+    provider_message_id: Mapped[str | None] = mapped_column(String(255))
+    bounced: Mapped[bool] = mapped_column(Boolean, default=False)
+    soft_bounced: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class FeedbackReport(Base):
+    __tablename__ = "feedback_reports"
+
+    report_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    received_at: Mapped[datetime] = mapped_column(default=utcnow, index=True)
 
 
 class PreferenceChange(IdMixin, Base):

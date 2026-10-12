@@ -19,7 +19,7 @@ Both offer the same operations:
 | Read messages | `get_message(id)`, `list_messages(**filters)` | `getMessage(id)`, `listMessages(filters)` |
 | Ask a person to approve | `request_approval(title, reviewers, body, metadata=)` | `requestApproval({ title, reviewers, … })` |
 | Read a decision | `get_approval(id)` | `getApproval(id)` |
-| Report a bounce or complaint | `report_feedback(type, channel, address=, provider_message_id=)` | `reportFeedback({ type, channel, … })` |
+| Report a bounce or complaint | `report_feedback(type, channel, address=, provider_message_id=, report_id=)` | `reportFeedback({ type, channel, … })` |
 | Verify a webhook | `verify_webhook(body, header, secret)` | `await verifyWebhook(body, header, secret)` |
 
 ## Behaviour

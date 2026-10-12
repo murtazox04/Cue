@@ -59,6 +59,11 @@ class AddressOut(Model):
     label: str | None
     enabled: bool
     disabled_reason: str | None
+    complained_at: datetime | None = Field(
+        default=None,
+        description="When the person reported a message to this address as spam; optional "
+        "messages no longer go to it.",
+    )
     created_at: datetime
 
 
@@ -87,7 +92,8 @@ class PreferenceChangeOut(Model):
     source: PreferenceSource
     changes: dict[str, Any] = Field(
         examples=[{"unsubscribed": ["marketing"], "muted": ["sms"]}],
-        description="Only what changed: unsubscribed, resubscribed, muted, unmuted, quiet_hours.",
+        description="Only what changed: unsubscribed, resubscribed, muted, unmuted, quiet_hours, "
+        "complained.",
     )
     provenance: dict[str, Any] | None = Field(
         description="How the change was made: IP address, user agent, page, keyword, API key."

@@ -102,6 +102,11 @@ class MachineRateLimit(TokenBucketSettings):
     burst: int = Field(default=300, ge=1)
 
 
+class FeedbackRateLimit(TokenBucketSettings):
+    per_minute: int = Field(default=6000, ge=1)
+    burst: int = Field(default=3000, ge=1)
+
+
 class FailedAuthRateLimit(TokenBucketSettings):
     per_minute: int = Field(default=10, ge=1)
     burst: int = Field(default=20, ge=1)
@@ -126,6 +131,10 @@ class RateLimitSettings(BaseModel):
     inbound: MachineRateLimit = Field(
         default_factory=MachineRateLimit,
         description="Provider webhooks and replies at /v1/inbound.",
+    )
+    feedback: FeedbackRateLimit = Field(
+        default_factory=FeedbackRateLimit,
+        description="Delivery status callbacks at /v1/inbound/twilio/status.",
     )
     failed_auth: FailedAuthRateLimit = Field(
         default_factory=FailedAuthRateLimit,
@@ -223,8 +232,6 @@ class ApiSettings(BaseModel):
 
 
 class DeliverySettings(BaseModel):
-    """What Cue does with providers' feedback and with channels that keep failing."""
-
     soft_bounce_limit: int = Field(
         default=3,
         ge=1,
@@ -239,7 +246,12 @@ class DeliverySettings(BaseModel):
         ),
     )
     breaker_cooldown_seconds: float = Field(
-        default=60.0, gt=0, description="How long an unhealthy channel is skipped before a retry."
+        default=60.0,
+        gt=0,
+        description=(
+            "How long an unhealthy channel is skipped. Then one message at a time tries it; "
+            "a success closes the breaker, a failure skips it for another cooldown."
+        ),
     )
 
 

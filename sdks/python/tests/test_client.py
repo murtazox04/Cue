@@ -63,13 +63,17 @@ def test_feedback_is_sent_once_with_only_what_was_given() -> None:
 
     with _mock(handler) as cue:
         result = cue.report_feedback(
-            "bounce", "email", address="a@b.test", reason="550 mailbox unavailable"
+            "bounce",
+            "email",
+            address="a@b.test",
+            report_id="evt-1",
+            reason="550 mailbox unavailable",
         )
     assert result == {"disabled": 1}
     [request] = seen
     assert request.url.path == "/v1/feedback"
     assert request.read() == (
-        b'{"type":"bounce","channel":"email","address":"a@b.test",'
+        b'{"type":"bounce","channel":"email","address":"a@b.test","report_id":"evt-1",'
         b'"reason":"550 mailbox unavailable"}'
     )
 

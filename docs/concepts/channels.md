@@ -53,8 +53,12 @@ For each planned channel, in order:
 - **Unhealthy channel** → after `delivery.breaker_failures` (5) transient failures in a
   row, a channel is skipped for `delivery.breaker_cooldown_seconds` (60) by messages
   that have another channel planned after it, so a provider outage does not hold every
-  message back. A channel that is a message's only route is always tried. Each worker
-  process keeps its own count.
+  message back. When the cooldown ends, one message at a time tries the channel: a
+  success closes the breaker, a failure skips the channel for another cooldown. A
+  channel is always tried when it is a message's only route, and on a message's last
+  attempt. Replies that concern one recipient, such as an SMTP `4xx` to `RCPT` or
+  `DATA` (greylisting, a full mailbox), are retried but do not count against the
+  channel. Each worker process keeps its own count.
 
 If no channel succeeds the message is `failed` with the reasons in `status_reason`.
 
@@ -65,10 +69,10 @@ arrived) comes back to Cue, which acts on it so nobody has to clean lists by han
 
 | Report | Effect |
 |---|---|
-| `delivered` | The message becomes `delivered`; the address's soft-bounce count resets. |
-| `bounce` | The address is disabled (`disabled_reason: "bounced: …"`); a `sent` message becomes `failed`. |
-| `soft_bounce` | Counted; `delivery.soft_bounce_limit` (3) in a row, with no delivery between, disable the address. |
-| `complaint` | The person is unsubscribed from every optional category, recorded in the consent ledger with source `complaint`. Receipts and alerts still reach them. |
+| `delivered` | The message becomes `delivered` on the first such report; the address's soft-bounce count resets. |
+| `bounce` | The address is disabled (`disabled_reason: "bounced: …"`). A `sent` message becomes `failed` once every address it went to has bounced. |
+| `soft_bounce` | Counted once per message and address; `delivery.soft_bounce_limit` (3) in a row, with no delivery between, disable the address. |
+| `complaint` | The address stops getting messages of every category people may leave, including categories created later (`complained_at` on the address). Recorded in the consent ledger with source `complaint`. Receipts and alerts still reach it. |
 
 Report from your backend or a provider's webhook handler (`recipients:write`):
 
@@ -78,10 +82,18 @@ POST /v1/feedback
  "address": "ann@example.com", "reason": "550 5.1.1 user unknown"}
 ```
 
-Name the message by Cue's `message_id` or the `provider_message_id` Cue stored when it
-sent it (with its `channel`), the address, or both. Without an address, a bounce only
-disables an address when the message's recipient has a single one on that channel.
-Disabled addresses come back only through `POST /v1/recipients/{id}/addresses`.
+Name the message by Cue's `message_id` or the `provider_message_id` the provider
+returned for any of the addresses it went to (with its `channel`), the address, or
+both. A provider id names the address too. With only a `message_id`, a bounce or soft
+bounce acts on an address only when the message went to a single one on that channel; a
+complaint applies to all of them. Give the provider's own id for the report as
+`report_id` and a repeated report is ignored (`"duplicate": true`); the ids are deleted by
+`cuectl prune`. The response lists the recipients' external ids only to keys that hold
+`recipients:read`.
+
+Disabled addresses come back, with their soft-bounce count cleared, only through
+`POST /v1/recipients/{id}/addresses`. A complaint stays on the address until it is
+deleted and added again.
 
 The SDKs have `report_feedback` (Python) and `reportFeedback` (TypeScript).
 
@@ -89,9 +101,12 @@ The SDKs have `report_feedback` (Python) and `reportFeedback` (TypeScript).
 `<api.public_url>/v1/inbound/twilio/status`. Delivered texts are marked delivered;
 numbers that cannot receive texts (unknown handset, landline, blocked, opted out) are
 disabled, and other failures count as soft bounces. The request signature is checked
-against the auth token of the Twilio channel for the request's `AccountSid`. Status
-callbacks share the `api.rate_limit.inbound` budget (600 a minute per address); raise
-it if you send more.
+against the exact URL Twilio called, query string included, and the auth token of the
+Twilio channels for the request's `AccountSid`. The message is looked up by
+`MessageSid` across those channels; a callback for a message Cue did not send is
+ignored. A repeated callback (same `MessageSid` and status) counts once. Status
+callbacks have their own rate limit, `api.rate_limit.feedback` (6000 a minute per
+address).
 
 ## Bundled connectors
 

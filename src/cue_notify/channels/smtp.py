@@ -22,6 +22,8 @@ from cue_notify.channels.base import (
 )
 from cue_notify.core.enums import Importance
 
+SERVICE_CLOSING = 421
+
 
 class SmtpConfig(ChannelConfig):
     host: str
@@ -104,11 +106,23 @@ class SmtpChannel(Channel[SmtpConfig]):
         try:
             await asyncio.to_thread(self._send_blocking, email)
         except smtplib.SMTPRecipientsRefused as exc:
+            codes = {code for code, _ in exc.recipients.values()}
+            if codes and all(400 <= code < 500 for code in codes):
+                raise DeliveryError(
+                    f"recipient deferred: {exc.recipients}",
+                    retryable=True,
+                    deferred=SERVICE_CLOSING not in codes,
+                ) from exc
             raise InvalidAddressError(f"recipient refused: {exc.recipients}") from exc
         except smtplib.SMTPResponseException as exc:
             # 4xx replies are transient by definition (RFC 5321 §4.2.1).
+            transient = 400 <= exc.smtp_code < 500
             raise DeliveryError(
-                f"SMTP {exc.smtp_code}: {exc.smtp_error!r}", retryable=400 <= exc.smtp_code < 500
+                f"SMTP {exc.smtp_code}: {exc.smtp_error!r}",
+                retryable=transient,
+                deferred=transient
+                and exc.smtp_code != SERVICE_CLOSING
+                and isinstance(exc, smtplib.SMTPDataError),
             ) from exc
         except (smtplib.SMTPException, OSError) as exc:
             raise DeliveryError(f"{type(exc).__name__}: {exc}", retryable=True) from exc

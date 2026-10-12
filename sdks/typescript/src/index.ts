@@ -5,7 +5,7 @@
  * Cloudflare Workers and in browsers (keep API keys on the server).
  */
 
-export const VERSION = "0.2.0";
+export const VERSION = "0.3.0";
 export const SIGNATURE_HEADER = "Cue-Signature";
 
 export type Importance = "low" | "normal" | "high" | "critical";
@@ -53,6 +53,7 @@ export interface FeedbackInput {
   address?: string;
   messageId?: string;
   providerMessageId?: string;
+  reportId?: string;
   reason?: string;
 }
 
@@ -178,11 +179,6 @@ export class Cue {
     return this.#request("POST", "/v1/approvals", body, false);
   }
 
-  /** `status` is `pending`, `approved`, `rejected` or `expired`. */
-  /**
-   * Forward what a provider reported: a `bounce` disables the address, a `complaint`
-   * unsubscribes the person from optional categories. Not retried.
-   */
   reportFeedback(feedback: FeedbackInput): Promise<Json> {
     const body: Json = { type: feedback.type, channel: feedback.channel };
     if (feedback.address !== undefined) body.address = feedback.address;
@@ -190,10 +186,12 @@ export class Cue {
     if (feedback.providerMessageId !== undefined) {
       body.provider_message_id = feedback.providerMessageId;
     }
+    if (feedback.reportId !== undefined) body.report_id = feedback.reportId;
     if (feedback.reason !== undefined) body.reason = feedback.reason;
     return this.#request("POST", "/v1/feedback", body, false);
   }
 
+  /** `status` is `pending`, `approved`, `rejected` or `expired`. */
   getApproval(id: string): Promise<Json> {
     return this.#request("GET", `/v1/approvals/${segment(id)}`, undefined, true);
   }

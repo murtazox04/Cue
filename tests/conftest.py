@@ -38,7 +38,8 @@ from tests.helpers import TEST_SECRET_KEY, FakeChannel
 
 POSTGRES_URL = os.environ.get("CUE_TEST_DATABASE_URL")
 TABLES = (
-    "jobs, digests, preference_changes, review_links, approvals, messages, events, broadcasts, "
+    "jobs, digests, preference_changes, review_links, approvals, message_deliveries, "
+    "feedback_reports, messages, events, broadcasts, "
     "rules, templates, addresses, recipients, api_keys, agents, ai_usage"
 )
 

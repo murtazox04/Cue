@@ -22,19 +22,15 @@ API = "https://api.twilio.com/2010-04-01"
 
 # https://www.twilio.com/docs/api/errors — codes meaning "this number will never work".
 DEAD_NUMBER_CODES = frozenset({21211, 21214, 21217, 21407, 21421, 21610, 21612, 21614})
-# Errors in delivery status callbacks that mean the same: blocked by the person, unknown
-# handset, landline or unreachable carrier. Others (30003 unreachable, 30007 filtered,
-# 30008 unknown) may pass next time and count as soft bounces.
 DEAD_DELIVERY_CODES = DEAD_NUMBER_CODES | {30004, 30005, 30006}
 
 
 def delivery_feedback(params: dict[str, str]) -> tuple[FeedbackType, str] | None:
-    """What a status callback (``MessageStatus``, ``ErrorCode``) reports, if anything."""
     status = params.get("MessageStatus", "")
     if status == "delivered":
         return FeedbackType.DELIVERED, "delivered"
     if status not in ("undelivered", "failed"):
-        return None  # queued, sending, sent: still on its way
+        return None
     code = params.get("ErrorCode", "")
     reason = f"twilio {status} {code}".strip()
     if code.isdigit() and int(code) in DEAD_DELIVERY_CODES:

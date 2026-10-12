@@ -23,8 +23,9 @@ cuectl jobs retry-dead [--kind K]
                                   broadcasts and digests they gave up on
 cuectl prune [--older-than DAYS] [--ledger-older-than DAYS] [--batch-size N]
                                   delete old events, finished messages, closed digests,
-                                  decided approval requests, expired review links and
-                                  dead jobs; the consent ledger only when asked.
+                                  decided approval requests, expired review links,
+                                  dead jobs and the ids of applied delivery reports;
+                                  the consent ledger only when asked.
                                   Deletes N rows (1000) per transaction
 cuectl version                    (or cuectl --version)
 ```

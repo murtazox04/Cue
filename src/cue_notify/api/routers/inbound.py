@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+from collections.abc import Iterable
 from typing import Any
 
 from fastapi import APIRouter, Request, Response
@@ -63,8 +64,8 @@ def twilio_signature(auth_token: str, url: str, params: dict[str, list[str]]) ->
     return base64.b64encode(digest).decode()
 
 
-def _twilio_channel(runtime: RuntimeDep, account_sid: str) -> tuple[str, str]:
-    """(channel name, auth token) of the Twilio channel for ``account_sid``."""
+def twilio_channels(runtime: RuntimeDep, account_sid: str) -> dict[str, str]:
+    tokens: dict[str, str] = {}
     for name in runtime.channels:
         channel = runtime.channels.get(name)
         config: Any = channel.config if channel is not None else None
@@ -73,26 +74,34 @@ def _twilio_channel(runtime: RuntimeDep, account_sid: str) -> tuple[str, str]:
             and channel.provider == "twilio"
             and hmac.compare_digest(str(config.account_sid).encode(), account_sid.encode())
         ):
-            return name, str(config.auth_token.get_secret_value())
-    raise NotFoundError("Twilio channel", "for this account")
+            tokens[name] = str(config.auth_token.get_secret_value())
+    if not tokens:
+        raise NotFoundError("Twilio channel", "for this account")
+    return tokens
 
 
-async def _signed_twilio_form(
-    request: Request, runtime: RuntimeDep, path: str, token: str | None
-) -> dict[str, list[str]]:
-    public_url = runtime.settings.api.public_url
-    if public_url is None:
+async def twilio_form(request: Request, runtime: RuntimeDep) -> dict[str, list[str]]:
+    if runtime.settings.api.public_url is None:
         raise UnprocessableError("set api.public_url so Twilio's signature can be checked")
-    params = await form_fields(request, keep_blank=True)  # Twilio signs empty fields too
-    if token is None:
-        token = _twilio_channel(runtime, (params.get("AccountSid") or [""])[0])[1]
-    url = f"{str(public_url).rstrip('/')}{path}"
-    expected = twilio_signature(token, url, params).encode()
-    # Bytes: compare_digest refuses non-ASCII str, which would turn a junk header into 500.
+    return await form_fields(request, keep_blank=True)
+
+
+def verify_twilio(
+    request: Request,
+    runtime: RuntimeDep,
+    path: str,
+    params: dict[str, list[str]],
+    tokens: Iterable[str],
+) -> None:
+    url = f"{str(runtime.settings.api.public_url).rstrip('/')}{path}"
+    if request.url.query:
+        url = f"{url}?{request.url.query}"
     received = request.headers.get("X-Twilio-Signature", "").encode("latin-1")
-    if not hmac.compare_digest(expected, received):
+    if not any(
+        hmac.compare_digest(twilio_signature(token, url, params).encode(), received)
+        for token in set(tokens)
+    ):
         raise ForbiddenError("invalid Twilio signature")
-    return params
 
 
 def _twilio_token(runtime: RuntimeDep) -> str:
@@ -106,9 +115,8 @@ def _twilio_token(runtime: RuntimeDep) -> str:
 
 @router.post("/twilio", summary="Twilio incoming-message webhook", include_in_schema=False)
 async def inbound_twilio(request: Request, session: SessionDep, runtime: RuntimeDep) -> Response:
-    params = await _signed_twilio_form(
-        request, runtime, "/v1/inbound/twilio", _twilio_token(runtime)
-    )
+    params = await twilio_form(request, runtime)
+    verify_twilio(request, runtime, "/v1/inbound/twilio", params, [_twilio_token(runtime)])
     phone = (params.get("From") or [""])[0]
     text = (params.get("Body") or [""])[0]
     provenance = {"method": "sms_reply", "provider": "twilio"}
@@ -118,26 +126,39 @@ async def inbound_twilio(request: Request, session: SessionDep, runtime: Runtime
     return Response(EMPTY_TWIML, media_type="application/xml")
 
 
-@router.post("/twilio/status", summary="Twilio delivery status callback", include_in_schema=False)
+@router.post(
+    "/twilio/status",
+    summary="Twilio delivery status callback",
+    description="Set the Twilio channel's `status_callback` to "
+    "`<public_url>/v1/inbound/twilio/status`. Delivered texts are marked delivered; numbers "
+    "that cannot receive texts are disabled.",
+    include_in_schema=False,
+)
 async def twilio_status(request: Request, session: SessionDep, runtime: RuntimeDep) -> Response:
-    """Set the Twilio channel's `status_callback` to `<public_url>/v1/inbound/twilio/status`.
-    Delivered texts are marked delivered; numbers that cannot receive texts are disabled."""
-    params = await _signed_twilio_form(request, runtime, "/v1/inbound/twilio/status", None)
+    params = await twilio_form(request, runtime)
     fields = {name: values[0] for name, values in params.items() if values}
+    tokens = twilio_channels(runtime, fields.get("AccountSid", ""))
+    verify_twilio(request, runtime, "/v1/inbound/twilio/status", params, tokens.values())
     report = delivery_feedback(fields)
-    if report is not None and fields.get("MessageSid"):
-        kind, reason = report
-        channel, _ = _twilio_channel(runtime, fields.get("AccountSid", ""))
-        await feedback.apply(
-            session,
-            runtime,
-            feedback.FeedbackIn(
-                type=kind,
-                channel=channel,
-                address=fields.get("To") or None,
-                provider_message_id=fields["MessageSid"],
-                reason=reason,
-            ),
-            {"source": "twilio"},
-        )
+    sid = fields.get("MessageSid")
+    if report is None or not sid:
+        return Response(status_code=204)
+    channel = await feedback.locate_channel(session, list(tokens), sid)
+    if channel is None:
+        return Response(status_code=204)
+    kind, reason = report
+    await feedback.apply(
+        session,
+        runtime,
+        feedback.FeedbackIn(
+            type=kind,
+            channel=channel,
+            address=fields.get("To") or None,
+            provider_message_id=sid,
+            report_id=f"twilio:{sid}:{fields.get('MessageStatus', '')}",
+            reason=reason,
+        ),
+        {"source": "twilio"},
+        require_message=True,
+    )
     return Response(status_code=204)

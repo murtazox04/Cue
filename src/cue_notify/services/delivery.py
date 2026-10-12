@@ -10,9 +10,7 @@ Order of operations for one ``deliver`` job:
    enabled address (all of a user's devices); one success is enough.
    * dead addresses are disabled;
    * transient errors retry the job with backoff before falling back;
-   * permanent errors fall through to the next channel;
-   * a channel that keeps failing (see :mod:`cue_notify.services.health`) is skipped
-     while another channel is planned after it.
+   * permanent errors fall through to the next channel.
 5. Record the outcome.
 """
 
@@ -36,7 +34,16 @@ from cue_notify.core.content import DEFAULT_VARIANT, Content
 from cue_notify.core.enums import MessageStatus, SuppressionReason
 from cue_notify.core.time import utcnow
 from cue_notify.db.dml import upsert_increment
-from cue_notify.db.models import Agent, AiUsage, Category, Job, Message, Recipient, Template
+from cue_notify.db.models import (
+    Agent,
+    AiUsage,
+    Category,
+    Job,
+    Message,
+    MessageDelivery,
+    Recipient,
+    Template,
+)
 from cue_notify.runtime import Runtime
 from cue_notify.services import composer, preferences
 from cue_notify.services import recipients as recipient_service
@@ -57,6 +64,8 @@ class ChannelAttempt:
     invalid: list[tuple[str, str]] = field(default_factory=list)
     retryable: DeliveryError | None = None
     error: str | None = None
+    receipts: list[tuple[str, Receipt]] = field(default_factory=list)
+    channel_failed: bool = False
 
 
 async def _send_to_addresses(
@@ -92,11 +101,13 @@ async def _send_to_addresses(
     for address, result in zip(addresses, results, strict=True):
         if isinstance(result, Receipt):
             attempt.receipt = attempt.receipt or result
+            attempt.receipts.append((address, result))
         elif isinstance(result, InvalidAddressError):
             attempt.invalid.append((address, str(result)))
         elif isinstance(result, DeliveryError):
             if result.retryable:
                 attempt.retryable = result
+                attempt.channel_failed = attempt.channel_failed or not result.deferred
             else:
                 attempt.error = str(result)
         else:
@@ -107,6 +118,7 @@ async def _send_to_addresses(
                 extra={"message_id": str(message.id)},
             )
             attempt.retryable = DeliveryError(f"{type(result).__name__}: {result}", retryable=True)
+            attempt.channel_failed = True
     if (
         attempt.receipt is None
         and attempt.error is None
@@ -301,7 +313,7 @@ async def deliver(ctx: queue.JobContext) -> None:
             channel: [
                 address.value
                 for address in recipient.addresses
-                if address.channel == channel and address.enabled
+                if address.channel == channel and composer.receives(address, category)
             ]
             for channel in message.channels
             if channel in runtime.channels and channel not in prefs.muted_channels
@@ -324,7 +336,7 @@ async def deliver(ctx: queue.JobContext) -> None:
     skipped = False
     health = runtime.health
     for index, (channel, addresses) in enumerate(routes):
-        fallback = index + 1 < len(routes)
+        fallback = index + 1 < len(routes) and not ctx.is_last_attempt
         if fallback and not health.available(channel):
             skipped = True
             errors.append(f"{channel}: skipped, failing repeatedly")
@@ -338,9 +350,9 @@ async def deliver(ctx: queue.JobContext) -> None:
             delivered = attempt
             break
         if attempt.retryable is not None:
-            health.failed(channel)
+            if attempt.channel_failed:
+                health.failed(channel)
             if fallback and not health.available(channel):
-                # The provider keeps failing: try the next channel now instead of waiting.
                 skipped = True
                 errors.append(f"{channel}: {attempt.retryable}")
                 continue
@@ -355,8 +367,6 @@ async def deliver(ctx: queue.JobContext) -> None:
         errors.append(f"{channel}: {attempt.error or attempt.retryable}")
 
     if delivered is None and skipped and not ctx.is_last_attempt:
-        # Every other route failed too; the skipped channel may recover, so retry later
-        # rather than give up on the message.
         await _disable_addresses(runtime, message.recipient_id, invalid)
         await _release(runtime, message_id)
         raise DeliveryError("; ".join(errors), retryable=True)
@@ -374,6 +384,15 @@ async def deliver(ctx: queue.JobContext) -> None:
                 delivered.receipt.provider_message_id if delivered.receipt else None
             )
             stored.status_reason = None
+            session.add_all(
+                MessageDelivery(
+                    message_id=message_id,
+                    channel=delivered.channel,
+                    address=address,
+                    provider_message_id=receipt.provider_message_id,
+                )
+                for address, receipt in delivered.receipts
+            )
         else:
             reason = "; ".join(errors) or SuppressionReason.NO_REACHABLE_CHANNEL
             stored.status = MessageStatus.FAILED

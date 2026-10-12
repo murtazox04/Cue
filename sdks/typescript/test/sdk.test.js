@@ -133,11 +133,17 @@ test("asks for approval once and reads the decision", async () => {
 test("reports delivery feedback once", async () => {
   const seen = [];
   const cue = client([{ status: 200, body: { disabled: 1 } }], seen);
-  await cue.reportFeedback({ type: "bounce", channel: "email", providerMessageId: "m-1" });
+  await cue.reportFeedback({
+    type: "bounce",
+    channel: "email",
+    providerMessageId: "m-1",
+    reportId: "evt-1",
+  });
   assert.equal(seen[0].url, "http://cue.test/v1/feedback");
   assert.deepEqual(JSON.parse(seen[0].init.body), {
     type: "bounce",
     channel: "email",
     provider_message_id: "m-1",
+    report_id: "evt-1",
   });
 });

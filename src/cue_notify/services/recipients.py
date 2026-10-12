@@ -141,6 +141,7 @@ async def add_address(
             if revive:
                 existing.enabled = True
                 existing.disabled_reason = None
+                existing.soft_bounces = 0
             if data.label is not None:
                 existing.label = data.label
             return existing
