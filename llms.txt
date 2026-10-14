@@ -1,0 +1,59 @@
+# Cue
+
+> Cue is a self-hosted notification decision engine. Applications and
+> agents report events or send messages; Cue decides whether each notification is worth
+> the person's attention, what to say (localised templates, optional AI wording with
+> fact guardrails), when (quiet hours, digests, expiry), how important it is, and over
+> which route. It then hands a rendered message to the delivery the application plugs in
+> (a signed webhook, FCM, APNs, Twilio, SMTP, Amazon SES, Resend, Slack or Telegram). Self-hosted, PostgreSQL or SQLite,
+> MIT licensed, Python (FastAPI). Package: `cue-notify`; CLI: `cuectl`.
+
+Key facts for integrating Cue:
+
+- Authenticate with `Authorization: Bearer ck_…` (scoped API keys).
+- Report events with `POST /v1/events` and an `idempotency_key`; rules decide what to send.
+- Direct sends use `POST /v1/messages` with `template`, `channels`, `importance` and `expires_at`.
+- Every outcome is recorded: messages carry `status` and `status_reason`, events a per-rule `outcome`.
+- Keys carry scopes; approving or rejecting needs `approvals:decide`; keys bound to an agent (`cuectl keys create NAME --agent X`) hold at most `events:write`, `messages:write` and `messages:read`.
+- `api.public_url` requires `api.secret_key` (`CUE_API__SECRET_KEY`, 32+ characters, the same on every process), which signs preference tokens.
+- AI agents get their own keys, bound to an agent with a per-person budget and optional human approval.
+- Approval requests: agents ask people before risky actions (`POST /v1/approvals`, MCP `request_approval`); decisions come back by signed callback; LangGraph, Pydantic AI, CrewAI and Dapr bridges in the Python SDK.
+- Optional screening (off by default, experimental): a decision model (TypeSafe Jev) reads agent messages before delivery, holds risky ones for a person and lowers overstated importance.
+- The MCP server runs with `uvx cue-notify mcp` (env `CUE_URL`, `CUE_API_KEY`).
+
+## Docs
+
+- [Getting started](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/getting-started.md): run Cue, create a key, send the first event
+- [Events and rules](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/events-and-rules.md): events, JSON Logic conditions, priorities, delays, cooldowns, rollouts, dry runs
+- [Templates](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/templates.md): localised Jinja2 content, channel overrides, variables, actions
+- [Delivery policy](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/policy.md): the order of checks, categories, caps, quiet hours, fatigue
+- [Importance and expiry](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/importance.md): importance levels, critical breakthrough, expiry, action buttons
+- [Digests](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/digests.md): grouping bursts of events into one message, daily or weekly summaries at local time, AI summaries, thread grouping
+- [Preference centre](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/preferences.md): hosted page, JSON API, RFC 8058 one-click unsubscribe, consent ledger
+- [Approval requests](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/approvals.md): ask people to approve an agent's action; callbacks, CrewAI and Dapr
+- [Agents](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/agents.md): attention budgets, importance ceilings, approval and screening for AI agents
+- [Channels and connectors](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/channels.md): webhook payload and signature, FCM, APNs, Twilio, SMTP, SES, Resend, Slack, Telegram; delivery feedback
+- [AI personalisation](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/ai.md): rewording with any Pydantic AI model under guardrails and a token budget
+- [Engagement tracking](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/engagement.md): delivered, opened, clicked and converted signals
+- [Broadcasts](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/concepts/broadcasts.md): one message to an audience in resumable batches
+
+## Guides
+
+- [AI agents (MCP)](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/guides/ai-agents.md): tools, transports and good practice for agents
+- [Performance](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/guides/performance.md): cost per event, benchmark, scaling
+- [Deployment](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/guides/deployment.md): PostgreSQL, workers, Docker, Helm, the secret key, scheduling prune
+- [SDKs](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/guides/sdks.md): Python and TypeScript clients, webhook signature verification
+- [Custom connectors](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/guides/custom-channels.md): writing a delivery plugin
+
+## Reference
+
+- [HTTP API](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/reference/api.md): endpoints and scopes (full OpenAPI at `/openapi.json` on any instance)
+- [API key scopes](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/reference/scopes.md): what each scope allows, and the limits on agent keys
+- [Statuses and reasons](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/reference/statuses.md): message statuses, status reasons, rule outcomes and problem responses
+- [Configuration](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/reference/configuration.md): every setting, environment variables and `cue.toml`
+- [CLI](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/reference/cli.md): `cuectl` commands
+
+## Optional
+
+- [Architecture](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/architecture.md): components, job queue and design decisions
+- [Integration skill](https://raw.githubusercontent.com/murtazox04/Cue/main/plugins/cue/skills/integrate-cue/SKILL.md): step-by-step instructions for coding agents adding Cue to an app
