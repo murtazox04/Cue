@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `examples/agents-demo`: a script that starts Cue with SQLite and the console connector
+  and has three agents message one engineer, showing agent budgets, importance ceilings,
+  quiet hours, a digest and an approval through a review link. Its VHS tape records the
+  GIF at the top of the README.
+
+### Changed
+- The README and the documentation home page now lead with per-person attention budgets
+  for agents; product notifications follow as the second use case.
+
 ## [0.5.1] — 2026-10-13
 
 ### Security
