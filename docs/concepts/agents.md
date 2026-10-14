@@ -63,7 +63,10 @@ agent, for example through the [MCP server](../guides/ai-agents.md).
 Agent policy applies to direct sends (`POST /v1/messages`, the MCP `send_message` tool)
 and to events the agent reports: those only fire rules in categories the agent may use
 (other rules report `agent_not_allowed`), and the messages they produce count against its
-budget and go through its approval policy.
+budget, are capped at its `max_importance` and go through its approval policy. That
+includes [digests](digests.md#events-from-agents): an agent's events are grouped into
+digests of their own, never mixed with another agent's or your backend's, and the digest
+message is the agent's. A digest whose agent is disabled before it closes is cancelled.
 
 ## Approval
 

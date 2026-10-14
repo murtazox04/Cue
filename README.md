@@ -12,7 +12,7 @@ Per-person attention budgets for AI agents and background automations, self-host
 [Getting started](https://murtazox04.github.io/Cue/getting-started/) ·
 [Agents](https://murtazox04.github.io/Cue/concepts/agents/)
 
-<img src="docs/assets/agents-demo.gif" alt="Three agents send to one on-call engineer through Cue: three alerts are delivered, two are suppressed over the agent's budget, a digest and a summary wait for the end of quiet hours, and a held alert is delivered after a reviewer approves it from a one-time link.">
+<img src="https://raw.githubusercontent.com/murtazox04/Cue/main/docs/assets/agents-demo.gif" alt="Three agents send to one on-call engineer through Cue: three alerts are delivered, two are suppressed over the agent's budget, a digest and a summary wait for the end of quiet hours, and a held alert is delivered after a reviewer approves it from a one-time link.">
 
 </div>
 

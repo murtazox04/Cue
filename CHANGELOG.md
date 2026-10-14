@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.2] — 2026-10-14
+
+### Upgrading
+- Run the migrations (`cuectl db upgrade`, or `serve --migrate`): `0018` adds `agent_key`
+  to digests and lets an agent's digest stay open next to your backend's for the same
+  rule, person and key. Digests already open when you upgrade carry no agent and are sent
+  as before.
+
 ### Added
 - `examples/agents-demo`: a script that starts Cue with SQLite and the console connector
   and has three agents message one engineer, showing agent budgets, importance ceilings,
@@ -15,6 +23,17 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 - The README and the documentation home page now lead with per-person attention budgets
   for agents; product notifications follow as the second use case.
+
+### Fixed
+- Digest messages built from an agent's events were not attributed to the agent, so they
+  did not count against its `frequency_caps` (`agent_budget`), were not capped at its
+  `max_importance` and skipped its `approval` condition. Events are now grouped per agent
+  as well as per rule, recipient and key, so a digest never mixes producers: an agent's
+  digest message carries `agent`, and every agent limit applies to it. A digest whose
+  agent was disabled, deleted or lost the rule's category before it closed is cancelled
+  instead of sent. Digests from your own backend are unchanged. `GET /v1/digests` shows
+  the `agent`. Migration `0018`.
+- The README's demo GIF is linked by absolute URL, so it shows on PyPI.
 
 ## [0.5.1] — 2026-10-13
 
@@ -440,7 +459,8 @@ First public release of Cue, the attention layer between software, AI agents and
 - Line breaks in e-mail subjects are collapsed, and messages that cannot be built as
   e-mail fail over instead of retrying.
 
-[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/murtazox04/Cue/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/murtazox04/Cue/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/murtazox04/Cue/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/murtazox04/Cue/compare/v0.3.1...v0.4.0

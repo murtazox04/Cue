@@ -295,15 +295,24 @@ class Digest(IdMixin, TimestampMixin, Base):
 
     __tablename__ = "digests"
     __table_args__ = (
-        # At most one open digest per rule, recipient and grouping key.
         Index(
             "uq_digests_open",
             "rule_id",
             "recipient_id",
             "key",
             unique=True,
-            postgresql_where=text("status = 'open'"),
-            sqlite_where=text("status = 'open'"),
+            postgresql_where=text("status = 'open' AND agent_key IS NULL"),
+            sqlite_where=text("status = 'open' AND agent_key IS NULL"),
+        ),
+        Index(
+            "uq_digests_open_agent",
+            "rule_id",
+            "recipient_id",
+            "key",
+            "agent_key",
+            unique=True,
+            postgresql_where=text("status = 'open' AND agent_key IS NOT NULL"),
+            sqlite_where=text("status = 'open' AND agent_key IS NOT NULL"),
         ),
     )
 
@@ -312,6 +321,7 @@ class Digest(IdMixin, TimestampMixin, Base):
         ForeignKey("recipients.id", ondelete="CASCADE"), index=True
     )
     key: Mapped[str] = mapped_column(String(255))
+    agent_key: Mapped[str | None] = mapped_column(String(64))
     status: Mapped[DigestStatus] = mapped_column(enum_type(DigestStatus), default=DigestStatus.OPEN)
     items: Mapped[list[dict[str, Any]]] = mapped_column(default=list)
     count: Mapped[int] = mapped_column(Integer, default=0)
