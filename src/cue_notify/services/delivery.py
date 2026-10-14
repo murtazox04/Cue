@@ -279,6 +279,13 @@ async def deliver(ctx: queue.JobContext) -> None:
         category = await session.get(Category, message.category_key)
         if recipient is None:
             return
+        if message.agent_key is not None:
+            agent = await session.get(Agent, message.agent_key)
+            refusal = composer.agent_refusal(agent, message.category_key)
+            if refusal is not None:
+                message.status = MessageStatus.SUPPRESSED
+                message.status_reason = refusal
+                return
         prefs = recipient_service.preferences(recipient)
         if (
             category is not None

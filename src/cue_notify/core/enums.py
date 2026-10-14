@@ -124,6 +124,8 @@ class SuppressionReason(StrEnum):
     TEMPLATE_ERROR = "template_error"
     EXPIRED = "expired"
     AGENT_BUDGET = "agent_budget"
+    AGENT_DELETED = "agent_deleted"
+    AGENT_NOT_ALLOWED = "agent_not_allowed"
     FATIGUE = "fatigue"
     COMPLIANCE = "compliance"
     CONSENT_EXPIRED = "consent_expired"

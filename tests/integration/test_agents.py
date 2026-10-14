@@ -8,10 +8,10 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import update
+from sqlalchemy import delete, update
 
 from cue_notify.api.app import create_app
-from cue_notify.db.models import Message
+from cue_notify.db.models import ApiKey, Message
 from cue_notify.runtime import Runtime
 from tests.helpers import FakeChannel, create_recipient, create_rule, create_template, drain
 
@@ -428,4 +428,106 @@ async def test_approval_that_quiet_hours_would_push_past_expiry_drops_the_messag
     late = (await client.post(f"/v1/messages/{held['id']}/approve")).json()
     assert (late["status"], late["status_reason"]) == ("suppressed", "expired")
     await drain(runtime)
+    assert push.sent == []
+
+
+AGENT_CHANGES = [
+    pytest.param(None, "agent_deleted", id="deleted"),
+    pytest.param({"enabled": False}, "agent_not_allowed", id="disabled"),
+    pytest.param({"categories": ["marketing"]}, "agent_not_allowed", id="category-withdrawn"),
+]
+
+
+async def change_agent(
+    client: httpx.AsyncClient, runtime: Runtime, change: dict[str, Any] | None
+) -> None:
+    if change is not None:
+        response = await client.patch("/v1/agents/support-bot", json=change)
+        assert response.status_code == 200, response.text
+        return
+    async with runtime.transaction() as session:
+        await session.execute(delete(ApiKey).where(ApiKey.agent_key == "support-bot"))
+    assert (await client.delete("/v1/agents/support-bot")).status_code == 204
+
+
+@pytest.mark.parametrize(("change", "reason"), AGENT_CHANGES)
+async def test_pending_events_follow_the_agent_as_it_is_when_processed(
+    client: httpx.AsyncClient,
+    runtime: Runtime,
+    push: FakeChannel,
+    change: dict[str, Any] | None,
+    reason: str,
+) -> None:
+    async with await _agent_client(
+        client, runtime, ["events:write"], categories=["transactional"]
+    ) as agent:
+        await create_rule(client, channels=["push"])
+        response = await agent.post(
+            "/v1/events",
+            json={"name": "order.shipped", "recipient": "user-1", "data": {"order_id": "A-1"}},
+        )
+        assert response.status_code == 202, response.text
+    pending = (await client.get(f"/v1/events/{response.json()['id']}")).json()
+    assert (pending["status"], pending["source"]) == ("pending", "agent:support-bot")
+    await change_agent(client, runtime, change)
+    await drain(runtime)
+
+    event = (await client.get(f"/v1/events/{pending['id']}")).json()
+    assert (event["status"], event["source"]) == ("processed", "agent:support-bot")
+    assert event["outcome"] == [{"rule": "notify-shipped", "matched": True, "reason": reason}]
+    assert (await client.get("/v1/messages")).json()["items"] == []
+    assert push.sent == []
+
+
+@pytest.mark.parametrize(("change", "reason"), AGENT_CHANGES)
+async def test_queued_messages_stop_when_the_agent_may_no_longer_send_them(
+    client: httpx.AsyncClient,
+    runtime: Runtime,
+    push: FakeChannel,
+    change: dict[str, Any] | None,
+    reason: str,
+) -> None:
+    async with await _agent_client(
+        client, runtime, ["messages:write"], categories=["transactional"]
+    ) as agent:
+        queued = (await _send(agent)).json()
+    own = (await _send(client)).json()
+    assert (queued["status"], queued["agent"], own["status"]) == (
+        "queued",
+        "support-bot",
+        "queued",
+    )
+    await change_agent(client, runtime, change)
+    await drain(runtime)
+
+    stopped = (await client.get(f"/v1/messages/{queued['id']}")).json()
+    assert (stopped["status"], stopped["status_reason"], stopped["agent"]) == (
+        "suppressed",
+        reason,
+        "support-bot",
+    )
+    assert (await client.get(f"/v1/messages/{own['id']}")).json()["status"] == "sent"
+    assert [str(delivery.message_id) for delivery in push.sent] == [own["id"]]
+
+
+@pytest.mark.parametrize(("change", "reason"), AGENT_CHANGES)
+async def test_approved_messages_stop_when_the_agent_may_no_longer_send_them(
+    client: httpx.AsyncClient,
+    runtime: Runtime,
+    push: FakeChannel,
+    change: dict[str, Any] | None,
+    reason: str,
+) -> None:
+    async with await _agent_client(
+        client, runtime, ["messages:write"], categories=["transactional"], approval=True
+    ) as agent:
+        held = (await _send(agent)).json()
+    assert held["status"] == "pending_approval"
+    await change_agent(client, runtime, change)
+    approved = await client.post(f"/v1/messages/{held['id']}/approve")
+    assert approved.status_code == 200, approved.text
+    await drain(runtime)
+
+    stopped = (await client.get(f"/v1/messages/{held['id']}")).json()
+    assert (stopped["status"], stopped["status_reason"]) == ("suppressed", reason)
     assert push.sent == []

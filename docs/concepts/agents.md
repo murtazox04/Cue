@@ -68,6 +68,20 @@ includes [digests](digests.md#events-from-agents): an agent's events are grouped
 digests of their own, never mixed with another agent's or your backend's, and the digest
 message is the agent's. A digest whose agent is disabled before it closes is cancelled.
 
+Cue applies the agent as it is at each step, not as it was when the event or message
+arrived. Disabling an agent, deleting it or removing a category from `categories` also
+stops what it already handed over:
+
+| Still waiting | Agent deleted | Agent disabled, or category removed |
+|---|---|---|
+| An event not yet processed | Matching rules report `agent_deleted` | Matching rules report `agent_not_allowed` |
+| A digest not yet closed | Cancelled | Cancelled |
+| A queued message, or one approved later | `suppressed`, `agent_deleted` | `suppressed`, `agent_not_allowed` |
+
+Nothing is sent in any of these cases, and the reason is on the event's `outcome` or the
+message's `status_reason`. An agent can only be deleted once it has no API keys, so new
+events and sends are already refused by then.
+
 ## Approval
 
 The condition sees:
