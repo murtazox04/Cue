@@ -100,8 +100,12 @@ def effective_importance(intent: Intent) -> Importance:
     return importance
 
 
-def agent_may_use(agent: Agent, category: Category) -> bool:
-    return agent.enabled and (agent.categories is None or category.key in agent.categories)
+def agent_refusal(agent: Agent | None, category_key: str) -> SuppressionReason | None:
+    if agent is None:
+        return SuppressionReason.AGENT_DELETED
+    if not agent.enabled or (agent.categories is not None and category_key not in agent.categories):
+        return SuppressionReason.AGENT_NOT_ALLOWED
+    return None
 
 
 def _needs_approval(intent: Intent, importance: Importance) -> bool:

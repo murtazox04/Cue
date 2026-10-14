@@ -168,9 +168,7 @@ async def flush(ctx: queue.JobContext) -> None:
         if template is None or category is None:
             raise queue.PermanentJobError("digest rule's template or category was deleted")
         agent = await session.get(Agent, digest.agent_key) if digest.agent_key else None
-        if digest.agent_key is not None and (
-            agent is None or not composer.agent_may_use(agent, category)
-        ):
+        if digest.agent_key is not None and composer.agent_refusal(agent, category.key) is not None:
             digest.status = DigestStatus.CANCELLED
             return
         policy = DigestPolicy.model_validate(rule.digest)

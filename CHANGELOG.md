@@ -6,6 +6,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.3] — 2026-10-14
+
+### Fixed
+- An event an agent reported, still waiting to be processed when the agent was deleted,
+  was processed as if your own backend had sent it: its messages skipped the agent's
+  `frequency_caps`, `max_importance`, `categories` and `approval`. Its matching rules now
+  report `agent_deleted` and send nothing. Events from an agent that was disabled or lost
+  the rule's category before they were processed already reported `agent_not_allowed`;
+  that is unchanged and now tested.
+- Messages an agent had already queued (direct sends, and held messages approved
+  later) were still delivered after the agent was deleted, disabled or lost the
+  message's category. They are now checked again at send time and `suppressed` with
+  reason `agent_deleted` or `agent_not_allowed`, before screening runs. Broadcasts are
+  unaffected: only admin keys create them, so they never carry an agent.
+
 ## [0.5.2] — 2026-10-14
 
 ### Upgrading
@@ -459,7 +474,8 @@ First public release of Cue, the attention layer between software, AI agents and
 - Line breaks in e-mail subjects are collapsed, and messages that cannot be built as
   e-mail fail over instead of retrying.
 
-[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.5.3...HEAD
+[0.5.3]: https://github.com/murtazox04/Cue/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/murtazox04/Cue/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/murtazox04/Cue/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/murtazox04/Cue/compare/v0.4.0...v0.5.0

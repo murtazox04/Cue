@@ -193,8 +193,9 @@ async def evaluate(
         if template is None or category is None:  # guarded by FKs; defensive for dry runs
             outcomes.append(RuleOutcome(rule.key, matched=True, reason="misconfigured"))
             continue
-        if agent is not None and not composer.agent_may_use(agent, category):
-            outcomes.append(RuleOutcome(rule.key, matched=True, reason="agent_not_allowed"))
+        refusal = composer.agent_refusal(agent, category.key) if event.agent_key else None
+        if refusal is not None:
+            outcomes.append(RuleOutcome(rule.key, matched=True, reason=refusal))
             continue
         if rule.digest is not None:
             if dry_run:

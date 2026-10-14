@@ -110,6 +110,26 @@ async def test_risky_messages_wait_for_a_person(
     assert len(screener.requests) == 1  # a person's approval is not second-guessed
 
 
+async def test_messages_of_a_disabled_agent_are_stopped_before_screening(
+    client: httpx.AsyncClient,
+    runtime: Runtime,
+    push: FakeChannel,
+    screener: FakeScreener,
+    agent: Any,
+) -> None:
+    bot = await agent()
+    sent = await _send(bot)
+    response = await client.patch("/v1/agents/sales-bot", json={"enabled": False})
+    assert response.status_code == 200, response.text
+    await drain(runtime)
+
+    stopped = (await client.get(f"/v1/messages/{sent['id']}")).json()
+    assert (stopped["status"], stopped["status_reason"]) == ("suppressed", "agent_not_allowed")
+    assert stopped["screening"] is None
+    assert screener.requests == []
+    assert push.sent == []
+
+
 async def test_overstated_importance_is_lowered(
     client: httpx.AsyncClient,
     runtime: Runtime,

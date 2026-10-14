@@ -37,6 +37,8 @@ Policy reasons come first in the order Cue checks them. Some carry detail after 
 | `frequency_cap: <limit> per <period>` | `suppressed` | The category's rolling cap is used up around the send time, e.g. `frequency_cap: 3 per 1 day, 0:00:00`. |
 | `fatigue` | `suppressed` | The person ignored this category's recent messages; see [policy](../concepts/policy.md). |
 | `agent_budget: <limit> per <period>` | `suppressed` | The sending agent used its attention budget for this person. |
+| `agent_not_allowed` | `suppressed` | Checked right before sending: the sending agent was disabled, or may no longer use the message's category. |
+| `agent_deleted` | `suppressed` | Checked right before sending: the sending agent was deleted. |
 | `template_error: <detail>` | `failed` | The template has no usable locale or failed to render. |
 | `screening: <risks>` | `pending_approval` | [Screening](../concepts/agents.md#screening) held it: `pressure`, `deception`, `secret`, `critical not confirmed`, or `screening unavailable` when the screening API failed and `on_error = "hold"`. |
 | `rejected` or `rejected: <reason>` | `cancelled` | A reviewer rejected it. |
@@ -60,6 +62,7 @@ Policy reasons come first in the order Cue checks them. Some carry detail after 
 | `condition_error: <detail>` | `false` | The condition could not be evaluated for this event. |
 | `misconfigured` | `true` | The rule's template or category is missing. |
 | `agent_not_allowed` | `true` | The event came from an agent that may not use the rule's category, or the agent is disabled. |
+| `agent_deleted` | `true` | The event came from an agent that was deleted before the event was processed. |
 | `digested` | `true` | The event joined a digest (`digest_id`). |
 | a message reason | `true` | A message was composed: `status` and `message_id` are set, and `reason` is the message's `status_reason` above (absent when it is `null`). |
 
