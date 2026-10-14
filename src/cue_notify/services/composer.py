@@ -100,6 +100,10 @@ def effective_importance(intent: Intent) -> Importance:
     return importance
 
 
+def agent_may_use(agent: Agent, category: Category) -> bool:
+    return agent.enabled and (agent.categories is None or category.key in agent.categories)
+
+
 def _needs_approval(intent: Intent, importance: Importance) -> bool:
     agent = intent.agent
     if agent is None or agent.approval is None or agent.approval is False:

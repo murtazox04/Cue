@@ -87,8 +87,9 @@ A digest's template receives the group as `data`:
 
 ## Lifecycle
 
-1. The first matching event **opens** a digest for *(rule, recipient, key)* and schedules
-   its send for the end of the window (or the next `deliver_at`). The event's outcome is
+1. The first matching event **opens** a digest for *(rule, recipient, key)*, and for the
+   [agent](agents.md) that reported it, if any (see [below](#events-from-agents)), and
+   schedules its send for the end of the window (or the next `deliver_at`). The event's outcome is
    `digested`, with the `digest_id`.
 2. Later events join it until then. Reaching `send_after` moves the send to now.
 3. When it is sent, the digest composes one message through the **regular
@@ -110,6 +111,31 @@ POST /v1/digests/{id}/send     # close the window early
 
 Use the [dry-run endpoint](events-and-rules.md) to check a rule. A digest rule reports
 `"reason": "digested"` without grouping anything.
+
+## Events from agents
+
+A digest message is built from events, so when an [agent](agents.md) reported those events
+the message is the agent's: it is attributed to it (`"agent"` on the message and on the
+digest), counts against its `frequency_caps` (`agent_budget`), is capped at its
+`max_importance`, and waits for approval when its `approval` condition holds.
+
+To keep that attribution exact, **a digest never mixes producers**. Events are grouped per
+agent as well as per rule, recipient and key:
+
+- events one agent reports form that agent's digest, and only its limits apply;
+- events from two agents form two digests, one message each, each against its own
+  agent's budget and approval policy;
+- events from your own backend (any key not bound to an agent) form a digest of their
+  own, which no agent's limits touch, exactly as before.
+
+So the same burst can reach a person as one digest per sender. That is deliberate: each
+agent's budget is a promise about how often *that agent* may reach someone, and folding
+its events into another sender's message would let it spend someone else's budget.
+
+The agent's permission is checked twice. An event in a category the agent may not use
+never joins a digest (its outcome is `agent_not_allowed`). And when the window closes, a
+digest whose agent has since been disabled, deleted or lost that category is
+**cancelled**, not sent, just like a digest whose rule was disabled.
 
 ## Smart digests
 

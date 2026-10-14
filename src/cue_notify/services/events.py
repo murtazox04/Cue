@@ -144,12 +144,6 @@ def evaluation_context(event: Event, recipient: Recipient) -> dict[str, Any]:
     }
 
 
-def _agent_may_use(agent: Agent, category: Category) -> bool:
-    """Events an agent reports can only fire rules in categories it may use, and nothing
-    once the agent is disabled. Its budget and approval policy then apply as for sends."""
-    return agent.enabled and (agent.categories is None or category.key in agent.categories)
-
-
 async def candidate_rules(session: AsyncSession, event_name: str) -> list[Rule]:
     """Enabled rules whose ``event`` pattern matches, highest priority first.
 
@@ -199,7 +193,7 @@ async def evaluate(
         if template is None or category is None:  # guarded by FKs; defensive for dry runs
             outcomes.append(RuleOutcome(rule.key, matched=True, reason="misconfigured"))
             continue
-        if agent is not None and not _agent_may_use(agent, category):
+        if agent is not None and not composer.agent_may_use(agent, category):
             outcomes.append(RuleOutcome(rule.key, matched=True, reason="agent_not_allowed"))
             continue
         if rule.digest is not None:

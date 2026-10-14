@@ -30,7 +30,7 @@ from cue_notify.core.digest import DigestPolicy
 from cue_notify.core.enums import DigestStatus
 from cue_notify.core.policy import zone
 from cue_notify.core.time import utcnow
-from cue_notify.db.models import Category, Digest, Event, Job, Recipient, Rule, Template
+from cue_notify.db.models import Agent, Category, Digest, Event, Job, Recipient, Rule, Template
 from cue_notify.runtime import Runtime
 from cue_notify.services import composer
 from cue_notify.services.errors import NotFoundError
@@ -83,6 +83,7 @@ async def add(
             Digest.rule_id == rule.id,
             Digest.recipient_id == recipient.id,
             Digest.key == key,
+            Digest.agent_key == event.agent_key,
             Digest.status == DigestStatus.OPEN,
         )
     )
@@ -92,6 +93,7 @@ async def add(
             rule_id=rule.id,
             recipient_id=recipient.id,
             key=key,
+            agent_key=event.agent_key,
             status=DigestStatus.OPEN,
             items=[item],
             count=1,
@@ -165,6 +167,12 @@ async def flush(ctx: queue.JobContext) -> None:
         category = await session.get(Category, rule.category_key)
         if template is None or category is None:
             raise queue.PermanentJobError("digest rule's template or category was deleted")
+        agent = await session.get(Agent, digest.agent_key) if digest.agent_key else None
+        if digest.agent_key is not None and (
+            agent is None or not composer.agent_may_use(agent, category)
+        ):
+            digest.status = DigestStatus.CANCELLED
+            return
         policy = DigestPolicy.model_validate(rule.digest)
         cooldown = timedelta(seconds=rule.cooldown_seconds) if rule.cooldown_seconds else None
         message, _ = await composer.compose(
@@ -183,6 +191,7 @@ async def flush(ctx: queue.JobContext) -> None:
                 importance=rule.importance,
                 expires_at=composer.expiry(rule),
                 ai_context=_ai_context(policy, digest),
+                agent=agent,
             ),
         )
         digest.status = DigestStatus.SENT
@@ -229,6 +238,7 @@ async def flush_revive(session: AsyncSession, job: Job) -> bool:
             Digest.rule_id == digest.rule_id,
             Digest.recipient_id == digest.recipient_id,
             Digest.key == digest.key,
+            Digest.agent_key == digest.agent_key,
             Digest.status == DigestStatus.OPEN,
         )
     )

@@ -371,6 +371,7 @@ class DigestOut(Model):
     id: UUID
     rule_id: UUID
     key: str
+    agent: str | None = Field(validation_alias="agent_key")
     status: DigestStatus
     count: int
     items: list[dict[str, Any]]
