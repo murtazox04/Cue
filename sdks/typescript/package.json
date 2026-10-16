@@ -19,6 +19,6 @@
     "prepublishOnly": "npm test"
   },
   "devDependencies": {
-    "typescript": "5.6.3"
+    "typescript": "7.0.2"
   }
 }
