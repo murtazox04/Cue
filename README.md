@@ -7,6 +7,7 @@ Per-person attention budgets for AI agents and background automations, self-host
 [![CI](https://github.com/murtazox04/Cue/actions/workflows/ci.yml/badge.svg)](https://github.com/murtazox04/Cue/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/pypi/pyversions/cue-notify)](https://pypi.org/project/cue-notify/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](https://github.com/murtazox04/Cue/blob/main/LICENSE)
+[![Cue MCP server on Glama](https://glama.ai/mcp/servers/murtazox04/Cue/badges/score.svg)](https://glama.ai/mcp/servers/murtazox04/Cue)
 
 [Documentation](https://murtazox04.github.io/Cue/) ·
 [Getting started](https://murtazox04.github.io/Cue/getting-started/) ·
