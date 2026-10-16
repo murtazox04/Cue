@@ -118,11 +118,15 @@ jobs:
           path: coverage.xml
 
   test-postgres:
-    name: Tests (Python 3.13, PostgreSQL)
+    name: Tests (Python 3.13, PostgreSQL ${{ matrix.postgres }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ["17", "18"]
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:${{ matrix.postgres }}-alpine
         env:
           POSTGRES_USER: cue
           POSTGRES_PASSWORD: cue

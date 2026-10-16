@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- The test suite runs against PostgreSQL 18 as well as 17 in CI. Docker Compose stays on
+  PostgreSQL 17: from 18 the official image keeps its data in a different directory and
+  refuses to start on a volume created by 17, so existing local stacks would stop working.
+
 ## [0.5.3] — 2026-10-14
 
 ### Fixed
