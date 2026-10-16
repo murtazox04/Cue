@@ -1,5 +1,4 @@
 {
   "$schema": "https://glama.ai/mcp/schemas/server.json",
-  "maintainers": ["murtazox04"],
-  "dockerfile": "glama/Dockerfile"
+  "maintainers": ["murtazox04"]
 }
