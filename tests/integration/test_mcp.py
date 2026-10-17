@@ -7,9 +7,10 @@ from typing import Any
 
 import httpx
 import pytest
+from mcp import Client
 from mcp.server.mcpserver.exceptions import ToolError
 
-from cue_notify.mcp_server import create_server
+from cue_notify.mcp_server import INSTRUCTIONS, create_server
 from cue_notify.runtime import Runtime
 from tests.helpers import FakeChannel, create_recipient, create_rule, create_template, drain
 
@@ -60,6 +61,21 @@ async def test_agent_can_notify_and_inspect(
     assert templates == {
         "templates": [{"key": "order-shipped", "description": None, "locales": ["en", "uz"]}]
     }
+
+
+async def test_initialize_returns_instructions_and_tools_describe_every_parameter(
+    client: httpx.AsyncClient,
+) -> None:
+    async with Client(create_server(client)) as session:
+        assert session.instructions == INSTRUCTIONS
+        tools = (await session.list_tools()).tools
+
+    assert len(tools) == 10
+    for tool in tools:
+        assert tool.description, tool.name
+        assert tool.description[0].isupper(), tool.name
+        for name, schema in tool.input_schema.get("properties", {}).items():
+            assert schema.get("description"), f"{tool.name}.{name} has no description"
 
 
 async def test_api_errors_become_tool_errors(client: httpx.AsyncClient) -> None:

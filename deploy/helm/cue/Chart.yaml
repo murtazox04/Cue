@@ -2,8 +2,8 @@ apiVersion: v2
 name: cue
 description: Self-hosted notification decision engine that decides whether, when and how to reach someone, in front of the sender you already have.
 type: application
-version: 0.1.6
-appVersion: "0.5.3"
+version: 0.1.7
+appVersion: "0.5.4"
 home: https://murtazox04.github.io/Cue
 sources:
   - https://github.com/murtazox04/Cue
