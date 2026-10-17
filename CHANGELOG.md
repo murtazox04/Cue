@@ -6,7 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.4] — 2026-10-17
+
 ### Changed
+- The MCP server's tools now describe every parameter (format, limits, default and where
+  the value comes from) and say when to use each tool instead of its siblings, which
+  scope it needs, what can fail (`404` for unknown ids or, for agent keys, other senders'
+  ids; `403`; `429`) and which fields the result holds. `get_event` explains its
+  per-rule `outcome` and `get_message` lists the message fields. The server
+  instructions now also point agents at `get_event`, `get_message` and `explain` to
+  understand outcomes, and say that quiet hours may delay a message.
 - The test suite runs against PostgreSQL 18 as well as 17 in CI. Docker Compose stays on
   PostgreSQL 17: from 18 the official image keeps its data in a different directory and
   refuses to start on a volume created by 17, so existing local stacks would stop working.
@@ -479,7 +488,8 @@ First public release of Cue, the attention layer between software, AI agents and
 - Line breaks in e-mail subjects are collapsed, and messages that cannot be built as
   e-mail fail over instead of retrying.
 
-[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.5.3...HEAD
+[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.5.4...HEAD
+[0.5.4]: https://github.com/murtazox04/Cue/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/murtazox04/Cue/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/murtazox04/Cue/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/murtazox04/Cue/compare/v0.5.0...v0.5.1
