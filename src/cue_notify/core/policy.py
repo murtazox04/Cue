@@ -14,6 +14,11 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_serializer, field_validator
 
+from cue_notify.core import compliance as legal
+from cue_notify.core.enums import Importance, SuppressionReason
+
+SEND_TIME_ROUNDS = 32
+
 
 class QuietHours(BaseModel):
     """A daily window, in the recipient's local time, during which non-urgent messages wait.
@@ -98,6 +103,46 @@ def defer_past_quiet_hours(when: datetime, tz: ZoneInfo, window: QuietHours | No
     if resume.astimezone(UTC) <= when.astimezone(UTC):
         resume = resume.replace(fold=1)
     return resume.astimezone(when.tzinfo)
+
+
+def send_time(
+    when: datetime, tz: ZoneInfo, quiet: QuietHours | None, window: legal.Window | None
+) -> datetime:
+    earliest = when
+    for _ in range(SEND_TIME_ROUNDS):
+        moved = defer_past_quiet_hours(when, tz, quiet)
+        if window is not None:
+            moved = legal.next_allowed(moved, tz, window)
+        if moved == when:
+            return when
+        when = moved
+    return when if window is None else legal.next_allowed(earliest, tz, window)
+
+
+def earliest_send(now: datetime, requested: datetime | None, delay: timedelta) -> datetime:
+    return max(requested, now) if requested is not None else now + delay
+
+
+def breaks_through(importance: Importance, *, unsubscribable: bool) -> bool:
+    return importance is Importance.CRITICAL and not unsubscribable
+
+
+def honoured_importance(
+    importance: Importance, *, unsubscribable: bool, ceiling: Importance | None = None
+) -> Importance:
+    if ceiling is not None and importance.rank > ceiling.rank:
+        importance = ceiling
+    if importance is Importance.CRITICAL and unsubscribable:
+        return Importance.HIGH
+    return importance
+
+
+def expired(at: datetime, expires_at: datetime | None) -> bool:
+    return expires_at is not None and at >= expires_at
+
+
+def limit_reason(reason: SuppressionReason, cap: FrequencyCap) -> str:
+    return f"{reason}: {cap.limit} per {cap.period}"
 
 
 def rolling_peak(times: Iterable[datetime], at: datetime, period: timedelta) -> int:

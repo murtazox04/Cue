@@ -30,6 +30,7 @@ from cue_notify import queue
 from cue_notify.ai import GenerationError, PersonalizationRequest
 from cue_notify.ai.screening import ScreeningError, ScreeningRequest, Verdict
 from cue_notify.channels.base import Delivery, DeliveryError, InvalidAddressError, Receipt
+from cue_notify.core import policy
 from cue_notify.core.content import DEFAULT_VARIANT, Content
 from cue_notify.core.enums import MessageStatus, SuppressionReason
 from cue_notify.core.time import utcnow
@@ -295,7 +296,7 @@ async def deliver(ctx: queue.JobContext) -> None:
             message.status = MessageStatus.SUPPRESSED
             message.status_reason = SuppressionReason.UNSUBSCRIBED
             return
-        if message.expires_at is not None and message.expires_at <= utcnow():
+        if policy.expired(utcnow(), message.expires_at):
             message.status = MessageStatus.SUPPRESSED
             message.status_reason = SuppressionReason.EXPIRED
             return
@@ -308,7 +309,7 @@ async def deliver(ctx: queue.JobContext) -> None:
         if allowed <= now:
             message.status = MessageStatus.SENDING
             message.attempts += 1
-        elif message.expires_at is not None and allowed >= message.expires_at:
+        elif policy.expired(allowed, message.expires_at):
             message.status = MessageStatus.SUPPRESSED
             message.status_reason = SuppressionReason.EXPIRED
             return

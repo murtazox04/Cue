@@ -31,6 +31,13 @@ The recording is
 from a checkout, `uv run python examples/agents-demo/demo.py` runs it with SQLite and
 the console connector.
 
+## Without a server
+
+`from cue_notify.embedded import Gate` runs the same quiet hours, caps, cooldowns,
+per-sender budgets and digests inside your own process, with state in a SQLite file:
+`gate.check()` says `send`, `defer`, `suppress` or `digest`, and you send the message
+yourself. See [use Cue as a library](guides/library.md).
+
 ## Your own product's notifications
 
 The same policy serves your product's notifications. Your product and your agents

@@ -92,12 +92,11 @@ def effective_importance(intent: Intent) -> Importance:
     categories people cannot unsubscribe from, so a marketing sender cannot use it to
     break through quiet hours and caps.
     """
-    importance = intent.importance
-    if intent.agent is not None and importance.rank > intent.agent.max_importance.rank:
-        importance = intent.agent.max_importance
-    if importance is Importance.CRITICAL and intent.category.allow_unsubscribe:
-        return Importance.HIGH
-    return importance
+    return policy.honoured_importance(
+        intent.importance,
+        unsubscribable=intent.category.allow_unsubscribe,
+        ceiling=intent.agent.max_importance if intent.agent is not None else None,
+    )
 
 
 def agent_refusal(agent: Agent | None, category_key: str) -> SuppressionReason | None:
@@ -144,7 +143,7 @@ def template_context(intent: Intent, settings: Settings) -> dict[str, Any]:
 
 
 def breaks_through(importance: Importance, category: Category) -> bool:
-    return importance is Importance.CRITICAL and not category.allow_unsubscribe
+    return policy.breaks_through(importance, unsubscribable=category.allow_unsubscribe)
 
 
 def texting_window(
@@ -164,9 +163,6 @@ def texting_window(
     return legal.window_for(recipient.region, phone, unknown_state=compliance.unknown_state)
 
 
-SEND_TIME_ROUNDS = 32
-
-
 def allowed_send_time(
     when: datetime,
     recipient: Recipient,
@@ -182,15 +178,7 @@ def allowed_send_time(
         prefs = recipient_service.preferences(recipient)
         quiet = prefs.quiet_hours if prefs.quiet_hours is not None else defaults.quiet_hours
     window = texting_window(recipient, category, channels, settings)
-    earliest = when
-    for _ in range(SEND_TIME_ROUNDS):
-        moved = policy.defer_past_quiet_hours(when, tz, quiet)
-        if window is not None:
-            moved = legal.next_allowed(moved, tz, window)
-        if moved == when:
-            return when
-        when = moved
-    return when if window is None else legal.next_allowed(earliest, tz, window)
+    return policy.send_time(when, tz, quiet, window)
 
 
 def receives(address: Address, category: Category | None) -> bool:
@@ -285,7 +273,7 @@ async def _agent_budget_exceeded(
             statuses=(*COUNTED_STATUSES, MessageStatus.PENDING_APPROVAL),
         )
         if recent >= cap.limit:
-            return f"{SuppressionReason.AGENT_BUDGET}: {cap.limit} per {cap.period}"
+            return policy.limit_reason(SuppressionReason.AGENT_BUDGET, cap)
     return None
 
 
@@ -326,7 +314,7 @@ async def decide(session: AsyncSession, runtime: Runtime, intent: Intent) -> Dec
     now = utcnow()
     # A time in the past means "now": counting caps from a backdated time would let a
     # sender spread messages over windows that have already closed.
-    send_at = max(intent.send_at, now) if intent.send_at else now + intent.delay
+    send_at = policy.earliest_send(now, intent.send_at, intent.delay)
     send_at = allowed_send_time(
         send_at, recipient, category, importance, channels, runtime.settings
     )
@@ -360,7 +348,7 @@ async def decide(session: AsyncSession, runtime: Runtime, intent: Intent) -> Dec
         if recent:
             return Decision(MessageStatus.SUPPRESSED, SuppressionReason.COOLDOWN, send_at=send_at)
 
-    if intent.expires_at is not None and send_at >= intent.expires_at:
+    if policy.expired(send_at, intent.expires_at):
         return Decision(MessageStatus.SUPPRESSED, SuppressionReason.EXPIRED, send_at=send_at)
 
     for raw_cap in [] if breaks_through(importance, category) else category.frequency_caps:
@@ -375,7 +363,7 @@ async def decide(session: AsyncSession, runtime: Runtime, intent: Intent) -> Dec
         if recent >= cap.limit:
             return Decision(
                 MessageStatus.SUPPRESSED,
-                f"{SuppressionReason.FREQUENCY_CAP}: {cap.limit} per {cap.period}",
+                policy.limit_reason(SuppressionReason.FREQUENCY_CAP, cap),
                 send_at=send_at,
             )
 

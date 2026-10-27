@@ -39,7 +39,33 @@ the outbound gatekeeper:
   each event records which rules matched and why. Agents connect over HTTP, the SDKs or
   the [MCP server](https://murtazox04.github.io/Cue/guides/ai-agents/).
 
-The recording above is [`examples/agents-demo`](https://github.com/murtazox04/Cue/tree/main/examples/agents-demo):
+## Use it as a library
+
+No server needed: `pip install cue-notify`, then decide in-process, with state in a
+SQLite file. You send the message yourself.
+
+```python
+from cue_notify.embedded import Gate
+
+gate = Gate("sqlite:///cue.db", quiet_hours=("22:00", "08:00"), caps={"marketing": [("P1D", 1)]})
+decision = gate.check("user-42", category="marketing", timezone="Europe/Berlin", key="sale-42")
+if decision.action == "send":
+    print("sending now")
+    gate.sent(decision)
+else:
+    print(decision.action, decision.at, decision.reason)
+for due in gate.due():
+    print("sending", due.key)
+    gate.sent(due)
+```
+
+`check()` answers `send`, `defer` (until `decision.at`), `suppress` or `digest`, with a
+reason; `due()` returns deferred messages and digest batches whose time has come. Quiet
+hours in each person's time zone, caps, cooldowns, per-sender budgets, digests and
+idempotency keys work as in the server; templates, channels and preference pages do not
+come with it. See [Use Cue as a library](https://murtazox04.github.io/Cue/guides/library/).
+
+The recording at the top is [`examples/agents-demo`](https://github.com/murtazox04/Cue/tree/main/examples/agents-demo):
 from a checkout, `uv run python examples/agents-demo/demo.py` runs it with SQLite and
 the console connector.
 
