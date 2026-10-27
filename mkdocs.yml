@@ -48,6 +48,7 @@ nav:
       - Engagement tracking: concepts/engagement.md
       - AI personalisation: concepts/ai.md
   - Guides:
+      - Use Cue as a library: guides/library.md
       - Deployment: guides/deployment.md
       - Performance: guides/performance.md
       - Compliance: guides/compliance.md

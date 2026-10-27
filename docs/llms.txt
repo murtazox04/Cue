@@ -39,6 +39,7 @@ Key facts for integrating Cue:
 
 ## Guides
 
+- [Use Cue as a library](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/guides/library.md): in-process decisions with `cue_notify.embedded.Gate` and SQLite, no server: quiet hours, caps, cooldowns, sender budgets, digests, idempotency keys
 - [AI agents (MCP)](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/guides/ai-agents.md): tools, transports and good practice for agents
 - [Performance](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/guides/performance.md): cost per event, benchmark, scaling
 - [Deployment](https://raw.githubusercontent.com/murtazox04/Cue/main/docs/guides/deployment.md): PostgreSQL, workers, Docker, Helm, the secret key, scheduling prune

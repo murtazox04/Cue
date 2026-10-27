@@ -6,6 +6,26 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-10-27
+
+### Added
+- Cue as a library: `cue_notify.embedded.Gate` makes the same decisions in your own
+  process, with state in a SQLite file or in memory, without the HTTP server, a worker or
+  PostgreSQL. `check()` returns `send`, `defer`, `suppress` or `digest` with a time and a
+  reason; `sent()` records a delivery; `due()` returns deferred messages and closed
+  digest batches, checking quiet hours again in the person's current time zone. It
+  covers quiet hours, frequency caps, cooldowns, per-sender budgets, digests (window or
+  local time of day), expiry, `critical` breakthrough in essential categories and
+  idempotency keys. Importing it loads no server code. See
+  [Use Cue as a library](https://murtazox04.github.io/Cue/guides/library/) and
+  `examples/library/night.py`.
+
+### Changed
+- The send-time loop (quiet hours with legal texting hours), importance capping,
+  `critical` breakthrough, expiry and the cap and budget reasons moved from the composer
+  into `cue_notify.core.policy` as pure functions that the server and the library both
+  call. Server behaviour is unchanged.
+
 ## [0.5.4] — 2026-10-17
 
 ### Changed
@@ -488,7 +508,8 @@ First public release of Cue, the attention layer between software, AI agents and
 - Line breaks in e-mail subjects are collapsed, and messages that cannot be built as
   e-mail fail over instead of retrying.
 
-[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.5.4...HEAD
+[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/murtazox04/Cue/compare/v0.5.4...v0.6.0
 [0.5.4]: https://github.com/murtazox04/Cue/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/murtazox04/Cue/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/murtazox04/Cue/compare/v0.5.1...v0.5.2

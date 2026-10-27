@@ -143,6 +143,7 @@ ignore = [
 "sdks/python/tests/**" = ["S105", "S106"]
 "src/cue_notify/db/migrations/**" = ["N999"]
 "src/cue_notify/channels/ses.py" = ["S303"]
+"src/cue_notify/embedded/store.py" = ["S608"]
 "tests/unit/test_connectors.py" = ["S303"]
 
 [tool.ruff.lint.flake8-bugbear]

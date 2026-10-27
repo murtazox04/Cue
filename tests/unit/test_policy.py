@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from cue_notify.core import policy
+from cue_notify.core.enums import Importance, SuppressionReason
 from cue_notify.core.policy import QuietHours
 
 TASHKENT = ZoneInfo("Asia/Tashkent")  # UTC+5, no DST
@@ -105,3 +106,37 @@ def test_rolling_peak_counts_the_busiest_window_around_a_moment(
     at = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
     times = [at + offset for offset in offsets]
     assert policy.rolling_peak(times, at, timedelta(days=1)) == expected
+
+
+def test_critical_is_honoured_only_where_people_cannot_opt_out() -> None:
+    assert policy.honoured_importance(Importance.CRITICAL, unsubscribable=False) is (
+        Importance.CRITICAL
+    )
+    assert policy.honoured_importance(Importance.CRITICAL, unsubscribable=True) is Importance.HIGH
+    assert (
+        policy.honoured_importance(
+            Importance.CRITICAL, unsubscribable=False, ceiling=Importance.NORMAL
+        )
+        is Importance.NORMAL
+    )
+    assert policy.breaks_through(Importance.CRITICAL, unsubscribable=False)
+    assert not policy.breaks_through(Importance.HIGH, unsubscribable=False)
+
+
+def test_requested_times_in_the_past_mean_now() -> None:
+    now = datetime(2026, 10, 20, 12, 0, tzinfo=UTC)
+    hour = timedelta(hours=1)
+    assert policy.earliest_send(now, now - hour, timedelta()) == now
+    assert policy.earliest_send(now, now + hour, timedelta()) == now + hour
+    assert policy.earliest_send(now, None, hour) == now + hour
+
+
+def test_expiry_and_limit_reasons() -> None:
+    now = datetime(2026, 10, 20, 12, 0, tzinfo=UTC)
+    assert policy.expired(now, now)
+    assert not policy.expired(now, None)
+    assert not policy.expired(now, now + timedelta(seconds=1))
+    cap = policy.FrequencyCap(period=timedelta(days=1), limit=3)
+    assert policy.limit_reason(SuppressionReason.FREQUENCY_CAP, cap) == (
+        "frequency_cap: 3 per 1 day, 0:00:00"
+    )
