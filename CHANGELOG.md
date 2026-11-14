@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-11-14
+
+### Security
+- The Docker image now ships opentelemetry-api 1.45.2, which fixes CVE-2026-126360.
+  `pip install cue-notify` was not pinned to the affected version; upgrade the package
+  in your environment if it resolved 1.45.1.
+
 ## [0.6.0] — 2026-10-27
 
 ### Added
@@ -508,7 +515,8 @@ First public release of Cue, the attention layer between software, AI agents and
 - Line breaks in e-mail subjects are collapsed, and messages that cannot be built as
   e-mail fail over instead of retrying.
 
-[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/murtazox04/Cue/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/murtazox04/Cue/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/murtazox04/Cue/compare/v0.5.4...v0.6.0
 [0.5.4]: https://github.com/murtazox04/Cue/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/murtazox04/Cue/compare/v0.5.2...v0.5.3
